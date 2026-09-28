@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": { "start": "node index.js" },
   "dependencies": {
-    "@colyseus/schema": "^3.6.5",
+    "@colyseus/schema": "^3.0.0",
+    "@colyseus/ws-transport": "^0.16.5",
     "colyseus": "^0.16.9",
     "cors": "^2.8.5",
     "express": "^4.19.2"
