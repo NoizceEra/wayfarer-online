@@ -4,6 +4,11 @@ A cozy Game Boy-style **open-world action RPG** (new game, not Lanternfall) with
 **modular characters**, **solo ↔ co-op interop**, and a HUD built for
 Ragnarok Online / Heartwood Online fans: login → character creator → explore together.
 
+## Play now
+
+- **Game:** https://wayfarer-online.vercel.app (works solo offline; co-op via relay below)
+- **Co-op relay:** `wss://wayfarer-relay-production.up.railway.app` (baked into the deploy via `VITE_SERVER_URL`)
+
 ## Quick start
 
 ```powershell
