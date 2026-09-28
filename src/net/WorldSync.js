@@ -9,17 +9,21 @@ export class WorldSync {
     this.scene = scene; this.player = player;
     this.remotes = new Map();
     this.off = [
-      bus.on(Events.NET_PLAYER_JOINED, ({ id, name, hero: h }) => {
-        if (this.remotes.has(id)) return;
-        const r = new RemotePlayer(scene, name, h || hero);
-        this.remotes.set(id, r);
-      }),
+      bus.on(Events.NET_PLAYER_JOINED, ({ id, name, hero: h }) => this.addRemote(id, name, h || hero)),
       bus.on(Events.NET_PLAYER_LEFT, ({ id }) => {
         this.remotes.get(id)?.destroy(); this.remotes.delete(id);
       }),
       bus.on(Events.NET_STATE, (m) => this.onState(m)),
     ];
+    // Reconcile peers that joined before world entry (common: lobby happens
+    // on the title screen, world loads after).
+    net.peers.forEach(({ name, hero: h }, id) => this.addRemote(id, name, h || hero));
     this.acc = 0;
+  }
+  addRemote(id, name, hero) {
+    if (!id || id === net.sessionId || this.remotes.has(id)) return;
+    const r = new RemotePlayer(this.scene, name, hero);
+    this.remotes.set(id, r);
   }
   onState(m) {
     if (m.kind === 'input' && m.sessionId !== net.sessionId) {

@@ -1,7 +1,7 @@
 import http from 'http';
 import express from 'express';
 import cors from 'cors';
-import { Server, Room } from 'colyseus';
+import { Server, Room, matchMaker } from 'colyseus';
 import { Schema, type, MapSchema } from '@colyseus/schema';
 
 // Thin relay: holds positions + region + chat; game rules stay in the client
@@ -34,6 +34,19 @@ type('number')(PartyState.prototype, 'seq');
 const app = express();
 app.use(cors());
 app.get('/health', (req, res) => res.json({ ok: true, game: 'wayfarer-online' }));
+// Resolve a 5-char display code (roomId suffix) to the full Colyseus roomId
+// so guests can join with client.joinById (colyseus.js 0.16 has no
+// getAvailableRooms on the client).
+app.get('/rooms/:code', async (req, res) => {
+  try {
+    const code = String(req.params.code || '').toUpperCase();
+    const rooms = await matchMaker.query({ name: 'party' });
+    const match = rooms.find((r) => String(r.roomId).toUpperCase().endsWith(code))
+      || rooms.find((r) => String(r.roomId).toUpperCase() === code);
+    if (!match) { res.status(404).json({ error: 'room_not_found' }); return; }
+    res.json({ roomId: match.roomId });
+  } catch (e) { res.status(500).json({ error: 'lookup_failed' }); }
+});
 const httpServer = http.createServer(app);
 const gameServer = new Server({ server: httpServer });
 
@@ -69,8 +82,21 @@ gameServer.define('party', class extends Room {
     p.heroJson = JSON.stringify(options?.hero || {});
     p.isHost = this.clients.length === 1;
     this.state.players.set(client.sessionId, p);
+    const hero = options?.hero || {};
+    // peer presence via messages (robust across colyseus.js versions)
+    this.broadcast('peer-join', { sessionId: client.sessionId, name: p.name, hero }, { except: client });
+    for (const other of this.clients) {
+      if (other.sessionId === client.sessionId) continue;
+      const q = this.state.players.get(other.sessionId);
+      let qhero = {};
+      try { qhero = JSON.parse(q?.heroJson || '{}'); } catch {}
+      client.send('peer-join', { sessionId: other.sessionId, name: q?.name || '???', hero: qhero });
+    }
   }
-  onLeave(client) { this.state.players.delete(client.sessionId); }
+  onLeave(client) {
+    this.state.players.delete(client.sessionId);
+    this.broadcast('peer-leave', { sessionId: client.sessionId });
+  }
 });
 
 const PORT = Number(process.env.PORT || 2567);
