@@ -14,11 +14,12 @@ export class NetworkManager {
   async host(name, hero) {
     this.client = new Client(CONFIG.serverUrl.replace(/^ws/, 'http'));
     this.room = await this.client.create('party', { name, hero });
-    this.isHost = true; this.code = this.room.id.slice(-5).toUpperCase();
+    const roomId = this.room.roomId; // colyseus.js 0.16: roomId (not .id)
+    this.isHost = true; this.code = roomId.slice(-5).toUpperCase();
     this.sessionId = this.room.sessionId;
     this.attach();
-    bus.emit(Events.NET_CONNECTED, { code: this.room.id, isHost: true });
-    return this.room.id;
+    bus.emit(Events.NET_CONNECTED, { code: roomId, isHost: true });
+    return roomId;
   }
   async join(code, name, hero) {
     this.client = new Client(CONFIG.serverUrl.replace(/^ws/, 'http'));
