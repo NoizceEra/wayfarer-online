@@ -83,6 +83,9 @@ export class WorldScene extends Phaser.Scene {
     this.physics.add.overlap(this.player, this.enemies, (p, e) => {
       const ed = e instanceof Enemy ? e : null;
       if (!ed) return;
+      // Safe zones (town) are truly safe: no contact damage
+      const pt = CONFIG.tile;
+      if (zoneAt(Math.floor(this.player.x / pt), Math.floor(this.player.y / pt), ZONES).safe) return;
       const raw = ed.def.atk * 0.15 + 1;
       const n = Math.max(1, Math.round(raw - this.player.effDef() * 0.5));
       if (this.player.hurt(n)) {

@@ -19,9 +19,10 @@ document.addEventListener('touchend', (e) => {
 
 const coarse = window.matchMedia?.('(pointer: coarse)').matches;
 const dpr = Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : 2); // perf: cap DPR
+// ?renderer=canvas forces the 2D fallback (weak GPUs, broken GL, headless tests)
+const forceCanvas = new URLSearchParams(window.location.search).get('renderer') === 'canvas';
 
-new Phaser.Game({
-  type: Phaser.AUTO,
+const game = new Phaser.Game({  type: forceCanvas ? Phaser.CANVAS : Phaser.AUTO,
   parent: 'game',
   width: window.innerWidth,
   height: window.innerHeight,
@@ -30,8 +31,11 @@ new Phaser.Game({
   resolution: dpr,
   disableContextMenu: true,
   fps: { target: 60, smoothStep: true },
-  render: { antialias: false, roundPixels: true, powerPreference: 'high-performance' },
+  render: { antialias: false, roundPixels: true },
   physics: { default: 'arcade', arcade: { gravity: { y: 0 }, debug: false, fps: 60 } },
   scene: [BootScene, TitleScene, CreatorScene, WorldScene, UIScene],
   scale: { mode: Phaser.Scale.RESIZE, autoCenter: Phaser.Scale.CENTER_BOTH },
 });
+
+// Debug/testing handle (also used by automated smoke tests).
+window.__wayfarer = game;

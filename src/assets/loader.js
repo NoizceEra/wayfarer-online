@@ -83,8 +83,8 @@ export function preload(scene) {
   for (const [key, path, fw, fh] of PROJ_SHEETS) L.spritesheet(key, `${NA}/${path}`, { frameWidth: fw, frameHeight: fh });
   for (const [key, path] of PROJ_IMAGES) L.image(key, `${NA}/${path}`);
   for (const [key, path] of WEAPONS) L.image(key, `${NA}/${path}`);
-  // Environment flavor
-  L.spritesheet('env.flower', `${NA}/Backgrounds/Animated/Flower/SpriteSheet16x16.png`, { frameWidth: 16, frameHeight: 16 });
+  // Environment flavor (flower sheet is a 20×8 strip, not a 16px grid → static)
+  L.image('env.flower', `${NA}/Backgrounds/Animated/Flower/SpriteSheet16x16.png`);
   L.spritesheet('env.plant', `${NA}/Backgrounds/Animated/Plant/SpriteSheet16x16.png`, { frameWidth: 16, frameHeight: 16 });
   L.image('fx.glow', 'assets/light/light_soft.png');
   for (const [folder, keys] of Object.entries(AUDIO)) {
@@ -132,7 +132,6 @@ export function createAnims(scene) {
   for (const [key, , , , fps] of PROJ_SHEETS) {
     makeAnim(scene, { key, frames: A.generateFrameNumbers(key), frameRate: fps, repeat: -1 });
   }
-  makeAnim(scene, { key: 'env.flower.bloom', frames: A.generateFrameNumbers('env.flower'), frameRate: 4, repeat: -1 });
   makeAnim(scene, { key: 'env.plant.sway', frames: A.generateFrameNumbers('env.plant'), frameRate: 5, repeat: -1 });
   // Generated fallback textures (coin, ring, ground tiles)
   const T = scene.textures;

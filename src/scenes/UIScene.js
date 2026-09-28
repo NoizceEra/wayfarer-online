@@ -13,7 +13,7 @@ import { gearById, statLine, SHOP_STOCK, SLOTS } from '../data/gear.js';
 export class UIScene extends Phaser.Scene {
   constructor() { super('ui'); }
   init(data) { this.hero = data.hero; this.pname = data.name; this.job = data.job; }
-  world() { return this.scene.getScene('world'); }
+  world() { return this.scene.get('world'); }
   create() {
     const { width: W, height: H } = this.scale;
     this.minimapOn = true;
@@ -89,8 +89,8 @@ export class UIScene extends Phaser.Scene {
     this.mapG = this.add.graphics().setDepth(101);
     this.mapBg = this.add.rectangle(W - this.mapSize / 2 - 8, H - this.mapSize / 2 - 8, this.mapSize, this.mapSize, 0x000000, 0.6).setDepth(100);
 
-    // Party line (left, under panel)
-    this.partyT = this.add.text(16, 92, net.connected ? `Party ${net.code}` : 'Solo — Host/Join from Title', { fontSize: '10px', color: '#aed6f1' }).setDepth(101);
+    // Party line (left, under panel; short text + lower on phones to clear zone label)
+    this.partyT = this.add.text(16, this.small ? 104 : 92, net.connected ? `Party ${net.code}` : (this.small ? 'Solo' : 'Solo — Host/Join from Title'), { fontSize: '10px', color: '#aed6f1' }).setDepth(101);
 
     // Pause menu (Esc)
     this.paused = false;

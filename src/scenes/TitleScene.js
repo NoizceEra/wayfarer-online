@@ -14,12 +14,14 @@ export class TitleScene extends Phaser.Scene {
     const { width: W, height: H } = this.scale;
     this.cameras.main.setBackgroundColor('#0f380f');
     const prof = loadProfile() || { name: '' };
+    const small = W < 560;
+    const bw = Math.min(320, W - 32); // button width fits phones
 
-    this.add.text(W / 2, 70, 'WAYFARER ONLINE', { fontSize: '42px', color: '#9bbc0f', fontStyle: 'bold' }).setOrigin(0.5);
-    this.add.text(W / 2, 100, 'a cozy open world · solo or together', { fontSize: '14px', color: '#e6f2c0' }).setOrigin(0.5);
+    this.add.text(W / 2, small ? 52 : 70, 'WAYFARER ONLINE', { fontSize: small ? '30px' : '42px', color: '#9bbc0f', fontStyle: 'bold' }).setOrigin(0.5);
+    this.add.text(W / 2, small ? 78 : 100, 'a cozy open world · solo or together', { fontSize: small ? '12px' : '14px', color: '#e6f2c0' }).setOrigin(0.5);
 
-    this.add.text(W / 2 - 160, 140, 'Wayfarer name:', { fontSize: '14px', color: '#fff' });
-    const nameText = this.add.text(W / 2 - 160, 160, prof.name || 'Pip', { fontSize: '22px', color: '#0f380f', backgroundColor: '#9bbc0f', padding: { x: 10, y: 6 }, fixedWidth: 320 }).setInteractive({ useHandCursor: true });
+    this.add.text(W / 2 - bw / 2, 140, 'Wayfarer name:', { fontSize: '14px', color: '#fff' });
+    const nameText = this.add.text(W / 2 - bw / 2, 160, prof.name || 'Pip', { fontSize: '22px', color: '#0f380f', backgroundColor: '#9bbc0f', padding: { x: 10, y: 6 }, fixedWidth: bw }).setInteractive({ useHandCursor: true });
     this.registry.set('editName', () => {
       const v = window.prompt('Wayfarer name:', nameText.text) || nameText.text;
       nameText.setText(v.slice(0, 14));
@@ -27,7 +29,7 @@ export class TitleScene extends Phaser.Scene {
     nameText.on('pointerdown', () => { audio.ui(); this.registry.get('editName')?.(); });
 
     const btn = (y, label, cb) => {
-      const t = this.add.text(W / 2, y, label, { fontSize: '20px', color: '#0f380f', backgroundColor: '#8bac0f', padding: { x: 22, y: 10 }, fixedWidth: 320, align: 'center' }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+      const t = this.add.text(W / 2, y, label, { fontSize: small ? '16px' : '20px', color: '#0f380f', backgroundColor: '#8bac0f', padding: { x: 14, y: 10 }, fixedWidth: bw, align: 'center' }).setOrigin(0.5).setInteractive({ useHandCursor: true });
       t.on('pointerover', () => t.setBackgroundColor('#9bbc0f'));
       t.on('pointerout', () => t.setBackgroundColor('#8bac0f'));
       t.on('pointerdown', () => { audio.ui(); cb(); });
@@ -69,7 +71,10 @@ export class TitleScene extends Phaser.Scene {
     });
     btn(390, '✎  Character Creator', () => goWorld(net.connected ? (net.isHost ? 'host' : 'guest') : 'solo'));
 
-    this.add.text(W / 2, H - 30, 'WASD move · J attack · E talk · Enter chat · CC0 assets (see CREDITS.md)', { fontSize: '11px', color: '#9bbc0f' }).setOrigin(0.5);
+    this.add.text(W / 2, H - 30, 'WASD move · J attack · E talk · Enter chat · CC0 assets (see CREDITS.md)', { fontSize: '10px', color: '#9bbc0f', align: 'center', wordWrap: { width: W - 24 } }).setOrigin(0.5);
+    // Keyboard: Enter = primary action (also enables automated smoke tests)
+    this.input.keyboard.on('keydown-ENTER', () => goWorld('solo'));
+    this.input.keyboard.on('keydown-C', () => goWorld(net.connected ? (net.isHost ? 'host' : 'guest') : 'solo'));
     bus.emit(Events.SYSTEM, 'title');
   }
 }

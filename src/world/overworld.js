@@ -4,7 +4,9 @@ import { CONFIG } from '../config.js';
 // scattered props. Zones: town (safe), meadow, woods, ruins.
 // Gameplay reads zoneAt(); visuals can be re-skinned without touching rules.
 export function zoneAt(tx, ty, ZONES) {
-  for (const z of [...ZONES].reverse()) {
+  // Smallest-area-first: enclaves (town inside meadow) win over their parent.
+  const sorted = [...ZONES].sort((a, b) => (a.rect.w * a.rect.h) - (b.rect.w * b.rect.h));
+  for (const z of sorted) {
     const r = z.rect;
     if (tx >= r.x && ty >= r.y && tx < r.x + r.w && ty < r.y + r.h) return z;
   }
@@ -72,7 +74,7 @@ export function buildOverworld(scene, ZONES) {
     if (zone.id === 'town') {
       if (rnd() < 0.05) windows.push(makeHouse(x, y, pick([0xb03a2e, 0x2e86c1, 0x7d3c98])));
       else if (rnd() < 0.06 && scene.textures.exists('env.flower')) {
-        scene.add.sprite(x, y, 'env.flower', 0).play('env.flower.bloom').setDepth(1);
+        scene.add.image(x, y, 'env.flower').setDepth(1).setScale(2);
       }
       continue;
     }
@@ -80,7 +82,7 @@ export function buildOverworld(scene, ZONES) {
     if (zone.id === 'woods' ? r < 0.24 : r < 0.06) {
       makeTree(x, y, zone.id === 'woods' && r < 0.08);
     } else if (r < 0.32 && scene.textures.exists('env.flower')) {
-      scene.add.sprite(x, y, 'env.flower', 0).play('env.flower.bloom').setDepth(1);
+      scene.add.image(x, y, 'env.flower').setDepth(1).setScale(2);
     } else if (r < 0.36 && scene.textures.exists('env.plant')) {
       scene.add.sprite(x, y, 'env.plant', 0).play('env.plant.sway').setDepth(1);
     } else if (r < 0.40) {
@@ -107,7 +109,7 @@ export function buildOverworld(scene, ZONES) {
   scene.add.circle(spawn.x, spawn.y, 30, 0xf7dc6f, 0.35).setDepth(0);
   windows.push(makeHouse(spawn.x - 40, spawn.y - 20, 0xb03a2e));
   windows.push(makeHouse(spawn.x + 40, spawn.y - 20, 0x2e86c1));
-  for (const [dx, dy] of [[-16, 12], [16, 12], [0, -34]]) {
+  for (const [dx, dy] of [[-16, 18], [16, 18], [0, -34]]) {
     const tx = spawn.x + dx, ty = spawn.y + dy;
     scene.add.rectangle(tx, ty, 3, 12, 0x5a3a1e).setDepth(ty);
     const flame = scene.add.circle(tx, ty - 8, 3, 0xe67e22).setDepth(ty + 1);
@@ -117,7 +119,7 @@ export function buildOverworld(scene, ZONES) {
       scene.tweens.add({ targets: glow, alpha: 0.3, duration: 700, yoyo: true, repeat: -1, ease: 'sine.inout' });
       glows.push(glow);
     }
-    const hit = scene.add.rectangle(tx, ty, 4, 12, 0xffffff, 0);
+    const hit = scene.add.rectangle(tx, ty + 2, 4, 8, 0xffffff, 0);
     solids.add(hit);
   }
 

@@ -65,11 +65,13 @@ export class CreatorScene extends Phaser.Scene {
 
     this.add.text(W / 2, y + 6, JOBS[this.hero.job].desc, { fontSize: '12px', color: '#aaa', align: 'center', wordWrap: { width: 420 } }).setOrigin(0.5);
     const start = this.add.text(W / 2, y + 44, this.mode === 'solo' ? '▶  ENTER EMBERVALE' : this.mode === 'host' ? '▶  OPEN ROOM & ENTER' : '▶  JOIN WORLD', { fontSize: '20px', color: '#0f380f', backgroundColor: '#9bbc0f', padding: { x: 24, y: 10 } }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-    start.on('pointerdown', () => {
+    const begin = () => {
       audio.play('level');
       saveHero(this.hero);
       audio.stopMusic();
       this.scene.start('world', { hero: this.hero, mode: this.mode, name: this.pname });
-    });
+    };
+    start.on('pointerdown', begin);
+    this.input.keyboard.on('keydown-ENTER', begin);
   }
 }
