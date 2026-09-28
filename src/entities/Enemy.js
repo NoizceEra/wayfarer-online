@@ -1,0 +1,51 @@
+import Phaser from 'phaser';
+import { ENEMY_TABLE } from '../data/jobs.js';
+
+export class Enemy extends Phaser.GameObjects.Container {
+  constructor(scene, x, y, typeId) {
+    super(scene, x, y);
+    const def = ENEMY_TABLE[typeId] || ENEMY_TABLE.dewslime;
+    this.def = def; this.typeId = typeId;
+    this.maxHp = def.hp; this.hp = def.hp;
+    this.home = { x, y };
+    this.facing = 'down';
+    scene.add.existing(this);
+    scene.physics.add.existing(this);
+    this.body.setSize(14, 12);
+    this.shadow = scene.add.image(0, 3, 'char.shadow').setScale(1.2, 1);
+    this.texKey = `mon.${def.sprite}`;
+    if (!scene.textures.exists(this.texKey)) this.texKey = 'mon.Slime';
+    this.sprite = scene.add.sprite(0, -6, this.texKey, 0);
+    this.hpbarBg = scene.add.rectangle(0, -18, 18, 3, 0x000000, 0.6);
+    this.hpbar = scene.add.rectangle(-8, -18, 16, 2, 0x2ecc71).setOrigin(0, 0.5);
+    this.add([this.shadow, this.sprite, this.hpbarBg, this.hpbar]);
+    this.setDepth(8);
+    this.playMove();
+  }
+  playMove() {
+    const key = `${this.texKey}.move.${this.facing}`;
+    if (this.scene.anims.exists(key)) this.sprite.play(key, true);
+  }
+  setFacingByVelocity(vx, vy) {
+    let dir = this.facing;
+    if (Math.abs(vx) > Math.abs(vy)) dir = vx > 0 ? 'right' : 'left';
+    else if (Math.abs(vy) > 0.5) dir = vy > 0 ? 'down' : 'up';
+    if (dir !== this.facing) { this.facing = dir; this.playMove(); }
+  }
+  hurt(n) {
+    this.hp -= n;
+    const frac = Math.max(0, this.hp / this.maxHp);
+    this.hpbar.setDisplaySize(16 * frac, 2);
+    this.hpbar.setFillStyle(frac > 0.5 ? 0x2ecc71 : frac > 0.25 ? 0xf39c12 : 0xe74c3c);
+    this.sprite.setTintFill(0xffffff);
+    this.scene.time.delayedCall(80, () => this.sprite.clearTint());
+    // knockback away from player
+    const p = this.scene.player;
+    if (p) {
+      const a = Math.atan2(this.y - p.y, this.x - p.x);
+      this.body.setVelocity(Math.cos(a) * 160, Math.sin(a) * 160);
+      this.scene.time.delayedCall(120, () => { if (this.active) this.body.setVelocity(0, 0); });
+    }
+    return this.hp <= 0;
+  }
+}
