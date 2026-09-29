@@ -9,6 +9,41 @@
     <meta name="theme-color" content="#0e1512" />
     <title>Wayfarer Online</title>
     <style>
+      @font-face {
+        font-family: 'Jacquard12';
+        src: url('/assets/fonts/jacquard12/Jacquard12-Regular.ttf') format('truetype');
+        font-weight: normal;
+        font-style: normal;
+        font-display: block;
+      }
+      @font-face {
+        font-family: 'Jersey10';
+        src: url('/assets/fonts/jersey10/Jersey10-Regular.ttf') format('truetype');
+        font-weight: normal;
+        font-style: normal;
+        font-display: block;
+      }
+      @font-face {
+        font-family: 'PixelifySans';
+        src: url('/assets/fonts/pixelifysans/PixelifySans_wght_.ttf') format('truetype');
+        font-weight: 100 900;
+        font-style: normal;
+        font-display: block;
+      }
+      @font-face {
+        font-family: 'Silkscreen';
+        src: url('/assets/fonts/silkscreen/Silkscreen-Regular.ttf') format('truetype');
+        font-weight: normal;
+        font-style: normal;
+        font-display: block;
+      }
+      @font-face {
+        font-family: 'Silkscreen';
+        src: url('/assets/fonts/silkscreen/Silkscreen-Bold.ttf') format('truetype');
+        font-weight: bold;
+        font-style: normal;
+        font-display: block;
+      }
       html, body {
         margin: 0; padding: 0; background: #0e1512; height: 100%; overflow: hidden;
         position: fixed; inset: 0; width: 100%;
@@ -16,16 +51,28 @@
         touch-action: none;
         -webkit-user-select: none; user-select: none;
         -webkit-tap-highlight-color: transparent;
-        font-family: system-ui, sans-serif;
+        font-family: 'Silkscreen', monospace;
       }
       #game { width: 100vw; height: 100vh; height: 100dvh; }
       #game canvas {
         image-rendering: pixelated; image-rendering: crisp-edges;
         touch-action: none; display: block;
       }
+      /* Force font preload — invisible spans make browser fetch the files early */
+      #font-preload {
+        position: absolute; opacity: 0; pointer-events: none;
+        font-size: 1px; white-space: nowrap; overflow: hidden; width: 1px; height: 1px;
+      }
     </style>
   </head>
   <body>
+    <!-- Force browser to fetch pixel fonts before Phaser starts -->
+    <div id="font-preload" aria-hidden="true">
+      <span style="font-family:'Jacquard12'">W</span>
+      <span style="font-family:'Jersey10'">W</span>
+      <span style="font-family:'PixelifySans'">W</span>
+      <span style="font-family:'Silkscreen'">W</span>
+    </div>
     <div id="game"></div>
     <script type="module" src="/src/main.js"></script>
   </body>

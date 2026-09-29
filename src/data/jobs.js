@@ -31,7 +31,7 @@ export const JOBS = {
     body: 'sorcererorange', weapon: 'wand',
     hp: 80, mp: 100, atk: 14, spd: 88,
     abilities: [
-      { id: 'bolt', name: 'Ember Bolt', key: '1', cd: 0.55, desc: 'Fire a magic bolt.' },
+      { id: 'bolt', name: 'Ember Bolt', key: '1', cd: 0.65, desc: 'Fire a magic bolt.' },
       { id: 'burst', name: 'Moss Burst', key: '2', cd: 9, desc: 'Nature AoE around caster.' },
       { id: 'blink', name: 'Wisp Blink', key: '3', cd: 5, desc: 'Short teleport.' },
       { id: 'ward', name: 'Tide Ward', key: '4', cd: 16, desc: 'Shield that absorbs damage.' },
@@ -39,12 +39,12 @@ export const JOBS = {
   },
   bandit: {
     id: 'bandit', name: 'Bandit',
-    desc: 'Fast rogue. Twin fangs, poison tricks.',
+    desc: 'Fast rogue. Twin fangs, shadow tricks.',
     body: 'ninjadark', weapon: 'sai',
     hp: 95, mp: 50, atk: 11, spd: 112,
     abilities: [
       { id: 'stab', name: 'Fang Stab', key: '1', cd: 0.4, desc: 'Very fast stab.' },
-      { id: 'fan', name: 'Crow Fan', key: '2', cd: 6, desc: 'Throw 3 kunai in a fan.' },
+      { id: 'fan', name: 'Crow Fan', key: '2', cd: 7, desc: 'Throw 3 kunai in a fan.' },
       { id: 'dash', name: 'Dust Dash', key: '3', cd: 3.5, desc: 'Short dash, brief iframes.' },
       { id: 'smoke', name: 'Smoke Pouch', key: '4', cd: 15, desc: 'Blind nearby enemies.' },
     ],

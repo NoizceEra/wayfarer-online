@@ -16,8 +16,12 @@ export class Enemy extends Phaser.GameObjects.Container {
     this.texKey = `mon.${def.sprite}`;
     if (!scene.textures.exists(this.texKey)) this.texKey = 'mon.Slime';
     this.sprite = scene.add.sprite(0, -6, this.texKey, 0);
-    this.hpbarBg = scene.add.rectangle(0, -18, 18, 3, 0x000000, 0.6);
-    this.hpbar = scene.add.rectangle(-8, -18, 16, 2, 0x2ecc71).setOrigin(0, 0.5);
+    // Per-type HP bar y: Slime sits only in the bottom half of the 16px frame
+    // (visual top at container y≈-8), so the default y=-18 floats way above it.
+    // All other monsters fill from y=0 of frame (container top ≈-14), y=-18 is fine.
+    const hpBarY = (def.sprite === 'Slime') ? -12 : -18;
+    this.hpbarBg = scene.add.rectangle(0, hpBarY, 18, 3, 0x000000, 0.6);
+    this.hpbar = scene.add.rectangle(-8, hpBarY, 16, 2, 0x2ecc71).setOrigin(0, 0.5);
     this.add([this.shadow, this.sprite, this.hpbarBg, this.hpbar]);
     this.setDepth(8);
     this.playMove();

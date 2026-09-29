@@ -14,7 +14,7 @@ export class RemotePlayer extends Phaser.GameObjects.Container {
     this.texKey = scene.textures.exists(`char.${body}`) ? `char.${body}` : 'char.Knight';
     this.shadow = scene.add.image(0, 3, 'char.shadow').setScale(1.4, 1);
     this.sprite = scene.add.sprite(0, -8, this.texKey, 0);
-    this.label = scene.add.text(0, -26, name, { fontSize: '8px', color: '#fff', backgroundColor: '#00000088' }).setOrigin(0.5);
+    this.label = scene.add.text(0, -26, name, { fontFamily: '"Silkscreen", monospace', fontSize: '8px', color: '#fff', backgroundColor: '#00000088' }).setOrigin(0.5);
     this.add([this.shadow, this.sprite, this.label]);
     this.setDepth(9);
     this.target = { x: 0, y: 0 };

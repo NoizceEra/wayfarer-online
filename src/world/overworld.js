@@ -223,23 +223,42 @@ export function buildOverworld(scene, ZONES) {
       const h = 14 + Math.floor(rnd() * 12);
       const c = scene.add.container(x, y).setDepth(y);
       if (useRuins) {
-        // Pick column variant from position hash (cols 0-4 in TilesetVillageAbandoned
-        // cover the ruined stone walls/pillars of the main building structure)
+        // Column 2, rows 3-5 of TilesetVillageAbandoned is a genuine
+        // standalone stackable pillar (row5=base, row4=shaft, row3=mossy
+        // cap) — verified by compositing the tiles. Columns 0-4 at rows 0-2
+        // (the old frame choice) are actually slices of one big archway
+        // building scene, not stackable pillar segments — stacking them
+        // vertically produced an incoherent mess. numRows=2 (short) skips
+        // the cap and stacks base+shaft only.
         const v = vh(tx, ty);
-        const col = v % 5; // col 0-4
-        // Stack 2-3 tiles vertically based on height
         const numRows = h > 22 ? 3 : 2;
-        for (let row = 0; row < numRows; row++) {
-          c.add(scene.add.image(0, -16 * row, 'ts.ruins', row * RC + col));
+        const pillarRows = [5, 4, 3]; // ground → up: base, shaft, cap
+        let isStatue = false;
+        if (v % 8 === 0) {
+          // Occasional big mossy statue landmark: 2-wide × 2-tall, cols 0-1,
+          // rows 3 (head) over 4 (seated base) — verified by compositing.
+          isStatue = true;
+          const statueRows = [4, 3]; // ground → up: base, head
+          for (let i = 0; i < 2; i++) {
+            c.add(scene.add.image(-8, -16 * i, 'ts.ruins', statueRows[i] * RC + 0));
+            c.add(scene.add.image(8, -16 * i, 'ts.ruins', statueRows[i] * RC + 1));
+          }
+        } else {
+          for (let i = 0; i < numRows; i++) {
+            c.add(scene.add.image(0, -16 * i, 'ts.ruins', pillarRows[i] * RC + 2));
+          }
         }
+        solids.add(isStatue
+          ? scene.add.rectangle(x, y - 16, 24, 28, 0xffffff, 0)
+          : scene.add.rectangle(x, y - h / 2, 9, h, 0xffffff, 0));
       } else {
         c.add([
           scene.add.rectangle(0, -h / 2, 9, h, 0xaab7b8),
           scene.add.rectangle(0, -h, 11, 3, 0x7f8c8d),
           scene.add.rectangle(0, -h - 1, 11, 3, 0x5da24a, 0.7),
         ]);
+        solids.add(scene.add.rectangle(x, y - h / 2, 9, h, 0xffffff, 0));
       }
-      solids.add(scene.add.rectangle(x, y - h / 2, 9, h, 0xffffff, 0));
     }
   }
 
