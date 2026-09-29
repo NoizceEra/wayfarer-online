@@ -53,6 +53,19 @@ const WEAPONS = [
   ['weapon.sai', 'Items/Weapons/Sai/SpriteInHand.png'],
   ['weapon.ninjaku', 'Items/Weapons/Ninjaku/SpriteInHand.png'],
 ];
+const ACCESSORIES = [
+  ['acc.cape',   'assets/custom/accessories/cape.png'],
+  ['acc.scarf',  'assets/custom/accessories/scarf.png'],
+  ['acc.shades', 'assets/custom/accessories/shades.png'],
+  ['acc.flower', 'assets/custom/accessories/flower.png'],
+];
+// Authored flora (tools/gen_flora.py): same palette as the NA set above.
+const FLORA = [
+  ['flora.flowerA', 'assets/custom/flora/flowerA.png'],
+  ['flora.flowerB', 'assets/custom/flora/flowerB.png'],
+  ['flora.tuft', 'assets/custom/flora/tuft.png'],
+  ['flora.sandpatch', 'assets/custom/flora/sandpatch.png'],
+];
 
 const AUDIO = {
   music: ['mus_title', 'mus_village', 'mus_forest', 'mus_ruins', 'mus_tension', 'mus_gameover', 'mus_victory'],
@@ -83,9 +96,14 @@ export function preload(scene) {
   for (const [key, path, fw, fh] of PROJ_SHEETS) L.spritesheet(key, `${NA}/${path}`, { frameWidth: fw, frameHeight: fh });
   for (const [key, path] of PROJ_IMAGES) L.image(key, `${NA}/${path}`);
   for (const [key, path] of WEAPONS) L.image(key, `${NA}/${path}`);
+  for (const [key, path] of [...ACCESSORIES, ...FLORA]) L.image(key, path);
   // Environment flavor (flower sheet is a 20×8 strip, not a 16px grid → static)
   L.image('env.flower', `${NA}/Backgrounds/Animated/Flower/SpriteSheet16x16.png`);
   L.spritesheet('env.plant', `${NA}/Backgrounds/Animated/Plant/SpriteSheet16x16.png`, { frameWidth: 16, frameHeight: 16 });
+  // World-prop tilesets (trees, houses, rocks, ruins)
+  L.spritesheet('ts.nature', `${NA}/Backgrounds/Tilesets/TilesetNature.png`, { frameWidth: 16, frameHeight: 16 });
+  L.spritesheet('ts.house',  `${NA}/Backgrounds/Tilesets/TilesetHouse.png`,  { frameWidth: 16, frameHeight: 16 });
+  L.spritesheet('ts.ruins',  `${NA}/Backgrounds/Tilesets/TilesetVillageAbandoned.png`, { frameWidth: 16, frameHeight: 16 });
   L.image('fx.glow', 'assets/light/light_soft.png');
   for (const [folder, keys] of Object.entries(AUDIO)) {
     for (const key of keys) L.audio(key, `assets/audio/${folder}/${key}.ogg`);

@@ -8,9 +8,17 @@ import { gearById } from '../data/gear.js';
 // hair swatch, outfit tabard tint, accessory, real in-hand weapon sprite,
 // plus the gear system: equipable head/chest/weapon/trinket items with
 // runtime-authored 16×16 worn overlays (see systems/gearArt.js).
-const BODY_TEX = { knight: 'Knight', mangreen: 'ManGreen', sorcererorange: 'SorcererOrange', ninjadark: 'NinjaDark' };
+//
+// Overlay layering order (bottom → top):
+//   shadow, sprite, tabardOutline, tabard, trim, hairOutline, hair, hairShine,
+//   headGear, accOutline, acc, weapon
+// Each colored overlay (hair, tabard, acc) has a 1px dark outline rect behind
+// it and a 1px highlight strip on top for chunky-pixel shading consistency.
+const BODY_TEX   = { knight: 'Knight', mangreen: 'ManGreen', sorcererorange: 'SorcererOrange', ninjadark: 'NinjaDark' };
 const WEAPON_TEX = { sword: 'weapon.sword', bigSword: 'weapon.bigSword', bow: 'weapon.bow', wand: 'weapon.wand', sai: 'weapon.sai', ninjaku: 'weapon.ninjaku' };
-const BASE_KIND = { sword: 'melee', bigSword: 'melee', bow: 'bow', wand: 'wand', sai: 'melee', ninjaku: 'melee' };
+const BASE_KIND  = { sword: 'melee', bigSword: 'melee', bow: 'bow', wand: 'wand', sai: 'melee', ninjaku: 'melee' };
+
+const DARK_OUTLINE = 0x1a1a22;
 
 export class ModularPlayer extends Phaser.GameObjects.Container {
   constructor(scene, x, y, hero) {
@@ -40,18 +48,44 @@ export class ModularPlayer extends Phaser.GameObjects.Container {
     this.body.setSize(12, 12);
     this.body.setOffset(-6, -2);
 
-    this.shadow = scene.add.image(0, 3, 'char.shadow').setScale(1.4, 1);
-    this.sprite = scene.add.sprite(0, -8, 'char.Knight', 0);
-    this.sprite.setScale(1);
-    // Outfit tabard: translucent tint so the pixel art shows through
-    this.tabard = scene.add.rectangle(0, -6, 10, 7, 0x5da24a, 0.45);
-    this.hair = scene.add.rectangle(0, -15, 12, 4, 0x5a3a1e);
-    this.headGear = scene.add.image(0, -8, 'gear.head.straw_hat').setVisible(false);
+    this.shadow   = scene.add.image(0, 3, 'char.shadow').setScale(1.4, 1);
+    this.sprite   = scene.add.sprite(0, -8, 'char.Knight', 0);
+
+    // — Tabard (chest outfit tint) with 1px dark outline behind it —
+    // Alpha 0.8 so the chosen outfit colour actually reads (was 0.45 → grey wash).
+    this.tabardOutline = scene.add.rectangle(0, -6, 12, 9, DARK_OUTLINE, 0.5);
+    this.tabard        = scene.add.rectangle(0, -6, 10, 7, 0x5da24a, 0.8);
+
+    // — Trim highlight (shown when non-default chest gear is equipped) —
     this.trim = scene.add.rectangle(0, -3, 10, 2, 0xffffff, 0.85).setVisible(false);
-    this.acc = scene.add.rectangle(0, -3, 14, 3, 0xd35400);
-    this.weapon = scene.add.image(10, -8, 'weapon.sword').setScale(1);
+
+    // — Hair with dark outline behind + 1px highlight strip on top —
+    this.hairOutline = scene.add.rectangle(0, -15, 14, 6, DARK_OUTLINE, 1.0);
+    this.hair        = scene.add.rectangle(0, -15, 12, 4, 0x5a3a1e);
+    this.hairShine   = scene.add.rectangle(-1, -16, 7, 1, 0xffffff, 0.30);
+
+    // — Head gear overlay (generated pixel-art hat/helm texture) —
+    this.headGear = scene.add.image(0, -8, 'gear.head.straw_hat').setVisible(false);
+
+    // — Accessory sprite (real 16×16 pixel-art PNG per accessory type) —
+    // accOutline kept hidden; each PNG has its own baked outline.
+    this.accOutline = scene.add.rectangle(0, -3, 16, 5, DARK_OUTLINE, 0).setVisible(false);
+    this.acc        = scene.add.image(0, -12, 'acc.scarf').setVisible(false);
+
+    // — Weapon (held at hand height so it reads equipped, not floating) —
+    // x=6: the sword texture carries transparent left padding, so the anchor
+    // must overlap the body edge for the pixels to touch.
+    this.weapon = scene.add.image(6, -4, 'weapon.sword').setScale(1);
     this.weapon.setOrigin(0.1, 0.9);
-    this.add([this.shadow, this.sprite, this.tabard, this.trim, this.hair, this.headGear, this.acc, this.weapon]);
+
+    this.add([
+      this.shadow, this.sprite,
+      this.tabardOutline, this.tabard, this.trim,
+      this.hairOutline, this.hair, this.hairShine,
+      this.headGear,
+      this.accOutline, this.acc,
+      this.weapon,
+    ]);
     this.applyHero(hero);
     this.setDepth(10);
   }
@@ -60,27 +94,51 @@ export class ModularPlayer extends Phaser.GameObjects.Container {
 
   applyHero(hero) {
     this.hero = hero;
-    const hc = HAIR_COLORS.find((s) => s.id === hero.hairColor) || HAIR_COLORS[1];
+    const hc  = HAIR_COLORS.find((s) => s.id === hero.hairColor) || HAIR_COLORS[1];
     const top = TOPS.find((s) => s.id === hero.top) || TOPS[0];
     const key = this.bodyKey();
     if (this.scene.textures.exists(key)) this.sprite.setTexture(key, 0);
     this.playAnim();
+
+    // — Tabard —
     this.tabard.fillColor = top.tint;
+    // Keep outline slightly smaller alpha when tabard is translucent
+    this.tabardOutline.setVisible(true);
+
+    // — Hair —
     this.hair.fillColor = hc.tint;
-    this.hair.setVisible(hero.hair !== 'none');
-    const widths = { none: 0, crop: 11, bob: 13, mop: 14, tail: 9, bun: 7 };
-    this.hair.setSize(widths[hero.hair] ?? 12, hero.hair === 'tail' ? 7 : 4);
-    this.hair.setY(hero.hair === 'bun' ? -17 : -15);
-    this.acc.setVisible(hero.accessory !== 'none');
-    if (hero.accessory === 'cape') { this.acc.fillColor = top.tint; this.acc.setSize(11, 9); this.acc.setPosition(-4, -8); }
-    else if (hero.accessory === 'scarf') { this.acc.fillColor = 0xd35400; this.acc.setSize(13, 3); this.acc.setPosition(0, -12); }
-    else if (hero.accessory === 'shades') { this.acc.fillColor = 0x111111; this.acc.setSize(9, 2); this.acc.setPosition(0, -11); }
-    else if (hero.accessory === 'flower') { this.acc.fillColor = 0xff6b9d; this.acc.setSize(4, 4); this.acc.setPosition(4, -17); }
+    const hairVis = hero.hair !== 'none';
+    const widths  = { none: 0, crop: 11, bob: 13, mop: 14, tail: 9, bun: 7 };
+    const hairW   = widths[hero.hair] ?? 12;
+    const hairH   = hero.hair === 'tail' ? 7 : 4;
+    const hairY   = hero.hair === 'bun' ? -17 : -15;
+    this.hair.setSize(hairW, hairH).setY(hairY).setVisible(hairVis);
+    this.hairOutline.setSize(hairW + 2, hairH + 2).setY(hairY).setVisible(hairVis);
+    this.hairShine.setSize(Math.max(3, hairW - 4), 1).setY(hairY - 1).setVisible(hairVis);
+
+    // — Accessory (real pixel-art sprite) —
+    const accVis = hero.accessory !== 'none';
+    this.acc.setVisible(accVis);
+    this.accOutline.setVisible(false); // outline baked into PNG
+    if (hero.accessory === 'cape') {
+      // Cape reuses the outfit tint; PNG is white-based so setTint() colorizes it
+      this.acc.setTexture('acc.cape').setPosition(-4, -8).setTint(top.tint);
+    } else if (hero.accessory === 'scarf') {
+      this.acc.setTexture('acc.scarf').setPosition(0, -12).clearTint();
+    } else if (hero.accessory === 'shades') {
+      this.acc.setTexture('acc.shades').setPosition(0, -11).clearTint();
+    } else if (hero.accessory === 'flower') {
+      this.acc.setTexture('acc.flower').setPosition(4, -17).clearTint();
+    }
+    this.acc.setFlipX(this.facing === 'left');
+
+    // — Weapon —
     const wtex = WEAPON_TEX[hero.weapon] || 'weapon.sword';
     if (this.scene.textures.exists(wtex)) this.weapon.setTexture(wtex);
     this.weapon.setVisible(hero.weapon !== 'none');
     this.weapon.setFlipX(this.facing === 'left');
-    this.weapon.setPosition(this.facing === 'left' ? -10 : 10, -8);
+    this.weapon.setPosition(this.facing === 'left' ? -6 : 6, -4);
+
     this.applyGearVisuals();
   }
 
@@ -94,8 +152,8 @@ export class ModularPlayer extends Phaser.GameObjects.Container {
     }
     return total;
   }
-  effAtk() { return this.atk + this.equippedStats().atk; }
-  effDef() { return this.equippedStats().def; }
+  effAtk()   { return this.atk + this.equippedStats().atk; }
+  effDef()   { return this.equippedStats().def; }
   effMaxHp() { return this.maxHp + this.equippedStats().hp; }
   effMaxMp() { return this.maxMp + this.equippedStats().mp; }
   effSpeed() { return this.speed + this.equippedStats().spd; }
@@ -111,7 +169,6 @@ export class ModularPlayer extends Phaser.GameObjects.Container {
     this.equipped[g.slot] = id;
     this.inventory = this.inventory.filter((x) => x !== id);
     if (prev && gearById(prev)) this.inventory.push(prev);
-    // clamp current pools to new maxima
     this.hp = Math.min(this.hp, this.effMaxHp());
     this.mp = Math.min(this.mp, this.effMaxMp());
     this.applyGearVisuals();
@@ -135,19 +192,27 @@ export class ModularPlayer extends Phaser.GameObjects.Container {
       this.headGear.setTexture(hkey).setVisible(this.facing !== 'up');
       this.headGear.setFlipX(this.facing === 'left');
     } else this.headGear.setVisible(false);
-    if (head?.hidesHair) this.hair.setVisible(false);
-    else this.hair.setVisible(this.hero.hair !== 'none');
+    if (head?.hidesHair) {
+      this.hair.setVisible(false);
+      this.hairOutline.setVisible(false);
+      this.hairShine.setVisible(false);
+    } else {
+      const hairVis = this.hero.hair !== 'none';
+      this.hair.setVisible(hairVis);
+      this.hairOutline.setVisible(hairVis);
+      this.hairShine.setVisible(hairVis);
+    }
     // chest: item tint drives the tabard, trim line shows it off
     const chest = this.equipped.chest && gearById(this.equipped.chest);
-    const top = TOPS.find((s) => s.id === this.hero.top) || TOPS[0];
-    const tint = chest?.tint ?? top.tint;
+    const top   = TOPS.find((s) => s.id === this.hero.top) || TOPS[0];
+    const tint  = chest?.tint ?? top.tint;
     this.tabard.fillColor = tint;
     if (chest && chest.id !== 'worn_tunic') {
       this.trim.setVisible(true);
       this.trim.fillColor = Phaser.Display.Color.IntegerToColor(tint).brighten(40).color;
     } else this.trim.setVisible(false);
     // weapon: gear overrides base sprite with tier tint
-    const w = this.equipped.weapon && gearById(this.equipped.weapon);
+    const w    = this.equipped.weapon && gearById(this.equipped.weapon);
     const wtex = (w?.tex) || WEAPON_TEX[this.hero.weapon] || 'weapon.sword';
     if (this.scene.textures.exists(wtex)) this.weapon.setTexture(wtex);
     if (w?.tint) this.weapon.setTint(w.tint);
@@ -158,8 +223,8 @@ export class ModularPlayer extends Phaser.GameObjects.Container {
     const changed = dir !== this.facing;
     this.facing = dir;
     this.weapon.setFlipX(dir === 'left');
-    this.weapon.setPosition(dir === 'left' ? -10 : 10, -8);
-    // head overlays are front-facing art: hide when back is turned
+    this.weapon.setPosition(dir === 'left' ? -6 : 6, -4);
+    this.acc.setFlipX(dir === 'left');
     const head = this.equipped.head && gearById(this.equipped.head);
     if (head?.overlay) this.headGear.setVisible(dir !== 'up');
     if (changed) this.playAnim();

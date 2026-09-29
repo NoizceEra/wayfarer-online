@@ -43,6 +43,7 @@ or put it in `asset-staging/` and do not ship it until relicensed/redrawn.
 - 4 job definitions, ability list, enemy table (`src/data/jobs.js`)
 - 6 hair styles / 8 hair colors / 5 skin tones / accessory overlays (`src/data/customization.js` + `src/entities/ModularPlayer.js`) — procedural tints/overlays, no new art files
 - **Gear system art (`src/systems/gearArt.js`, catalog `src/data/gear.js`): all worn head overlays (straw hat, leather cap, iron helm, mage hat, tide crown) and all item icons, generated at runtime in matching 16×16 pixel style — CC0, ours**
+- **Authored flora (`tools/gen_flora.py` → `public/assets/custom/flora/`): flowerA/flowerB single-flower sprites, tall grass tuft, sandy path decal — drawn in the exact Ninja Adventure palette above, CC0, ours**
 - Game Boy palettes + scanline overlay (`src/core/palette.js`)
 - Title → Creator → World flow, HUD (HP/MP/XP, minimap, hotbar, chat, party frames), day/night cycle
 - Host-relay co-op (`server/` + `src/net/`): solo simulation is authoritative, host relays to guests

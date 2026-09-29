@@ -60,10 +60,12 @@ export class WorldScene extends Phaser.Scene {
 
     // NPCs: Pip (quests), Maren (shop/potions), Old Tob (lore) — real sprites
     this.npcs = [];
+    // Plaza layout: houses stand north (±60), NPCs in an open south row and
+    // Old Tob up the middle — nothing stacks on torches (±36,+28 / 0,+54).
     const npcDefs = [
-      { name: 'Pip', tex: 'Villager', dx: 20, text: 'Slimes in the meadow, friend! 5 of them. Come back after.' },
-      { name: 'Maren', tex: 'Woman', dx: -24, text: 'Potions: press Q (3 gold). Stay safe out there!' },
-      { name: 'Old Tob', tex: 'OldMan', dx: 0, dy: -30, text: 'Tidehollow sleeps below the south cliffs. Lv 8, or not at all.' },
+      { name: 'Pip', tex: 'Villager', dx: -30, dy: 30, text: 'Slimes in the meadow, friend! 5 of them. Come back after.' },
+      { name: 'Maren', tex: 'Woman', dx: 30, dy: 30, text: 'Potions: press Q (3 gold). Stay safe out there!' },
+      { name: 'Old Tob', tex: 'OldMan', dx: 0, dy: -46, text: 'Tidehollow sleeps below the south cliffs. Lv 8, or not at all.' },
     ];
     for (const n of npcDefs) {
       const c = this.add.container(spawn.x + n.dx, spawn.y + (n.dy || 8));
@@ -71,7 +73,7 @@ export class WorldScene extends Phaser.Scene {
       const b = this.add.sprite(0, -8, `char.${n.tex}`, 0);
       const idle = `char.${n.tex}.idle.down`;
       if (this.anims.exists(idle)) b.play(idle);
-      const l = this.add.text(0, -26, n.name, { fontSize: '8px', color: '#fff', backgroundColor: '#00000088' }).setOrigin(0.5);
+      const l = this.add.text(0, -26, n.name, { fontFamily: '"Silkscreen", monospace', fontSize: '8px', color: '#fff', backgroundColor: '#00000088' }).setOrigin(0.5);
       c.add([sh, b, l]); c.setDepth(9); c.setData('def', n);
       this.npcs.push(c);
     }
@@ -185,7 +187,7 @@ export class WorldScene extends Phaser.Scene {
     const c = this.add.container(x, y).setDepth(6);
     const glow = this.add.circle(0, 0, 10, 0xf4c542, 0.35);
     const icon = this.add.image(0, -4, `gear.icon.${g.id}`).setScale(3);
-    const label = this.add.text(0, 10, g.name, { fontSize: '8px', color: '#fff', backgroundColor: '#00000088' }).setOrigin(0.5);
+    const label = this.add.text(0, 10, g.name, { fontFamily: '"Silkscreen", monospace', fontSize: '8px', color: '#fff', backgroundColor: '#00000088' }).setOrigin(0.5);
     c.add([glow, icon, label]);
     this.physics.add.existing(c);
     c.body.setSize(20, 20);
@@ -211,7 +213,7 @@ export class WorldScene extends Phaser.Scene {
 
   damageNumber(x, y, text, color = '#ffffff') {
     const d = this.add.text(x + Phaser.Math.Between(-6, 6), y - 20, String(text), {
-      fontSize: '11px', color, fontStyle: 'bold', stroke: '#000000', strokeThickness: 2,
+      fontFamily: '"Silkscreen", monospace', fontSize: '11px', color, fontStyle: 'bold', stroke: '#000000', strokeThickness: 2,
     }).setOrigin(0.5).setDepth(40);
     this.tweens.add({ targets: d, y: d.y - 14, alpha: 0, duration: 650, onComplete: () => d.destroy() });
   }
