@@ -74,7 +74,7 @@ export class WorldScene extends Phaser.Scene {
       const idle = `char.${n.tex}.idle.down`;
       if (this.anims.exists(idle)) b.play(idle);
       const l = this.add.text(0, -26, n.name, { fontFamily: '"Silkscreen", monospace', fontSize: '8px', color: '#fff', backgroundColor: '#00000088' }).setOrigin(0.5);
-      c.add([sh, b, l]); c.setDepth(9); c.setData('def', n);
+      c.add([sh, b, l]); c.setDepth(c.y); c.setData('def', n); // y-sorted with world
       this.npcs.push(c);
     }
 
@@ -184,7 +184,7 @@ export class WorldScene extends Phaser.Scene {
     if (this.drops.getLength() > 24) return;
     const g = gearById(gearId);
     if (!g) return;
-    const c = this.add.container(x, y).setDepth(6);
+    const c = this.add.container(x, y).setDepth(y); // y-sorted pickup
     const glow = this.add.circle(0, 0, 10, 0xf4c542, 0.35);
     const icon = this.add.image(0, -4, `gear.icon.${g.id}`).setScale(3);
     const label = this.add.text(0, 10, g.name, { fontFamily: '"Silkscreen", monospace', fontSize: '8px', color: '#fff', backgroundColor: '#00000088' }).setOrigin(0.5);
@@ -214,7 +214,7 @@ export class WorldScene extends Phaser.Scene {
   damageNumber(x, y, text, color = '#ffffff') {
     const d = this.add.text(x + Phaser.Math.Between(-6, 6), y - 20, String(text), {
       fontFamily: '"Silkscreen", monospace', fontSize: '11px', color, fontStyle: 'bold', stroke: '#000000', strokeThickness: 2,
-    }).setOrigin(0.5).setDepth(40);
+    }).setOrigin(0.5).setDepth(2800);
     this.tweens.add({ targets: d, y: d.y - 14, alpha: 0, duration: 650, onComplete: () => d.destroy() });
   }
 
@@ -222,7 +222,7 @@ export class WorldScene extends Phaser.Scene {
     if (!this.anims.exists(key)) return null;
     // mobile perf: skip minor hit-spark FX when the screen is already busy
     if (CONFIG.isMobile && (key === 'fx.cut' || key === 'fx.dust') && this.tweens.getTweens().length > 14) return null;
-    const s = this.add.sprite(x, y, key, 0).setDepth(20).setScale(scale).setAngle(angle);
+    const s = this.add.sprite(x, y, key, 0).setDepth(2700).setScale(scale).setAngle(angle);
     s.play(key);
     s.once('animationcomplete', () => s.destroy());
     return s;
@@ -232,12 +232,12 @@ export class WorldScene extends Phaser.Scene {
     // kind: arrow | kunai | energy | fire | shuriken
     let s;
     if (kind === 'arrow' && this.textures.exists('proj.arrow')) {
-      s = this.add.image(x, y, 'proj.arrow').setDepth(15).setRotation(angle);
+      s = this.add.image(x, y, 'proj.arrow').setDepth(2600).setRotation(angle);
     } else if (kind === 'kunai' && this.textures.exists('proj.kunai')) {
-      s = this.add.image(x, y, 'proj.kunai').setDepth(15).setRotation(angle);
+      s = this.add.image(x, y, 'proj.kunai').setDepth(2600).setRotation(angle);
     } else {
       const key = kind === 'fire' ? 'proj.fireball' : kind === 'shuriken' ? 'proj.shuriken' : 'proj.energyBall';
-      s = this.add.sprite(x, y, key, 0).setDepth(15).setRotation(angle);
+      s = this.add.sprite(x, y, key, 0).setDepth(2600).setRotation(angle);
       if (this.anims.exists(key)) s.play(key);
     }
     this.physics.add.existing(s);
@@ -259,7 +259,7 @@ export class WorldScene extends Phaser.Scene {
     if (died) {
       audio.play('monsterDie');
       this.spawnFx(ed.x, ed.y - 6, 'fx.smoke', 1.2);
-      const coin = this.add.image(ed.x, ed.y, 'fx.coin').setDepth(15).setScale(2);
+      const coin = this.add.image(ed.x, ed.y, 'fx.coin').setDepth(2600).setScale(2);
       this.tweens.add({ targets: coin, y: ed.y - 14, duration: 250, yoyo: true, onComplete: () => coin.destroy() });
       const dropId = rollGearDrop(ed.typeId);
       if (dropId) this.spawnDrop(ed.x, ed.y - 4, dropId);
@@ -292,11 +292,6 @@ export class WorldScene extends Phaser.Scene {
       ed.destroy();
       this.time.delayedCall(12000, () => { if (this.scene.isActive()) this.enemies.add(new Enemy(this, x, y, typeId)); });
     }
-  }
-
-  hitSpark(x, y) {
-    const s = this.add.star(x, y - 8, 5, 3, 7, 0xffffff).setDepth(20);
-    this.tweens.add({ targets: s, alpha: 0, scale: 2, duration: 180, onComplete: () => s.destroy() });
   }
 
   attack(tx, ty) {
@@ -338,7 +333,7 @@ export class WorldScene extends Phaser.Scene {
       setCd();
       audio.play('heal');
       this.spawnFx(this.player.x, this.player.y - 4, 'fx.aura', 1.6);
-      const f = this.add.circle(this.player.x, this.player.y + 6, 8, 0xe67e22).setDepth(5);
+      const f = this.add.circle(this.player.x, this.player.y + 6, 8, 0xe67e22).setDepth(2600);
       this.tweens.add({ targets: f, scale: 1.3, duration: 400, yoyo: true, repeat: 9, onComplete: () => f.destroy() });
       this.time.addEvent({ delay: 1000, repeat: 9, callback: () => {
         this.player.heal(4); this.damageNumber(this.player.x, this.player.y, '+4', '#2ecc71');
@@ -499,6 +494,7 @@ export class WorldScene extends Phaser.Scene {
       this.player.setMoving(moving);
       if (moving) audio.footstep(time);
     } else this.player.body.setVelocity(0, 0);
+    this.player.setDepth(this.player.y); // y-sort against trees/props/NPCs
 
     // zone tracking
     const t = CONFIG.tile;
@@ -534,6 +530,7 @@ export class WorldScene extends Phaser.Scene {
       // knockback decays: only steer when slow-moving
       const cvx = e.body.velocity.x, cvy = e.body.velocity.y;
       if (Math.hypot(cvx, cvy) < 100) { e.body.setVelocity(evx, evy); e.setFacingByVelocity(evx, evy); }
+      e.setDepth(e.y); // y-sort
       return true;
     });
 

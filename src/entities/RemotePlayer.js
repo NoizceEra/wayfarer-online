@@ -46,5 +46,6 @@ export class RemotePlayer extends Phaser.GameObjects.Container {
     if (this.scene.anims.exists(key)) this.sprite.play(key, true);
     this.x += dx * 0.18;
     this.y += dy * 0.18;
+    this.setDepth(this.y); // y-sort with world
   }
 }

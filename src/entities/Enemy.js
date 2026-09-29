@@ -20,8 +20,8 @@ export class Enemy extends Phaser.GameObjects.Container {
     // (visual top at container y≈-8), so the default y=-18 floats way above it.
     // All other monsters fill from y=0 of frame (container top ≈-14), y=-18 is fine.
     const hpBarY = (def.sprite === 'Slime') ? -12 : -18;
-    this.hpbarBg = scene.add.rectangle(0, hpBarY, 18, 3, 0x000000, 0.6);
-    this.hpbar = scene.add.rectangle(-8, hpBarY, 16, 2, 0x2ecc71).setOrigin(0, 0.5);
+    this.hpbarBg = scene.add.rectangle(0, hpBarY, 18, 3, 0x000000, 0.6).setVisible(false);
+    this.hpbar = scene.add.rectangle(-8, hpBarY, 16, 2, 0x2ecc71).setOrigin(0, 0.5).setVisible(false);
     this.add([this.shadow, this.sprite, this.hpbarBg, this.hpbar]);
     this.setDepth(8);
     this.playMove();
@@ -38,6 +38,7 @@ export class Enemy extends Phaser.GameObjects.Container {
   }
   hurt(n) {
     this.hp -= n;
+    this.hpbarBg.setVisible(true); this.hpbar.setVisible(true);
     const frac = Math.max(0, this.hp / this.maxHp);
     this.hpbar.setDisplaySize(16 * frac, 2);
     this.hpbar.setFillStyle(frac > 0.5 ? 0x2ecc71 : frac > 0.25 ? 0xf39c12 : 0xe74c3c);

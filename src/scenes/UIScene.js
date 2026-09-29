@@ -306,6 +306,15 @@ export class UIScene extends Phaser.Scene {
 
     this.buildTouch();
     this.buildPanels();
+    // WorldScene emits the initial QUEST/HP/XP before this overlay exists —
+    // pull current values so the tracker never starts empty.
+    const w0 = this.world();
+    if (w0?.player) {
+      this.drawStatus(w0.hpPayload());
+      this.drawXp(w0.xpPayload());
+      this.questT.setText('◆ ' + w0.questText());
+      this.zoneT.setText(w0.zoneId ? (ZONES.find((z) => z.id === w0.zoneId)?.name || '') : '');
+    }
   }
 
   drawScan() {

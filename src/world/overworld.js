@@ -35,38 +35,39 @@ export function buildOverworld(scene, ZONES) {
   g.fillStyle(0x2e86c1, 1).fillRect(0, 0, W, 24).fillRect(0, H - 24, W, 24).fillRect(0, 0, 24, H).fillRect(W - 24, 0, 24, H);
   g.lineStyle(3, 0xaed6f1, 0.8).strokeRect(24, 24, W - 48, H - 48);
 
-  // Feathered biome edges: 4-step alpha gradient bands (zone colour fading
+  // Feathered biome edges: 6-step alpha gradient bands (zone colour fading
   // into the neighbour) so woods/ruins melt instead of hard-cutting.
   // Base colours mirror the generated tile.* textures in loader.js.
+  // Bands are 4 tiles wide — 2 tiles read as a hard edge on a zoomed camera.
   const feather = (x, y, w, h, color, horizontal, flip) => {
     const fg = scene.add.graphics().setDepth(-9);
-    for (let i = 0; i < 4; i++) {
-      fg.fillStyle(color, [0.10, 0.20, 0.32, 0.45][flip ? 3 - i : i]);
+    const steps = [0.08, 0.16, 0.26, 0.38, 0.50, 0.62];
+    for (let i = 0; i < 6; i++) {
+      fg.fillStyle(color, flip ? steps[5 - i] : steps[i]);
       if (horizontal) fg.fillRect(x, y + i * 8, w, 8);
       else fg.fillRect(x + i * 8, y, 8, h);
     }
   };
   const woodsR = ZONES.find((z) => z.id === 'woods').rect;
   const ruinsR = ZONES.find((z) => z.id === 'ruins').rect;
-  feather((woodsR.x - 2) * t, woodsR.y * t, 32, woodsR.h * t, 0x3e8e41, false, false); // W
-  feather(woodsR.x * t, (woodsR.y - 2) * t, woodsR.w * t, 32, 0x3e8e41, true, false);  // N
-  feather(woodsR.x * t, (woodsR.y + woodsR.h) * t, woodsR.w * t, 32, 0x3e8e41, true, true); // S
-  feather((woodsR.x + woodsR.w) * t, woodsR.y * t, 32, woodsR.h * t, 0x3e8e41, false, true); // E
-  feather(ruinsR.x * t, (ruinsR.y - 2) * t, ruinsR.w * t, 32, 0x6b7f8e, true, false);  // N
-  feather((ruinsR.x - 2) * t, ruinsR.y * t, 32, ruinsR.h * t, 0x6b7f8e, false, false); // W
-  feather((ruinsR.x + ruinsR.w) * t, ruinsR.y * t, 32, ruinsR.h * t, 0x6b7f8e, false, true); // E
+  feather((woodsR.x - 4) * t, woodsR.y * t, 64, woodsR.h * t, 0x3e8e41, false, false); // W
+  feather(woodsR.x * t, (woodsR.y - 4) * t, woodsR.w * t, 64, 0x3e8e41, true, false);  // N
+  feather(woodsR.x * t, (woodsR.y + woodsR.h) * t, woodsR.w * t, 64, 0x3e8e41, true, true); // S
+  feather((woodsR.x + woodsR.w) * t, woodsR.y * t, 64, woodsR.h * t, 0x3e8e41, false, true); // E
+  feather(ruinsR.x * t, (ruinsR.y - 4) * t, ruinsR.w * t, 64, 0x6b7f8e, true, false);  // N
+  feather((ruinsR.x - 4) * t, ruinsR.y * t, 64, ruinsR.h * t, 0x6b7f8e, false, false); // W
+  feather((ruinsR.x + ruinsR.w) * t, ruinsR.y * t, 64, ruinsR.h * t, 0x6b7f8e, false, true); // E
 
   let seed = 1234567;
   const rnd = () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let z = Math.imul(seed ^ (seed >>> 15), 1 | seed); z = (z + Math.imul(z ^ (z >>> 7), 61 | z)) ^ z; return ((z ^ (z >>> 14)) >>> 0) / 4294967296; };
   const pick = (arr) => arr[Math.floor(rnd() * arr.length)];
   const solids = scene.physics.add.staticGroup();
 
-  // — Tileset availability flags —
-  const useNature = scene.textures.exists('ts.nature');
+  // — Tileset availability flags (houses + ruins pillars use real tiles;
+  // trees/rocks are procedural — see comments at their builders) —
   const useHouse  = scene.textures.exists('ts.house');
   const useRuins  = scene.textures.exists('ts.ruins');
   // Columns per row for each spritesheet (frameWidth=16)
-  const NC = 24; // TilesetNature  384px wide
   const HC = 33; // TilesetHouse   528px wide
   const RC = 20; // TilesetVillageAbandoned 320px wide
 
@@ -81,35 +82,19 @@ export function buildOverworld(scene, ZONES) {
     if (scene.textures.exists('char.shadow')) c.add(scene.add.image(0, 4, 'char.shadow').setScale(1.4, 1));
     else c.add(scene.add.ellipse(0, 4, 20, 7, 0x000000, 0.2));
 
-    if (useNature) {
-      // 3×2 tile composition from TilesetNature.
-      // Standard green tree: cols 0-2, rows 0-1  (frames 0-2 + 24-26)
-      // Dark/bushy variant:  cols 3-5, rows 0-1  (frames 3-5 + 27-29)
-      // Blossom variant:     cols 8-10, rows 0-1 (frames 8-10 + 32-34)
-      const v = vh(Math.round(x), Math.round(y));
-      // cols 0-2 = green tree, cols 3-5 = dark/bushy tree (big variant)
-      // blossom variant omitted until exact cols are verified
-      const baseCol = big ? 3 : 0;
-      const sc = big ? 1.25 : 1;
-      for (const [fr, ox, oy] of [
-        [0*NC + baseCol,     -16, -24],
-        [0*NC + baseCol + 1,   0, -24],
-        [0*NC + baseCol + 2,  16, -24],
-        [1*NC + baseCol,     -16,  -8],
-        [1*NC + baseCol + 1,   0,  -8],
-        [1*NC + baseCol + 2,  16,  -8],
-      ]) {
-        c.add(scene.add.image(ox * sc, oy * sc, 'ts.nature', fr).setScale(sc));
-      }
-    } else {
-      const s = big ? 1.4 : 1;
-      c.add([
-        scene.add.rectangle(0, 0, 4 * s, 7 * s, 0x5a3a1e),
-        scene.add.circle(-3 * s, -7 * s, 6 * s, 0x1e6b2f),
-        scene.add.circle(3 * s, -7 * s, 6 * s, 0x27ae60),
-        scene.add.circle(0, -11 * s, 5 * s, 0x2ecc71),
-      ]);
-    }
+    // Procedural canopy: three overlapping crowns + trunk. Reads cleanly at
+    // 2-3x zoom and never mismatches (tileset-slice trees were retired —
+    // arbitrary 3×2 blocks cut canopies mid-leaf and mixed dead/live pieces).
+    const s = big ? 1.4 : 1;
+    const leaf = big ? 0x2d6a33 : 0x3e8e41;
+    const leafHi = big ? 0x3e8e41 : 0x5cc46a;
+    const leafLo = 0x1e5b26;
+    c.add(scene.add.rectangle(0, 0, 4 * s, 8 * s, 0x5a3a1e)); // trunk
+    c.add(scene.add.circle(-4 * s, -8 * s, 7 * s, leafLo));
+    c.add(scene.add.circle(4 * s, -8 * s, 7 * s, leaf));
+    c.add(scene.add.circle(-2 * s, -11 * s, 5 * s, leafHi));
+    c.add(scene.add.circle(3 * s, -10 * s, 4 * s, leaf));
+    if (big) c.add(scene.add.circle(0, -15 * s, 5 * s, leafHi));
 
     const hit = scene.add.rectangle(x, y - 2, 8, 8, 0xffffff, 0);
     solids.add(hit);
@@ -196,70 +181,76 @@ export function buildOverworld(scene, ZONES) {
     } else if (r < 0.36 && scene.textures.exists('env.plant')) {
       scene.add.sprite(x, y, 'env.plant', 0).play('env.plant.sway').setDepth(1);
     } else if (r < 0.40) {
-      // Rocks
+      // Rocks — procedural mossy boulders. Tileset-slice rocks retired: every
+      // "verified" frame guess turned out to be bush canopy on inspection,
+      // and guessing costs more than the clean procedural look loses.
+      // Variant picked by position hash; layout RNG untouched.
+      const v = vh(tx, ty);
       const rc = scene.add.container(x, y).setDepth(y);
-      if (useNature) {
-        // Individual rock tiles in TilesetNature cluster around rows 3-5 on
-        // the right side (cols 16-22). We pick a variant via position hash.
-        const v = vh(tx, ty);
-        if (scene.textures.exists('char.shadow')) rc.add(scene.add.image(0, 3, 'char.shadow').setScale(1.1, 1));
-        else rc.add(scene.add.ellipse(0, 3, 16, 5, 0x000000, 0.22));
-        const fr1 = 3 * NC + 16 + (v % 4);        // row 3, col 16-19
-        const fr2 = 4 * NC + 16 + ((v >> 2) % 4); // row 4, col 16-19
-        rc.add(scene.add.image(0, -4, 'ts.nature', fr1));
-        if (v % 3 !== 0) {
-          rc.add(scene.add.image(9, 1, 'ts.nature', fr2).setScale(0.75));
-        }
-      } else {
-        rc.add([
-          scene.add.ellipse(0, 2, 12, 5, 0x000000, 0.25),
-          scene.add.circle(-2, -1, 5, 0x7f8c8d),
-          scene.add.circle(3, -3, 3, 0x95a5a6),
-        ]);
-      }
+      if (scene.textures.exists('char.shadow')) rc.add(scene.add.image(0, 3, 'char.shadow').setScale(1.1, 1));
+      else rc.add(scene.add.ellipse(0, 3, 16, 5, 0x000000, 0.22));
+      rc.add(scene.add.circle(-2, -1, 5 + (v % 3), 0x7f8c8d));
+      rc.add(scene.add.circle(3, -3, 3 + ((v >> 2) % 3), 0x95a5a6));
+      rc.add(scene.add.circle(-3, -2, 2, 0x5da24a, 0.85)); // moss dab
       solids.add(scene.add.rectangle(x, y, 10, 8, 0xffffff, 0));
     } else if (zone.id === 'ruins' && r < 0.46) {
-      // Ruins pillars — consume rnd() identically to original to keep RNG stream
+      // Ruins pillars via the shared builder below (same rnd draws as the
+      // original branch, so the scatter layout doesn't shift).
       const h = 14 + Math.floor(rnd() * 12);
-      const c = scene.add.container(x, y).setDepth(y);
-      if (useRuins) {
-        // Column 2, rows 3-5 of TilesetVillageAbandoned is a genuine
-        // standalone stackable pillar (row5=base, row4=shaft, row3=mossy
-        // cap) — verified by compositing the tiles. Columns 0-4 at rows 0-2
-        // (the old frame choice) are actually slices of one big archway
-        // building scene, not stackable pillar segments — stacking them
-        // vertically produced an incoherent mess. numRows=2 (short) skips
-        // the cap and stacks base+shaft only.
-        const v = vh(tx, ty);
-        const numRows = h > 22 ? 3 : 2;
-        const pillarRows = [5, 4, 3]; // ground → up: base, shaft, cap
-        let isStatue = false;
-        if (v % 8 === 0) {
-          // Occasional big mossy statue landmark: 2-wide × 2-tall, cols 0-1,
-          // rows 3 (head) over 4 (seated base) — verified by compositing.
-          isStatue = true;
-          const statueRows = [4, 3]; // ground → up: base, head
-          for (let i = 0; i < 2; i++) {
-            c.add(scene.add.image(-8, -16 * i, 'ts.ruins', statueRows[i] * RC + 0));
-            c.add(scene.add.image(8, -16 * i, 'ts.ruins', statueRows[i] * RC + 1));
-          }
-        } else {
-          for (let i = 0; i < numRows; i++) {
-            c.add(scene.add.image(0, -16 * i, 'ts.ruins', pillarRows[i] * RC + 2));
-          }
-        }
-        solids.add(isStatue
-          ? scene.add.rectangle(x, y - 16, 24, 28, 0xffffff, 0)
-          : scene.add.rectangle(x, y - h / 2, 9, h, 0xffffff, 0));
-      } else {
-        c.add([
-          scene.add.rectangle(0, -h / 2, 9, h, 0xaab7b8),
-          scene.add.rectangle(0, -h, 11, 3, 0x7f8c8d),
-          scene.add.rectangle(0, -h - 1, 11, 3, 0x5da24a, 0.7),
-        ]);
-        solids.add(scene.add.rectangle(x, y - h / 2, 9, h, 0xffffff, 0));
-      }
+      buildPillar(x, y, h, vh(tx, ty));
     }
+  }
+
+  // Ruins pillar builder, shared by the scatter loop above and the dedicated
+  // ruins pass further down (which uses its own seed so the main layout
+  // never shifts). Tileset frames per the verified comment inside.
+  // Function declaration (not const arrow) so it hoists above the 900-loop.
+  function buildPillar(x, y, h, v) {
+    const c = scene.add.container(x, y).setDepth(y);
+    if (useRuins) {
+      // Column 2, rows 3-5 of TilesetVillageAbandoned is a genuine
+      // standalone stackable pillar (row5=base, row4=shaft, row3=mossy
+      // cap). Columns 0-4 at rows 0-2 are slices of one big archway
+      // building scene, not stackable segments.
+      const numRows = h > 22 ? 3 : 2;
+      const pillarRows = [5, 4, 3]; // ground → up: base, shaft, cap
+      let isStatue = false;
+      if (v % 8 === 0) {
+        // Occasional big mossy statue landmark: 2-wide × 2-tall, cols 0-1,
+        // rows 3 (head) over 4 (seated base).
+        isStatue = true;
+        const statueRows = [4, 3]; // ground → up: base, head
+        for (let i = 0; i < 2; i++) {
+          c.add(scene.add.image(-8, -16 * i, 'ts.ruins', statueRows[i] * RC + 0));
+          c.add(scene.add.image(8, -16 * i, 'ts.ruins', statueRows[i] * RC + 1));
+        }
+      } else {
+        for (let i = 0; i < numRows; i++) {
+          c.add(scene.add.image(0, -16 * i, 'ts.ruins', pillarRows[i] * RC + 2));
+        }
+      }
+      solids.add(isStatue
+        ? scene.add.rectangle(x, y - 16, 24, 28, 0xffffff, 0)
+        : scene.add.rectangle(x, y - h / 2, 9, h, 0xffffff, 0));
+    } else {
+      c.add([
+        scene.add.rectangle(0, -h / 2, 9, h, 0xaab7b8),
+        scene.add.rectangle(0, -h, 11, 3, 0x7f8c8d),
+        scene.add.rectangle(0, -h - 1, 11, 3, 0x5da24a, 0.7),
+      ]);
+      solids.add(scene.add.rectangle(x, y - h / 2, 9, h, 0xffffff, 0));
+    }
+  }
+
+  // Dedicated ruins pass: the scatter loop only yields ~7 pillars across the
+  // whole ruins (too barren). Own seed, so nothing above moves. Keeps clear
+  // of the north gate row so the entrance stays readable.
+  let pseed = 777001;
+  const prnd = () => { pseed = (pseed * 16807) % 2147483647; return pseed / 2147483647; };
+  for (let i = 0; i < 46; i++) {
+    const tx = ruinsR.x + 2 + Math.floor(prnd() * (ruinsR.w - 4));
+    const ty = ruinsR.y + 3 + Math.floor(prnd() * (ruinsR.h - 5));
+    buildPillar(tx * t + 8, ty * t + 8, 14 + Math.floor(prnd() * 12), (tx * 31 + ty * 17) & 0xff);
   }
 
   // Torches with night glow (plaza corners south + gate torch south-centre,
@@ -270,7 +261,7 @@ export function buildOverworld(scene, ZONES) {
     const flame = scene.add.circle(tx, ty - 8, 3, 0xe67e22).setDepth(ty + 1);
     scene.tweens.add({ targets: flame, scale: 1.4, duration: 300, yoyo: true, repeat: -1, ease: 'sine.inout' });
     if (scene.textures.exists('fx.glow')) {
-      const glow = scene.add.image(tx, ty - 8, 'fx.glow').setDepth(60).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.5).setScale(0.8);
+      const glow = scene.add.image(tx, ty - 8, 'fx.glow').setDepth(2900).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.5).setScale(0.8);
       scene.tweens.add({ targets: glow, alpha: 0.3, duration: 700, yoyo: true, repeat: -1, ease: 'sine.inout' });
       glows.push(glow);
     }
