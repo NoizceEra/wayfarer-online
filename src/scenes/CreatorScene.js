@@ -90,22 +90,7 @@ export class CreatorScene extends Phaser.Scene {
     makePanel(leftX + leftW / 2, panelTop + panelH / 2, leftW, panelH);
 
     const prevX = leftX + leftW / 2;
-
-    // Preview scale: chunky and readable (4× small canvas → 8× wide)
-    const prevScale = Math.max(4, Math.min(8, W / 160));
-    // Optical center: the sprite's visual mass sits ~8 units above the
-    // container origin, so shift down to truly center it in the panel.
-    const prevY = panelTop + panelH / 2 + Math.round(prevScale * 8);
-
-    this.preview = new ModularPlayer(this, prevX, prevY, this.hero);
-    this.preview.setScale(prevScale);
-    if (this.preview.body) this.preview.body.setEnable(false);
-
-    const bobAmt = Math.ceil(prevScale);
-    this.tweens.add({
-      targets: this.preview, y: prevY + bobAmt,
-      duration: 920, yoyo: true, repeat: -1, ease: 'sine.inout',
-    });
+    this.buildPreview(prevX, panelTop, leftW, panelH);
 
     // "PREVIEW" chip at top of left panel
     this.add.text(prevX, panelTop + 10, 'PREVIEW', {
@@ -292,5 +277,82 @@ export class CreatorScene extends Phaser.Scene {
     };
     start.on('pointerdown', begin);
     this.input.keyboard.on('keydown-ENTER', begin);
+  }
+
+  // ── Preview panel: pedestal, big integer-scaled hero, facing + action buttons ──
+  buildPreview(cx, top, w, h) {
+    // Integer scale so pixels stay crisp; hero + weapon spans ~20x26 px.
+    const sc = Math.max(4, Math.min(12, Math.floor((w - 48) / 22), Math.floor((h * 0.5) / 26)));
+    const feetY = Math.round(top + h * 0.52);
+    const gold = 0xc8a840;
+
+    // Pedestal: stacked discs (rim, stone, olive top, gold ring) + soft shadow.
+    const g = this.add.graphics();
+    const rx = Math.round(11 * sc), ry = Math.round(4.6 * sc), th = Math.round(2.2 * sc);
+    const gy = feetY + Math.round(1 * sc);
+    g.fillStyle(0x000000, 0.28); g.fillEllipse(cx, gy + th + sc, rx * 2.3, ry * 2.4);     // ground glow/shadow
+    g.fillStyle(0x0b0d08, 1);   g.fillEllipse(cx, gy + th, rx * 2, ry * 2);                // underside
+    g.fillRect(cx - rx, gy, rx * 2, th);                                                   // side wall
+    g.fillStyle(0x2c3320, 1);   g.fillRect(cx - rx, gy, rx * 2, th);
+    g.fillStyle(0x3a4426, 1);   g.fillRect(cx - rx, gy, Math.round(rx * 0.55), th);       // lit left edge
+    g.fillStyle(0x0b0d08, 1);   g.fillEllipse(cx, gy + th, rx * 2, ry * 2);
+    g.fillStyle(0x2c3320, 1);   g.fillEllipse(cx, gy + th, rx * 2 - 2, ry * 2 - 2);
+    g.fillStyle(gold, 1);       g.fillEllipse(cx, gy, rx * 2, ry * 2);                     // gold rim
+    g.fillStyle(0x4d5e2a, 1);   g.fillEllipse(cx, gy, rx * 2 - sc * 1.4, ry * 2 - sc * 0.8);
+    g.fillStyle(0x5f7535, 1);   g.fillEllipse(cx, gy - sc * 0.2, rx * 1.55, ry * 1.5);
+    g.fillStyle(0x748c42, 0.8); g.fillEllipse(cx - rx * 0.2, gy - sc * 0.5, rx * 0.8, ry * 0.7);
+    // soft contact shadow under the feet
+    const sh = this.add.ellipse(cx, feetY + sc * 1.6, sc * 13, sc * 4, 0x000000, 0.32);
+    this.tweens.add({ targets: sh, scaleX: 0.93, duration: 620, yoyo: true, repeat: -1, ease: 'sine.inout' });
+    // tiny grass tufts + sparkles on the pedestal
+    for (const [dx, dy] of [[-0.62, 0.3], [0.55, 0.42], [-0.3, -0.45], [0.7, -0.15]]) {
+      const tx = Math.round(cx + dx * rx), ty = Math.round(gy + dy * ry);
+      g.fillStyle(0x93b04f, 1); g.fillRect(tx, ty - sc, sc, sc); g.fillRect(tx + sc, ty - sc * 1.6, sc * 0.6, sc * 1.6);
+    }
+
+    this.preview = new ModularPlayer(this, cx, feetY, this.hero);
+    this.preview.setScale(sc).setDepth(10);
+    if (this.preview.body) this.preview.body.setEnable(false);
+    this.preview.shadow.setVisible(false);
+    this.preview.noDust = true;
+    this.preview.setFacing('down');
+    this.previewWalk = true;
+    this.preview.setMoving(true);
+
+    // Facing + action buttons
+    const mkBtn = (x, y, label, fn, wd = 34) => {
+      const t = this.add.text(x, y, label, {
+        fontSize: '13px', color: '#ffe8a0', fontFamily: '"Silkscreen", "Jersey 10", monospace',
+        backgroundColor: '#2a2210', padding: { x: 7, y: 4 },
+      }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+      t.setFixedSize(wd, 26); t.setAlign('center');
+      t.on('pointerover', () => t.setStyle({ backgroundColor: '#4a3c16' }));
+      t.on('pointerout', () => t.setStyle({ backgroundColor: t.getData('on') ? '#5a4a1a' : '#2a2210' }));
+      t.on('pointerdown', () => { audio.play('ui', 0.6); fn(t); });
+      return t;
+    };
+    const rowY1 = top + h - 74, rowY2 = top + h - 44;
+    const faceBtns = {};
+    const setFace = (d) => {
+      this.preview.setFacing(d);
+      Object.entries(faceBtns).forEach(([k, b]) => { b.setData('on', k === d); b.setStyle({ backgroundColor: k === d ? '#5a4a1a' : '#2a2210', color: k === d ? '#fff6c8' : '#ffe8a0' }); });
+    };
+    const dirs = [['left', '<'], ['up', '^'], ['down', 'v'], ['right', '>']];
+    dirs.forEach(([d, lab], i) => { faceBtns[d] = mkBtn(cx + (i - 1.5) * 40, rowY1, lab, () => { this.faceTouched = true; setFace(d); }); });
+    setFace('down');
+    const walkBtn = mkBtn(cx - 46, rowY2, 'WALK', (t) => {
+      this.previewWalk = !this.previewWalk;
+      this.preview.setMoving(this.previewWalk);
+      t.setData('on', this.previewWalk); t.setStyle({ backgroundColor: this.previewWalk ? '#5a4a1a' : '#2a2210' });
+    }, 62);
+    walkBtn.setData('on', true); walkBtn.setStyle({ backgroundColor: '#5a4a1a' });
+    mkBtn(cx + 26, rowY2, 'SWING', () => this.preview.attackPose(), 70);
+
+    // Auto turntable until the player picks a facing themselves.
+    this.faceAuto = this.time.addEvent({ delay: 2200, loop: true, callback: () => {
+      if (this.faceTouched) return;
+      const order = ['down', 'left', 'up', 'right'];
+      setFace(order[(order.indexOf(this.preview.facing) + 1) % 4]);
+    } });
   }
 }
