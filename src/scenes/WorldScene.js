@@ -21,6 +21,7 @@ import { Boss } from '../entities/Boss.js';
 import { AreaManager } from '../world/areas.js';
 import { buildOverworldFeatures, overworldClearings } from '../world/overworldFeatures.js';
 import { rollDefDrop, rollItemDrops, EXTRA_OVERWORLD_SPAWNS } from '../data/worldEnemies.js';
+import { installSocialWorld } from '../systems/social/world.js';
 
 // Open world: town (safe) + meadow + woods + ruins in ONE 128×128 map.
 // Solo = full simulation. Host = authoritative + broadcasts. Guest = applies
@@ -143,6 +144,7 @@ export class WorldScene extends Phaser.Scene {
     this.daynight = new DayNight(this);
     this.sync = new WorldSync();
     this.sync.attach(this, this.player, this.heroData);
+    installSocialWorld(this); // speech/emote bubbles, nameplate tags, right-click hero menu (systems/social/world.js)
     if (net.connected) net.pushHero(this.player.lookHero()); // Creator choices + worn gear > join-time snapshot
 
     this.zoneId = 'town';
@@ -329,6 +331,7 @@ export class WorldScene extends Phaser.Scene {
       this.player.gold += gold;
       this.damageNumber(ed.x, ed.y - 8, `+${gold}g`, '#f4c542');
       const leveled = this.player.gainXp(ed.def.xp);
+      bus.emit(Events.KILL, { xp: ed.def.xp, x: ed.x, y: ed.y, typeId: ed.typeId }); // party XP share (systems/social)
       audio.play('coin', 0.7);
       if (leveled) {
         audio.play('level');

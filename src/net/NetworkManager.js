@@ -70,6 +70,16 @@ export class NetworkManager {
     this.room.onMessage('hero', (m) => bus.emit(Events.NET_STATE, { kind: 'hero', ...m }));
     this.room.onMessage('chat', (m) => bus.emit(Events.CHAT, m));
     this.room.onLeave(() => bus.emit(Events.NET_DISCONNECTED, {}));
+    // ── social hooks (src/net/socialNet.js registers its typed handlers here) ──
+    for (const fn of this._attachHooks || []) { try { fn(this.room); } catch (e) { console.error(e); } }
+  }
+  // ── generic typed-message helpers (used by socialNet.js; additive) ─────────
+  // onAttach(fn): fn(room) runs every time a room is attached (host/join/reconnect).
+  onAttach(fn) { (this._attachHooks ||= []).push(fn); if (this.room) fn(this.room); return () => { this._attachHooks = this._attachHooks.filter((f) => f !== fn); }; }
+  // send(type, payload): fire-and-forget; false when offline (caller does local echo).
+  send(type, payload) {
+    if (!this.connected) return false;
+    try { this.room.send(type, payload); return true; } catch { return false; }
   }
   sendPos(x, y, facing, hp) {
     if (!this.connected) return;

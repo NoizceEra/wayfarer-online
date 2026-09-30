@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import { Server, Room, matchMaker } from 'colyseus';
 import { Schema, type, MapSchema } from '@colyseus/schema';
+import { installSocial, socialJoin, socialLeave } from './social.js'; // chat/party/emote/guild relay (server/social.js)
 
 // Thin relay: holds positions + region + chat; game rules stay in the client
 // (host authoritative). Max 8 wayfarers per room (larger than Lanternfall's 4).
@@ -75,6 +76,7 @@ gameServer.define('party', class extends Room {
       const p = this.state.players.get(client.sessionId);
       this.broadcast('chat', { name: p?.name || '???', text: String(m.text || '').slice(0, 140) });
     });
+    installSocial(this); // social message handlers (see server/social.js)
   }
   onJoin(client, options) {
     const p = new PlayerState();
@@ -92,8 +94,10 @@ gameServer.define('party', class extends Room {
       try { qhero = JSON.parse(q?.heroJson || '{}'); } catch {}
       client.send('peer-join', { sessionId: other.sessionId, name: q?.name || '???', hero: qhero });
     }
+    socialJoin(this, client, options); // roster/presence (server/social.js)
   }
   onLeave(client) {
+    socialLeave(this, client); // party/guild cleanup (server/social.js)
     this.state.players.delete(client.sessionId);
     this.broadcast('peer-leave', { sessionId: client.sessionId });
   }
