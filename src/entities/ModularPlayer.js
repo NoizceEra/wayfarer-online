@@ -11,6 +11,7 @@ import { HAIR_COLORS, TOPS, SKINS } from '../data/customization.js';
 import { gearById, getEquipBonuses, equipBlock, SLOTS } from '../data/gear.js';
 import { bodyVariant, hairTexture, scarfTexture, faceTexture, BARE_HEAD } from '../systems/heroArt.js';
 import { wearTexture, itemTint } from '../systems/gearArt.js';
+import { levelUpFx } from '../systems/skillVfx.js';
 
 // Modular hero: a real CC0 16x16 Ninja Adventure body, palette-swapped at
 // runtime for skin / outfit / hair (systems/heroArt.js), so the hero has the
@@ -453,6 +454,7 @@ export class ModularPlayer extends Phaser.GameObjects.Container {
 
   attackPose() {
     const dir = this.facing;
+    this._atkUntil = this.scene.time.now + 210;
     const key = `${this.vkey || this.bodyKey()}.attack.${dir}`;
     if (this.scene.anims.exists(key)) this.sprite.play(key, true);
     this.scene.time.delayedCall(150, () => this.playAnim());
@@ -521,9 +523,59 @@ export class ModularPlayer extends Phaser.GameObjects.Container {
     });
   }
 
-  flash() {
-    this.sprite.setTintFill(0xffffff);
-    this.scene.time.delayedCall(90, () => this.sprite.clearTint());
+  flash(color = 0xffffff) {
+    this.sprite.setTintFill(color);
+    this.scene.time.delayedCall(90, () => { if (!this.sprite.active) return; this.sprite.setTint(0xff7a7a); this.scene.time.delayedCall(110, () => this.sprite.active && this.sprite.clearTint()); });
+  }
+
+  // — pose polish (all tween the rig / weapon only, so remote puppets get them for free) —
+  // Cast: weapon raised with a pulsing glow at its tip, slight rise on the rig.
+  castPose(color = 0xffd9a0) {
+    const s = this.scene, now = s.time.now;
+    if (!this.active || this.dead || now < (this._atkUntil || 0)) return;
+    this._castUntil = now + 260;
+    const rest = this.weaponRest || weaponPose(this.weaponTex(), this.facing, this.weaponItem()?.upright);
+    s.tweens.killTweensOf(this.weapon);
+    const w = this.weapon;
+    s.tweens.add({ targets: w, y: rest.y - 4, angle: rest.a + (this.facing === 'left' || this.facing === 'up' ? -28 : 28), duration: 110, yoyo: true, hold: 70, ease: 'quad.out', onComplete: () => this.poseWeapon() });
+    s.tweens.add({ targets: this.rig, scaleY: 1.06, scaleX: 0.97, duration: 110, yoyo: true, hold: 60, onComplete: () => { this.rig.setScale(1); } });
+    const tip = s.add.circle(this.x + (this.facing === 'left' ? -6 : this.facing === 'right' ? 6 : 4), this.y - 14, 3, color, 0.95)
+      .setDepth((this.depth || 10) + 1).setBlendMode(Phaser.BlendModes.ADD);
+    s.tweens.add({ targets: tip, scale: 3.4, alpha: 0, duration: 260, onComplete: () => tip.destroy() });
+  }
+  // Hurt flinch: squash + recoil jolt (flash() is white then red).
+  flinch() {
+    if (!this.active || !this.rig.active) return;
+    const s = this.scene;
+    s.tweens.killTweensOf(this.rig);
+    const dx = { left: 2, right: -2, up: 0, down: 0 }[this.facing] ?? 0;
+    this.rig.setScale(1.08, 0.88); this.rig.x = dx;
+    s.tweens.add({ targets: this.rig, scaleX: 1, scaleY: 1, x: 0, duration: 160, ease: 'back.out', onComplete: () => { this.rig.setScale(1); this.rig.x = 0; this.startBob(); } });
+  }
+  // Death collapse: topple sideways at the feet, shadow widens, hero dims.
+  deathCollapse() {
+    const s = this.scene;
+    if (this.bobTween) { this.bobTween.remove(); this.bobTween = null; }
+    s.tweens.killTweensOf(this.rig);
+    const sgn = this.facing === 'left' ? -1 : 1;
+    this.rig.setScale(1).setAngle(0);
+    s.tweens.add({ targets: this.rig, angle: 86 * sgn, y: 4, duration: 320, ease: 'bounce.out' });
+    s.tweens.add({ targets: this.shadow, scaleX: 2, duration: 320 });
+    this.weapon.setAlpha(0.8);
+  }
+  revivePose() {
+    if (!this.rig?.active) return;
+    this.scene.tweens.killTweensOf(this.rig);
+    this.scene.tweens.add({ targets: this.rig, angle: 0, y: 0, duration: 180, ease: 'quad.out', onComplete: () => { this.rig.setAngle(0); this.startBob(); } });
+    this.shadow.setScale(1.4, 1);
+    this.weapon.setAlpha(1);
+  }
+  // Level-up: a small hop + stretch as the light pillar rises (skillVfx.levelUpFx).
+  levelPose() {
+    if (!this.active || this.dead) return;
+    const s = this.scene;
+    s.tweens.killTweensOf(this.rig);
+    s.tweens.add({ targets: this.rig, y: -7, scaleY: 1.1, scaleX: 0.94, duration: 160, yoyo: true, ease: 'quad.out', onComplete: () => { this.rig.setScale(1); this.startBob(); } });
   }
 
   destroy(fromScene) {
@@ -538,8 +590,9 @@ export class ModularPlayer extends Phaser.GameObjects.Container {
     this.hp -= n;
     this.invulnUntil = now + 400;
     this.flash();
+    this.flinch();
     this.scene.tweens.add({ targets: this, alpha: 0.5, duration: 90, yoyo: true, repeat: 2, onComplete: () => this.setAlpha(1) });
-    if (this.hp <= 0) { this.hp = 0; this.dead = true; }
+    if (this.hp <= 0) { this.hp = 0; this.dead = true; this.scene.time.delayedCall(60, () => this.deathCollapse()); }
     return true;
   }
   gainXp(n) {
@@ -555,6 +608,7 @@ export class ModularPlayer extends Phaser.GameObjects.Container {
     if (this.level >= MAX_LEVEL) this.xp = 0;
     if (!gained) return false;
     this.recalc(true);
+    levelUpFx(this.scene, this);
     bus.emit(Events.LEVEL_UP, { level: this.level, gained, statPoints: this.prog.statPoints, skillPoints: this.prog.skillPoints, needsClass: this.canChooseClass() });
     this._emitProgress();
     return true;

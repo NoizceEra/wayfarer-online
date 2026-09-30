@@ -11,6 +11,7 @@ import { rollDefDrop, rollItemDrops } from '../data/worldEnemies.js';
 import { WAYSTONES } from '../data/zones.js';
 import { iconKey } from './gearArt.js';
 import { CombatHudScene } from '../scenes/CombatHudScene.js';
+import { hitSpark } from './skillVfx.js';
 
 const FONT = '"Silkscreen", monospace';
 const POOL = 48;           // pooled floating combat texts
@@ -156,6 +157,7 @@ export class Combat {
     } else {
       audio.play('hit', crit ? 1 : 0.8);
       s.spawnFx(ed.x, ed.y - 8, 'fx.cut', crit ? 1.4 : 1);
+      hitSpark(s, ed.x, ed.y - 8, crit);
       if (crit) this.floatText(ed.x, ed.y - 22, `${n}!`, '#ffd24a', 'crit');
       else this.floatText(ed.x, ed.y - 20, n, '#ffffff');
       if (!fromRemote) this.bumpCombo();
@@ -580,6 +582,7 @@ export class Combat {
     if (!s.sys.isActive()) return;
     p.hp = p.effMaxHp(); p.mp = p.effMaxMp();
     p.dead = false;
+    p.revivePose?.();
     p.invulnUntil = s.time.now + 2500;
     this.death = null;
     this.lastCombat = -1e9;

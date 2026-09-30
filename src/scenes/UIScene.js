@@ -6,6 +6,7 @@ import { ZONES } from '../data/zones.js';
 import { audio } from '../systems/audio.js';
 import { CONFIG } from '../config.js';
 import { makeHudIcons, HUD_ABILITY_ICON } from '../systems/hudIcons.js';
+import { createAdvBar, updateAdvBar } from '../ui/advSkillBar.js';
 import { EquipPanel } from '../ui/EquipPanel.js';
 import { ShopPanel } from '../ui/ShopPanel.js';
 import { social } from '../systems/social/index.js';
@@ -235,6 +236,8 @@ export class UIScene extends Phaser.Scene {
       });
       this.hotbar.push({ bg, s, cdBg, cdT, bw: cellW, bh: cellH, badgeBg, badgeT });
     });
+
+    createAdvBar(this, W / 2, hotY - cellH / 2 - (this.small ? 24 : 26), this.small ? 34 : 40); // class skills 5/6
 
     // ── Chat / system log (bottom-left) ─────────────────────────────────────
     // The MMO chat window (channels, whispers, scrollback) is a DOM overlay:
@@ -548,6 +551,7 @@ export class UIScene extends Phaser.Scene {
         slot.cdT.setText(remain > 1 ? remain.toFixed(0) : remain.toFixed(1));
       }
     }
+    updateAdvBar(this, w, now);
     // Low-HP pulse (steady tint with Reduce motion)
     if (this.lastHp !== null && w?.player) {
       const frac = w.player.hp / w.player.maxHp;

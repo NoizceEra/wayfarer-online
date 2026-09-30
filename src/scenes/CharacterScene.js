@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { bus, Events } from '../core/events.js';
 import { audio } from '../systems/audio.js';
 import { ADVANCED } from '../data/jobs.js';
+import { hudIconKey } from '../systems/hudIcons.js';
 import { input } from '../core/input.js';
 import { settings, uiZoomFor } from '../core/settings.js';
 import {
@@ -334,8 +335,8 @@ export class CharacterScene extends Phaser.Scene {
       const lv = p.skillLv(ab.id);
       const isAdv = !p.job.abilities.some((a) => a.id === ab.id);
       this.put(this.add.rectangle(0, ry, pw - 20, rh, 0x000000, 0.3).setStrokeStyle(1, isAdv ? 0xf4c542 : 0x3a2a14));
-      const icon = ab.icon || this.iconFor(ab.id);
-      if (icon && this.textures.exists(icon)) this.put(this.add.image(L + 36, ry, icon).setScale(1.5));
+      const icon = hudIconKey(ab.id) || ab.icon || this.iconFor(ab.id);
+      if (icon && this.textures.exists(icon)) this.put(this.add.image(L + 36, ry, icon).setScale(2));
       this.put(this.add.text(L + 62, ry - rh / 2 + 6, `[${ab.key}] ${ab.name}`, T(10, isAdv ? '#ffe07a' : '#fff8e0', { fontStyle: 'bold' })));
       this.put(this.add.text(L + 62, ry - rh / 2 + 20, ab.desc, T(8, '#b8c890', { wordWrap: { width: pw - 150 } })));
       const cdNow = ab.cd * skillCdMul(Math.max(1, lv));

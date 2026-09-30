@@ -19,6 +19,7 @@ import { gearById, rollGearDrop, statLine, RARITY, sellPrice } from '../data/gea
 import { BAG_SIZE } from '../core/save.js';
 import { initPrompt, updatePrompt, showRoomCode } from '../systems/worldFeel.js';
 import { castFx } from '../systems/skillFx.js';
+import { castVfx, attachShotFx } from '../systems/skillVfx.js';
 import { skillDmgMul } from '../data/stats.js';
 import { Boss } from '../entities/Boss.js';
 import { AreaManager } from '../world/areas.js';
@@ -309,6 +310,7 @@ export class WorldScene extends Phaser.Scene {
     s.setData('status', opts.status || (kind === 'fire' ? { id: 'burn', chance: 0.35 } : null));
     if (opts.scale) s.setScale(opts.scale);
     this.shots.add(s);
+    attachShotFx(this, s, kind);
     s.body.setVelocity(Math.cos(angle) * 280, Math.sin(angle) * 280);
     if (kind === 'shuriken') this.tweens.add({ targets: s, angle: 360, duration: 400, repeat: -1 });
     this.time.delayedCall(900, () => s.destroy?.());
@@ -406,7 +408,7 @@ export class WorldScene extends Phaser.Scene {
     const dm = skillDmgMul(lv);
     const cd = this.player.cooldowns[ab.id] || 0;
     if (this.time.now < cd) { audio.play('error', 0.7); return; }
-    const setCd = () => { this.player.cooldowns[ab.id] = this.time.now + this.player.skillCd(ab) * 1000; bus.emit(Events.PLAYER_HP, this.hpPayload()); };
+    const setCd = () => { this.player.cooldowns[ab.id] = this.time.now + this.player.skillCd(ab) * 1000; bus.emit(Events.PLAYER_HP, this.hpPayload()); castVfx(this, ab, lv); };
     if (castFx(this, ab, lv, setCd)) return;
     if (ab.id === 'camp') {
       setCd();
