@@ -17,6 +17,13 @@ export const Events = {
   LOOT: 'loot',
   LEVEL_UP: 'level-up',   // {level, statPoints, skillPoints, needsClass}
   PROGRESS: 'progress',   // stat/skill/class changed -> HUD refresh
+  // ── social (src/systems/social) ──
+  KILL: 'kill',                   // {xp, x, y, typeId} emitted by combat when the local player slays an enemy
+  SOCIAL_CHAT: 'social-chat',     // {ch, from, name, text, ts, guild} every chat line shown in the chat panel
+  SOCIAL_PARTY: 'social-party',   // {id, leader, members:[{id,name,...}]} party roster changed
+  SOCIAL_EMOTE: 'social-emote',   // {from, name, id} an emote to play (local or remote)
+  SOCIAL_ROSTER: 'social-roster', // online player list changed
+  SOCIAL_UI: 'social-ui',         // {panel:'chat'|'party'|'friends'|'emotes', open:boolean}
 };
 
 export class Bus {

@@ -8,6 +8,8 @@ import { CONFIG } from '../config.js';
 import { makeHudIcons, HUD_ABILITY_ICON } from '../systems/hudIcons.js';
 import { EquipPanel } from '../ui/EquipPanel.js';
 import { ShopPanel } from '../ui/ShopPanel.js';
+import { social } from '../systems/social/index.js';
+import { installSocialUI } from '../ui/socialUI.js';
 
 // HUD: HP/MP/XP bars, hotbar with cooldown sweep (clickable), minimap,
 // quest tracker, chat, party, pause (palette + mute), GB tint + scanlines,
@@ -186,26 +188,9 @@ export class UIScene extends Phaser.Scene {
     });
 
     // ── Chat / system log (bottom-left) ─────────────────────────────────────
-    this.log = [];
-    const logW      = this.small ? 226 : 310;
-    const logH      = this.small ? 76  : 100;
-    const logPanelY = H - logH - 82;
-    this.logPanel = this._ns(8, logPanelY - 4, logW, logH + 10, 'ui.panelBg', 4, 4, 4, 4, 0, 0, 100);
-    this.logT = this.add.text(16, logPanelY + 1, '', {
-      fontFamily: '"Silkscreen", monospace', fontSize: this.small ? '9px' : '10px',
-      color: '#e6f2c0', wordWrap: { width: logW - 16 }, fixedHeight: logH,
-    }).setDepth(101);
-    this.chatHint = this.add.text(16, logPanelY - 9, 'chat', {
-      fontFamily: '"Silkscreen", monospace', fontSize: '8px', color: '#9bbc0f',
-    }).setDepth(102).setInteractive({ useHandCursor: true });
-    this.logCollapsed = this.small;
-    this.chatHint.on('pointerdown', () => {
-      this.logCollapsed = !this.logCollapsed;
-      const vis = !this.logCollapsed;
-      this.logT.setVisible(vis);
-      this.logPanel.setVisible(vis);
-    });
-    if (this.logCollapsed) { this.logT.setVisible(false); this.logPanel.setVisible(false); }
+    // The MMO chat window (channels, whispers, scrollback) is a DOM overlay:
+    // src/ui/ChatPanel.js, mounted by installSocialUI() below. say() routes
+    // system lines into it.
 
     // ── Minimap (bottom-right): framed, fog-of-war, M toggles small/large ────
     this.mapLarge = false;
@@ -268,12 +253,16 @@ export class UIScene extends Phaser.Scene {
       } else { net.leave(); audio.stopMusic(); this.scene.stop('world'); this.scene.start('title'); }
     });
 
-    this.input.keyboard.on('keydown-ESC',   () => { if (this.equip?.isOpen || this.shop?.isOpen) { this.equip.toggle(false); this.shop.close(); } else this.togglePause(); });
+    this.input.keyboard.on('keydown-ESC',   () => {
+      if (this.social?.anyOpen()) { social.act('closeAll'); return; } // chat / party / players / emote wheel
+      if (this.equip?.isOpen || this.shop?.isOpen) { this.equip.toggle(false); this.shop.close(); } else this.togglePause();
+    });
     this.input.keyboard.on('keydown-ENTER', () => this.openChat());
-    this.input.keyboard.on('keydown-P',     () => { const on = audio.toggle(); this.say(`Sound ${on ? 'on' : 'muted'} (P)`); });
+    // NOTE: P used to toggle sound; it is now the party panel (social default
+    // keys: Enter chat, P party, O players, G emotes). Sound lives in the pause menu.
 
     bus.on(Events.SYSTEM,    (s) => this.say(s));
-    bus.on(Events.CHAT,      (m) => this.say(`${m.name}: ${m.text}`));
+    // legacy Events.CHAT lines are rendered by the social layer (systems/social/index.js)
     bus.on(Events.PLAYER_HP, (p) => this.drawStatus(p));
     bus.on(Events.PLAYER_XP, (p) => this.drawXp(p));
     bus.on(Events.QUEST,     (q) => this.setQuest(q));
@@ -290,6 +279,8 @@ export class UIScene extends Phaser.Scene {
 
     this.buildTouch();
     this.buildPanels();
+    // Social UI: chat window, party frames, players/friends, emote wheel (src/ui/socialUI.js)
+    this.social = installSocialUI(this, { name: this.pname, job: this.job.id, framesY: this.small ? 136 : 134 });
     // WorldScene emits the initial QUEST/HP/XP before this overlay exists —
     // pull current values so the tracker never starts empty.
     const w0 = this.world();
@@ -309,8 +300,7 @@ export class UIScene extends Phaser.Scene {
 
   say(s) {
     if (s === 'toggle-minimap') return;
-    this.log.push(s); if (this.log.length > 6) this.log.shift();
-    this.logT.setText(this.log.join('\n'));
+    social.system(s); // -> chat window, System channel
   }
 
   drawStatus(p) {
@@ -341,12 +331,7 @@ export class UIScene extends Phaser.Scene {
   }
   drawXp(p) { this.xpBar.setDisplaySize(this.hpBarW * Math.min(1, p.xp / p.xpNext), this.barH.xp); }
 
-  openChat() {
-    const v = window.prompt(net.connected ? 'Party chat:' : 'Say (solo log):', '');
-    if (!v) return;
-    net.sendChat(this.pname, v.slice(0, 120));
-    if (!net.connected) this.say(`${this.pname}: ${v.slice(0, 120)}`);
-  }
+  openChat() { social.act('openChat'); } // Enter -> chat input (closes on Enter/Esc)
 
   refreshMode() {
     this.modeT?.setText(net.connected ? `PARTY ${net.code}` : 'SOLO — HOST/JOIN FROM TITLE');
@@ -521,7 +506,9 @@ export class UIScene extends Phaser.Scene {
     // zone outlines (only where explored is fine: fog covers them)
     const dot = (px, py, r, fill) => { g.fillStyle(0x1a1024, 1).fillCircle(px, py, r + 1); g.fillStyle(fill, 1).fillCircle(px, py, r); };
     for (const n of w.npcs || []) dot(x + (n.x / T) * k, y + (n.y / T) * k, 1.6, 0xffd84a);
-    w.sync?.remotes?.forEach((r) => dot(x + (r.x / T) * k, y + (r.y / T) * k, 2, 0x5ad0ff));
+    // other players: party green (bigger), friends pink, guild gold, else blue
+    const REL = { party: 0x7dff9a, friend: 0xff9ad5, guild: 0xffd84a, other: 0x5ad0ff };
+    w.sync?.remotes?.forEach((r, id) => { const rel = social.relation(id); dot(x + (r.x / T) * k, y + (r.y / T) * k, rel === 'party' ? 2.6 : 2, REL[rel]); });
     const blink = 0.5 + 0.5 * Math.sin(this.time.now / 250);
     const px = x + tx * k, py = y + ty * k;
     g.fillStyle(0xffffff, 0.25 + 0.3 * blink).fillCircle(px, py, 4.5);
