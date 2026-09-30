@@ -39,7 +39,8 @@ Set the client URL via `.env`: `VITE_SERVER_URL=ws://localhost:2567`
 
 - Move: WASD / arrows (or touch stick) · Interact: E · Attack: J / click / ATK button
 - Ability 1-4: 1-4 (clickable hotbar) · Potion: Q · Skill shortcut: SKL button casts slot 2
-- Gear: I or BAG button (equip from loot/shop) · Shop: talk to Maren (E)
+- Equipment: I / B or BAG button (paper doll, 8 slots, bag, dyes; drag or double-click) · Shops: Maren, Dovey (hats/capes) and Bram (arms) at the market stalls (E), buy + sell
+- Gear data: `src/data/gear.js` (80 items, 4 rarities, `getEquipBonuses(equipped)` → str/agi/vit/int/dex/luk/atk/def/hp/mp/spd); worn art `src/systems/wearArt.js`, icons `src/systems/iconArt.js`
 - Minimap: M · Sound: P · Chat: Enter · Pause: Esc · Touch: stick + ATK/SKL/E/Q/BAG buttons
 - Progress (level/XP/gold/gear/position/quest) autosaves every 10s + on exit — Continue resumes it
 

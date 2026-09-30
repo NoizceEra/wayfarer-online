@@ -15,6 +15,8 @@ export const Events = {
   GEAR: 'gear',
   SHOP: 'shop',
   LOOT: 'loot',
+  LEVEL_UP: 'level-up',   // {level, statPoints, skillPoints, needsClass}
+  PROGRESS: 'progress',   // stat/skill/class changed -> HUD refresh
 };
 
 export class Bus {

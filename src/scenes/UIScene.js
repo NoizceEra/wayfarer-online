@@ -5,7 +5,9 @@ import { PALETTES } from '../core/palette.js';
 import { ZONES } from '../data/zones.js';
 import { audio } from '../systems/audio.js';
 import { CONFIG } from '../config.js';
-import { gearById, statLine, SHOP_STOCK, SLOTS } from '../data/gear.js';
+import { makeHudIcons, HUD_ABILITY_ICON } from '../systems/hudIcons.js';
+import { EquipPanel } from '../ui/EquipPanel.js';
+import { ShopPanel } from '../ui/ShopPanel.js';
 
 // HUD: HP/MP/XP bars, hotbar with cooldown sweep (clickable), minimap,
 // quest tracker, chat, party, pause (palette + mute), GB tint + scanlines,
@@ -19,10 +21,6 @@ export class UIScene extends Phaser.Scene {
   preload() {
     const UI = 'assets/na/Ui';
     const TW = `${UI}/Theme/Theme_Wood`;
-    const SP = `${UI}/Skill_Icon/Spell`;
-    const SW = `${UI}/Skill_Icon/Items_Weapon`;
-    const JA = `${UI}/Skill_Icon/Job_Action`;
-    const RE = `${UI}/Receptacle`;
     const li = (k, p) => { if (!this.textures.exists(k)) this.load.image(k, p); };
     li('ui.panel',    `${TW}/nine_path_panel.png`);
     li('ui.panel2',   `${TW}/nine_path_panel_2.png`);
@@ -31,34 +29,10 @@ export class UIScene extends Phaser.Scene {
     li('ui.btn',      `${TW}/button_normal.png`);
     li('ui.btnHov',   `${TW}/button_hover.png`);
     li('ui.btnPrs',   `${TW}/button_pressed.png`);
-    li('ui.heart',    `${RE}/IconHeart.png`);
-    li('icon.slash',  `${SP}/Cut.png`);
-    li('icon.flare',  `${SP}/BookFire.png`);
-    li('icon.dash',   `${SP}/Mist.png`);
-    li('icon.camp',   `${SP}/Heal.png`);
-    li('icon.shot',   `${SW}/Arrow.png`);
-    li('icon.volley', `${SP}/Explosion.png`);
-    li('icon.snare',  `${SP}/Counter.png`);
-    li('icon.bolt',   `${SP}/Fireball.png`);
-    li('icon.burst',  `${SP}/RockSpike.png`);
-    li('icon.blink',  `${SP}/Vision.png`);
-    li('icon.ward',   `${SP}/DefenseUpgrade.png`);
-    li('icon.stab',   `${SW}/Kunai.png`);
-    li('icon.fan',    `${SW}/Shuriken.png`);
-    li('icon.smoke',  `${SP}/Camouflage.png`);
-    li('icon.potion', `${JA}/Potion.png`);
   }
 
   // ability id → skill icon key
-  _abilityIcon(id) {
-    const M = {
-      slash: 'icon.slash', flare: 'icon.flare', dash: 'icon.dash',  camp: 'icon.camp',
-      shot:  'icon.shot',  volley:'icon.volley', snare:'icon.snare',
-      bolt:  'icon.bolt',  burst: 'icon.burst',  blink:'icon.blink', ward: 'icon.ward',
-      stab:  'icon.stab',  fan:   'icon.fan',    smoke:'icon.smoke',
-    };
-    return M[id] || null;
-  }
+  _abilityIcon(id) { return HUD_ABILITY_ICON[id] ? `hud.${HUD_ABILITY_ICON[id]}` : null; }
 
   // Nineslice shorthand. Phaser 3.90's NineSlice game object has NO canvas
   // renderer (renderCanvas is a NOOP) — it only draws under WebGL. This game
@@ -90,11 +64,10 @@ export class UIScene extends Phaser.Scene {
     this.minimapOn = true;
     this.lastHp = null;
     this.small = W < 560;
-    this.invOpen = false; this.shopOpen = false;
 
     // ── GB palette tint + scanlines ─────────────────────────────────────────
     const pal = PALETTES[this.hero.palette] || PALETTES.classic;
-    this.gbTint = this.add.rectangle(0, 0, W, H, pal.bg, this.hero.palette === 'modern' ? 0 : 0.12)
+    this.gbTint = this.add.rectangle(0, 0, W, H, pal.bg, this.hero.palette === 'modern' ? 0 : 0.06)
       .setOrigin(0).setDepth(90).setScrollFactor(0);
     this.scan = this.add.graphics().setDepth(91);
     this.drawScan();
@@ -107,57 +80,67 @@ export class UIScene extends Phaser.Scene {
     this.vignette = this.add.rectangle(0, 0, W, H, 0xcc0000, 0).setOrigin(0).setDepth(95);
 
     // ── Status panel (top-left) ──────────────────────────────────────────────
-    const pw  = this.small ? 184 : 220;
-    const barX = 28;               // x of bar fill (after heart icon)
-    const pbw  = pw - barX - 10;  // bar fill width
+    makeHudIcons(this);
+    const F = (size, color, extra = {}) => ({ fontFamily: '"Silkscreen", monospace', fontSize: `${size}px`, color, ...extra });
+    const pw  = this.small ? 196 : 232;
+    const barX = 34;               // x of bar fill (after glyph icon)
+    const pbw  = pw - barX - 12;   // bar fill width
     this.hpBarW = pbw;
+    this.barH = { hp: 14, mp: 11, xp: 7 };
 
-    this._ns(8, 8, pw, 82);       // wood frame panel
+    this._ns(8, 8, pw, 106);       // wood frame panel
+    this.nameT = this.add.text(18, 15, `${this.pname} · ${this.job.name} Lv 1`, F(this.small ? 10 : 11, '#fff8e0', { fontStyle: 'bold' })).setDepth(101);
 
-    const fName  = { fontFamily: '"Silkscreen", monospace', fontSize: this.small ? '10px' : '11px', color: '#fff8e0', fontStyle: 'bold' };
-    const fTiny  = { fontFamily: '"Silkscreen", monospace', fontSize: '8px',  color: '#d8c090' };
+    const mkBar = (glyph, y, h, bgc, fc) => {
+      this.add.image(18, y + h / 2, `hud.${glyph}`).setOrigin(0, 0.5).setDepth(102);
+      this.add.rectangle(barX - 1, y - 1, pbw + 2, h + 2, 0x1a1024, 1).setOrigin(0).setDepth(101);
+      this.add.rectangle(barX, y, pbw, h, bgc, 1).setOrigin(0).setDepth(102);
+      return this.add.rectangle(barX, y, pbw, h, fc).setOrigin(0).setDepth(103);
+    };
+    this.hpBar = mkBar('heart', 32, 14, 0x3a1014, 0x4cc060);
+    this.hpT   = this.add.text(barX + pbw / 2, 39, '', F(9, '#ffffff', { stroke: '#1a1024', strokeThickness: 3 })).setOrigin(0.5).setDepth(104);
+    this.mpBar = mkBar('mana', 52, 11, 0x0c1a3a, 0x3a9cf0);
+    this.mpT   = this.add.text(barX + pbw / 2, 57.5, '', F(8, '#ffffff', { stroke: '#1a1024', strokeThickness: 3 })).setOrigin(0.5).setDepth(104);
+    this.xpBar = mkBar('xp', 69, 7, 0x2a2008, 0xffd84a);
 
-    this.nameT = this.add.text(16, 14, `${this.pname} · ${this.job.name} Lv 1`, fName).setDepth(101);
-
-    // HP row: heart icon · dark bg · green fill · number overlay
-    this.add.image(17, 34, 'ui.heart').setOrigin(0, 0.5).setDepth(101).setScale(0.9);
-    this.hpBarBg = this.add.rectangle(barX, 29, pbw, 10, 0x2a0800, 0.95).setOrigin(0).setDepth(101);
-    this.hpBar   = this.add.rectangle(barX, 29, pbw, 10, 0x4caf50).setOrigin(0).setDepth(102);
-    this.hpT     = this.add.text(barX + 2, 30, '', { fontFamily: '"Silkscreen", monospace', fontSize: '8px', color: '#ffffff' }).setDepth(103);
-
-    // MP row
-    this.mpBarBg = this.add.rectangle(barX, 43, pbw, 8, 0x001020, 0.95).setOrigin(0).setDepth(101);
-    this.mpBar   = this.add.rectangle(barX, 43, pbw, 8, 0x2196f3).setOrigin(0).setDepth(102);
-
-    // XP row
-    this.xpBarBg = this.add.rectangle(barX, 55, pbw, 5, 0x160e00, 0.95).setOrigin(0).setDepth(101);
-    this.xpBar   = this.add.rectangle(barX, 55, pbw, 5, 0xf1c40f).setOrigin(0).setDepth(102);
-
-    this.goldT = this.add.text(16, 64, '', fTiny).setDepth(101);
+    // gold / potions / atk+def as glyph + number
+    this.add.image(18, 92, 'hud.coin').setOrigin(0, 0.5).setDepth(102);
+    this.goldT = this.add.text(36, 92, '0', F(10, '#ffe27a')).setOrigin(0, 0.5).setDepth(102);
+    this.add.image(78, 92, 'hud.potion').setOrigin(0, 0.5).setDepth(102);
+    this.potT  = this.add.text(96, 92, '0', F(10, '#ffb0a0')).setOrigin(0, 0.5).setDepth(102);
+    this.add.image(122, 92, 'hud.sword').setOrigin(0, 0.5).setDepth(102);
+    this.atkT  = this.add.text(140, 92, '0', F(10, '#e6f2c0')).setOrigin(0, 0.5).setDepth(102);
+    this.add.image(pw - 46, 92, 'hud.shield').setOrigin(0, 0.5).setDepth(102);
+    this.defT  = this.add.text(pw - 28, 92, '0', F(10, '#aed6f1')).setOrigin(0, 0.5).setDepth(102);
 
     // ── Zone label (top-centre; on phones: below status panel + party line) ──
     // phones: status panel bottom = 8+82=90, party line ~104; zone label y=90+4=94
     // desktop: y=14 to align with status panel top
-    const zoneY = this.small ? 94 : 14;
+    const zoneY = this.small ? 118 : 14;
     this._ns(W / 2, zoneY, 160, 22, 'ui.panelBg', 4, 4, 4, 4, 0.5, 0, 101);
     this.zoneT = this.add.text(W / 2, zoneY + 11, 'Thistle Town', {
       fontFamily: '"Silkscreen", monospace', fontSize: this.small ? '10px' : '11px', color: '#ffe8a0',
     }).setOrigin(0.5).setDepth(102);
 
-    // ── Quest tracker (top-right) ────────────────────────────────────────────
-    const questW = this.small ? 148 : 208;
-    this._ns(W - 8, 8, questW, 40, 'ui.panel', 4, 4, 4, 4, 1, 0, 100);
-    this.questT = this.add.text(W - 16, 14, '', {
+    // ── Quest tracker (top-right): framed panel, capped width, word wrap ─────
+    this.questW = this.small ? 158 : 214;
+    this.questPanel = this._ns(W - 8, 8, this.questW, 52, 'ui.panel', 4, 4, 4, 4, 1, 0, 100);
+    this.questHead = this.add.text(W - 8 - this.questW + 10, 14, 'QUEST', {
+      fontFamily: '"Silkscreen", monospace', fontSize: '8px', color: '#ffd84a',
+    }).setDepth(101);
+    this.questT = this.add.text(W - 8 - this.questW + 10, 26, '', {
       fontFamily: '"Silkscreen", monospace', fontSize: this.small ? '9px' : '10px',
-      color: '#f4e0b0', wordWrap: { width: questW - 16 }, align: 'right',
-    }).setOrigin(1, 0).setDepth(101);
+      color: '#f4e0b0', lineSpacing: 2,
+      wordWrap: { width: this.questW - 20, useAdvancedWrap: true },
+    }).setOrigin(0, 0).setDepth(101);
 
     // ── Hotbar (bottom-centre) ───────────────────────────────────────────────
     this.hotbar = [];
-    const cellW  = this.small ? 48 : 58;
-    const cellH  = this.small ? 48 : 54;
-    const cellSt = this.small ? 52 : 62;
-    const hotY   = H - 36;
+    const cellW  = this.small ? 44 : 58;
+    const cellH  = this.small ? 44 : 58;
+    const cellSt = this.small ? 48 : 64;
+    const hotY   = H - 8 - cellH / 2;
+    const iconScale = this.small ? 2 : 3;
     const slots  = [
       ...this.job.abilities.map((a) => ({ key: a.key, name: a.name, ab: a })),
       { key: 'Q', name: 'Potion', ab: null },
@@ -168,26 +151,29 @@ export class UIScene extends Phaser.Scene {
       const bg = this._ns(x, hotY, cellW, cellH, 'ui.cell', 3, 3, 3, 3, 0.5, 0.5, 100);
       bg.setInteractive({ useHandCursor: true });
 
-      // Skill icon (24×24 source, scaled to cell interior)
-      const iconKey = s.ab ? this._abilityIcon(s.ab.id) : 'icon.potion';
-      const iconScale = (cellW - 14) / 24;
+      const iconKey = s.ab ? this._abilityIcon(s.ab.id) : 'hud.potion';
       if (iconKey && this.textures.exists(iconKey)) {
-        this.add.image(x, hotY - 2, iconKey).setScale(iconScale).setOrigin(0.5).setDepth(101);
+        this.add.image(x, hotY, iconKey).setScale(iconScale).setOrigin(0.5).setDepth(101);
+      }
+      if (!s.ab) {
+        this.potCount = this.add.text(x + cellW / 2 - 5, hotY + cellH / 2 - 4, '0', {
+          fontFamily: '"Silkscreen", monospace', fontSize: '10px', color: '#ffffff',
+          stroke: '#1a1024', strokeThickness: 3,
+        }).setOrigin(1, 1).setDepth(104);
       }
 
-      this.add.text(x, hotY - cellH / 2 + 4, s.key, {
-        fontFamily: '"Silkscreen", monospace', fontSize: '8px', color: '#9bbc0f',
-      }).setOrigin(0.5, 0).setDepth(102);
-
-      this.add.text(x, hotY + cellH / 2 - 12, s.name.split(' ')[0], {
-        fontFamily: '"Silkscreen", monospace', fontSize: '7px', color: '#c8b878',
-      }).setOrigin(0.5, 0).setDepth(102);
+      // key badge (top-left corner)
+      this.add.rectangle(x - cellW / 2 + 3, hotY - cellH / 2 + 3, 13, 13, 0x1a1024, 0.95).setOrigin(0).setDepth(103);
+      this.add.text(x - cellW / 2 + 9.5, hotY - cellH / 2 + 9.5, s.key, {
+        fontFamily: '"Silkscreen", monospace', fontSize: '9px', color: '#ffd84a',
+      }).setOrigin(0.5).setDepth(104);
 
       const cdBg = this.add.rectangle(x, hotY, cellW - 2, cellH - 2, 0x000000, 0.70)
-        .setDepth(103).setVisible(false);
+        .setDepth(105).setVisible(false);
       const cdT  = this.add.text(x, hotY, '', {
         fontFamily: '"Silkscreen", monospace', fontSize: '14px', color: '#fff', fontStyle: 'bold',
-      }).setOrigin(0.5).setDepth(104).setVisible(false);
+        stroke: '#1a1024', strokeThickness: 3,
+      }).setOrigin(0.5).setDepth(106).setVisible(false);
 
       bg.on('pointerdown', () => {
         const w = this.world();
@@ -203,7 +189,7 @@ export class UIScene extends Phaser.Scene {
     this.log = [];
     const logW      = this.small ? 226 : 310;
     const logH      = this.small ? 76  : 100;
-    const logPanelY = H - logH - 62;
+    const logPanelY = H - logH - 82;
     this.logPanel = this._ns(8, logPanelY - 4, logW, logH + 10, 'ui.panelBg', 4, 4, 4, 4, 0, 0, 100);
     this.logT = this.add.text(16, logPanelY + 1, '', {
       fontFamily: '"Silkscreen", monospace', fontSize: this.small ? '9px' : '10px',
@@ -221,21 +207,15 @@ export class UIScene extends Phaser.Scene {
     });
     if (this.logCollapsed) { this.logT.setVisible(false); this.logPanel.setVisible(false); }
 
-    // ── Minimap (bottom-right) ───────────────────────────────────────────────
-    this.mapSize = this.small ? 64 : 84;
-    const ms = this.mapSize;
-    // panel top-left so its inner content centre == original ox/oy = (W - ms/2 - 8, H - ms/2 - 8)
-    this.mapBg = this._ns(W - ms - 16, H - ms - 16, ms + 16, ms + 16, 'ui.panel', 4, 4, 4, 4, 0, 0, 100);
-    this.mapG  = this.add.graphics().setDepth(101);
+    // ── Minimap (bottom-right): framed, fog-of-war, M toggles small/large ────
+    this.mapLarge = false;
+    this.buildMinimap();
 
-    // ── Party line (left, under panel; lower on phones to clear zone label) ──
-    // phones: status panel bottom y=90, zone label y=94..116, so party at 120
-    // desktop: status panel bottom y=90, so party at 96
-    this.partyT = this.add.text(
-      16, this.small ? 120 : 96,
-      net.connected ? `Party ${net.code}` : (this.small ? 'Solo' : 'Solo — Host/Join from Title'),
-      { fontFamily: '"Silkscreen", monospace', fontSize: '9px', color: '#a0c4f0' },
-    ).setDepth(101);
+    // Party line: only shown when actually in a party (solo hint lives in pause menu)
+    this.partyT = this.add.text(18, this.small ? 122 : 120, net.connected ? `Party ${net.code}` : '', {
+      fontFamily: '"Silkscreen", monospace', fontSize: '9px', color: '#a0c4f0',
+      stroke: '#1a1024', strokeThickness: 3,
+    }).setDepth(101);
 
     // ── Pause menu (Esc) ─────────────────────────────────────────────────────
     this.paused = false;
@@ -245,7 +225,10 @@ export class UIScene extends Phaser.Scene {
     const mt  = this.add.text(0, -mbgH / 2 + 24, '— PAUSED —', {
       fontFamily: '"Silkscreen", monospace', fontSize: '16px', color: '#ffe8a0', fontStyle: 'bold',
     }).setOrigin(0.5);
-    this.menu.add([mbgFill, mbg, mt]);
+    this.modeT = this.add.text(0, mbgH / 2 - 26, '', {
+      fontFamily: '"Silkscreen", monospace', fontSize: '9px', color: '#a0c4f0',
+    }).setOrigin(0.5);
+    this.menu.add([mbgFill, mbg, mt, this.modeT]);
 
     const mkBtn = (dy, label, cb) => {
       const bw = 210, bh = 28;
@@ -281,11 +264,11 @@ export class UIScene extends Phaser.Scene {
       const w = this.world();
       if (net.connected && w) {
         net.leave(); this.say('Left party — continuing solo.');
-        this.togglePause(); this.partyT.setText('Solo — Host/Join from Title');
+        this.togglePause(); this.partyT.setText(''); this.refreshMode();
       } else { net.leave(); audio.stopMusic(); this.scene.stop('world'); this.scene.start('title'); }
     });
 
-    this.input.keyboard.on('keydown-ESC',   () => this.togglePause());
+    this.input.keyboard.on('keydown-ESC',   () => { if (this.equip?.isOpen || this.shop?.isOpen) { this.equip.toggle(false); this.shop.close(); } else this.togglePause(); });
     this.input.keyboard.on('keydown-ENTER', () => this.openChat());
     this.input.keyboard.on('keydown-P',     () => { const on = audio.toggle(); this.say(`Sound ${on ? 'on' : 'muted'} (P)`); });
 
@@ -293,16 +276,17 @@ export class UIScene extends Phaser.Scene {
     bus.on(Events.CHAT,      (m) => this.say(`${m.name}: ${m.text}`));
     bus.on(Events.PLAYER_HP, (p) => this.drawStatus(p));
     bus.on(Events.PLAYER_XP, (p) => this.drawXp(p));
-    bus.on(Events.QUEST,     (q) => this.questT.setText('◆ ' + q));
+    bus.on(Events.QUEST,     (q) => this.setQuest(q));
     bus.on(Events.ZONE,      (z) => this.zoneT.setText(z.name));
     bus.on(Events.SYSTEM,    (s) => {
-      if (s === 'toggle-minimap') { this.minimapOn = !this.minimapOn; this.mapBg.setVisible(this.minimapOn); }
+      if (s === 'toggle-minimap') { this.mapLarge = !this.mapLarge; this.layoutMinimap(); }
     });
-    bus.on(Events.GEAR, (m) => {
-      if      (m.open === 'inventory') this.toggleInventory();
-      else if (m.open === 'shop')      this.openShop(m.stock || []);
-      else if (m.changed)              { if (this.invOpen) this.drawInventory(); }
+    const offGear = bus.on(Events.GEAR, (m) => {
+      if      (m.open === 'inventory') { this.shop?.close(); this.equip.toggle(); }
+      else if (m.open === 'shop')      { this.equip.toggle(false); this.shop.show(m.shop || 'maren'); }
+      else if (m.changed)              { this.equip.refresh(); this.shop.refresh(); }
     });
+    this.events.once('shutdown', () => { offGear(); this.equip?.destroy(); this.shop?.destroy(); });
 
     this.buildTouch();
     this.buildPanels();
@@ -312,7 +296,7 @@ export class UIScene extends Phaser.Scene {
     if (w0?.player) {
       this.drawStatus(w0.hpPayload());
       this.drawXp(w0.xpPayload());
-      this.questT.setText('◆ ' + w0.questText());
+      this.setQuest(w0.questText());
       this.zoneT.setText(w0.zoneId ? (ZONES.find((z) => z.id === w0.zoneId)?.name || '') : '');
     }
   }
@@ -320,7 +304,7 @@ export class UIScene extends Phaser.Scene {
   drawScan() {
     this.scan.clear();
     const { width: W, height: H } = this.scale;
-    for (let y = 0; y < H; y += 4) this.scan.fillStyle(0x000000, 0.08).fillRect(0, y, W, 1);
+    for (let y = 0; y < H; y += 4) this.scan.fillStyle(0x000000, 0.035).fillRect(0, y, W, 1);
   }
 
   say(s) {
@@ -336,13 +320,26 @@ export class UIScene extends Phaser.Scene {
     }
     this.lastHp = p.hp;
     this.nameT.setText(`${this.pname} · ${this.job.name} Lv ${p.level}`);
-    this.hpBar.setDisplaySize(this.hpBarW * (p.hp / p.maxHp), 10);
-    this.hpBar.setFillStyle(p.hp / p.maxHp > 0.35 ? 0x4caf50 : 0xe74c3c);
-    this.hpT.setText(`${p.hp}/${p.maxHp}`);
-    this.mpBar.setDisplaySize(this.hpBarW * (p.mp / p.maxMp), 8);
-    this.goldT.setText(`${p.gold}g · ${p.potions}x pot · ATK${p.atk} DEF${p.def}`);
+    const f = Math.max(0, Math.min(1, p.hp / p.maxHp));
+    this.hpBar.setDisplaySize(Math.max(f ? 1 : 0, this.hpBarW * f), this.barH.hp);
+    this.hpBar.setFillStyle(f > 0.35 ? 0x4cc060 : 0xe74c3c);
+    this.hpT.setText(`${Math.ceil(p.hp)}/${p.maxHp}`);
+    const mf = Math.max(0, Math.min(1, p.mp / p.maxMp));
+    this.mpBar.setDisplaySize(this.hpBarW * mf, this.barH.mp);
+    this.mpT.setText(`${Math.floor(p.mp)}/${p.maxMp}`);
+    this.goldT.setText(String(p.gold));
+    this.potT.setText(String(p.potions));
+    this.atkT.setText(String(p.atk));
+    this.defT.setText(String(p.def));
+    this.potCount?.setText(String(p.potions));
   }
-  drawXp(p) { this.xpBar.setDisplaySize(this.hpBarW * (p.xp / p.xpNext), 5); }
+  setQuest(q) {
+    this.questT.setText(q);
+    const h = Math.ceil(this.questT.height) + 26 + 8;
+    this.questPanel.setSize(this.questW, h);
+    this.questPanel.fallbackRect.setSize(this.questW, h);
+  }
+  drawXp(p) { this.xpBar.setDisplaySize(this.hpBarW * Math.min(1, p.xp / p.xpNext), this.barH.xp); }
 
   openChat() {
     const v = window.prompt(net.connected ? 'Party chat:' : 'Say (solo log):', '');
@@ -351,8 +348,13 @@ export class UIScene extends Phaser.Scene {
     if (!net.connected) this.say(`${this.pname}: ${v.slice(0, 120)}`);
   }
 
+  refreshMode() {
+    this.modeT?.setText(net.connected ? `PARTY ${net.code}` : 'SOLO — HOST/JOIN FROM TITLE');
+  }
+
   togglePause() {
     this.paused = !this.paused;
+    if (this.paused) this.refreshMode();
     this.menu.setVisible(this.paused);
     const w = this.world();
     if (w) w.physics.world.isPaused = this.paused;
@@ -404,174 +406,22 @@ export class UIScene extends Phaser.Scene {
     mkBtn(W - 184, H - 110, 'BAG', () => bus.emit(Events.GEAR, { open: 'inventory' }));
   }
 
-  // ── inventory + shop panels ────────────────────────────────────────────────
+  // ── equipment + shop panels (src/ui/EquipPanel.js, ShopPanel.js) ───────────
   buildPanels() {
-    const { width: W, height: H } = this.scale;
-    const pw = Math.min(W - 32, this.small ? 340 : 420);
-    const ph = Math.min(H - 120, this.small ? 380 : 440);
-
-    // Inventory
-    this.invPanel = this.add.container(W / 2, H / 2).setDepth(180).setVisible(false);
-    const [invBgFill, invBgNs] = this._nsPair(0, 0, pw, ph, 'ui.panelBg');
-    this.invBg = invBgNs.setAlpha(0.97);
-    this.invPanel.add(invBgFill);
-    this.invTitle = this.add.text(0, -ph / 2 + 22, 'GEAR (tap to equip)', {
-      fontFamily: '"Silkscreen", monospace', fontSize: '14px', color: '#f4c542', fontStyle: 'bold',
-    }).setOrigin(0.5);
-    this.invClose = this.add.text(pw / 2 - 24, -ph / 2 + 20, 'X', {
-      fontFamily: '"Silkscreen", monospace', fontSize: '14px', color: '#ffe0d0',
-      backgroundColor: '#7b2d26', padding: { x: 8, y: 4 },
-    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-    this.invClose.on('pointerdown', () => this.toggleInventory(false));
-    this.invDetail = this.add.text(-pw / 2 + 14, ph / 2 - 52, '', {
-      fontFamily: '"Silkscreen", monospace', fontSize: '10px', color: '#e6f2c0',
-      wordWrap: { width: pw - 28 },
-    });
-    this.invPanel.add([this.invBg, this.invTitle, this.invClose, this.invDetail]);
-    this.invCells = [];
-    this.invDims = { pw, ph };
-
-    // Shop
-    this.shopPanel = this.add.container(W / 2, H / 2).setDepth(180).setVisible(false);
-    const [shopBgFill, shopBgNs] = this._nsPair(0, 0, pw, ph, 'ui.panelBg');
-    this.shopBg = shopBgNs.setAlpha(0.97);
-    this.shopPanel.add(shopBgFill);
-    this.shopTitle = this.add.text(0, -ph / 2 + 22, "MAREN'S WARES", {
-      fontFamily: '"Silkscreen", monospace', fontSize: '14px', color: '#f4c542', fontStyle: 'bold',
-    }).setOrigin(0.5);
-    this.shopGold = this.add.text(-pw / 2 + 14, -ph / 2 + 22, '', {
-      fontFamily: '"Silkscreen", monospace', fontSize: '11px', color: '#fdebd0',
-    });
-    this.shopClose = this.add.text(pw / 2 - 24, -ph / 2 + 20, 'X', {
-      fontFamily: '"Silkscreen", monospace', fontSize: '14px', color: '#ffe0d0',
-      backgroundColor: '#7b2d26', padding: { x: 8, y: 4 },
-    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-    this.shopClose.on('pointerdown', () => this.openShop(null));
-    this.shopPanel.add([this.shopBg, this.shopTitle, this.shopGold, this.shopClose]);
-    this.shopCells = [];
-    this.shopDims = { pw, ph };
-  }
-
-  clearCells(list) { for (const c of list) c.destroy(); list.length = 0; }
-
-  toggleInventory(force) {
-    this.invOpen = force !== undefined ? force : !this.invOpen;
-    if (this.invOpen) this.openShop(null);
-    this.invPanel.setVisible(this.invOpen);
-    if (this.invOpen) this.drawInventory();
-    else this.invDetail.setText('');
-  }
-
-  drawInventory() {
-    const w = this.world();
-    if (!w?.player) return;
-    const p = w.player;
-    this.clearCells(this.invCells);
-    const { pw, ph } = this.invDims;
-    const cellS = this.small ? 46 : 44, gap = 6;
-
-    // Equipped row
-    SLOTS.forEach((slot, i) => {
-      const id = p.equipped[slot];
-      const g  = id && gearById(id);
-      const x  = -pw / 2 + 30 + i * (cellS + gap + 34), y = -ph / 2 + 66;
-      const [cellFill, bg] = this._nsPair(x, y, cellS, cellS, 'ui.cell', 3, 3, 3, 3, 0x1e6b2f, 1);
-      bg.setTint(0x70e890);
-      const lab = this.add.text(x, y + cellS / 2 + 6, slot.toUpperCase(), {
-        fontFamily: '"Silkscreen", monospace', fontSize: '8px', color: '#9bbc0f',
-      }).setOrigin(0.5, 0);
-      this.invPanel.add([cellFill, bg, lab]); this.invCells.push(cellFill, bg, lab);
-      if (g && this.textures.exists(`gear.icon.${g.id}`)) {
-        const ic = this.add.image(x, y, `gear.icon.${g.id}`).setScale(3);
-        this.invPanel.add(ic); this.invCells.push(ic);
-      }
-      bg.setInteractive({ useHandCursor: true });
-      bg.on('pointerdown', () => {
-        if (p.unequip(slot)) {
-          audio.play('ui', 0.7);
-          bus.emit(Events.PLAYER_HP, w.hpPayload());
-          w.saveNow();
-          this.drawInventory();
-          this.invDetail.setText(`Unequipped ${g.name}.`);
-        }
-      });
-    });
-
-    // Inventory grid
-    const cols = this.small ? 5 : 6;
-    p.inventory.forEach((id, i) => {
-      const g = gearById(id);
-      if (!g) return;
-      const cx = i % cols, cy = Math.floor(i / cols);
-      const x = -pw / 2 + 30 + cx * (cellS + gap), y = -ph / 2 + 140 + cy * (cellS + gap);
-      const [cellFill, bg] = this._nsPair(x, y, cellS, cellS, 'ui.cell', 3, 3, 3, 3, 0x000000, 0.7);
-      this.invPanel.add([cellFill, bg]); this.invCells.push(cellFill, bg);
-      if (this.textures.exists(`gear.icon.${g.id}`)) {
-        const ic = this.add.image(x, y, `gear.icon.${g.id}`).setScale(2.5);
-        this.invPanel.add(ic); this.invCells.push(ic);
-      }
-      bg.setInteractive({ useHandCursor: true });
-      bg.on('pointerdown', () => {
-        if (p.equip(id)) {
-          audio.play('gold', 0.7);
-          bus.emit(Events.PLAYER_HP, w.hpPayload());
-          w.saveNow();
-          this.drawInventory();
-          this.invDetail.setText(`${g.name} (${g.slot}) — ${statLine(g.stats)}. ${g.desc || ''}`);
-        }
-      });
-    });
-    if (!p.inventory.length) this.invDetail.setText('Empty pockets. Monsters drop gear — Maren sells it too.');
-  }
-
-  openShop(stock) {
-    this.shopOpen = !!stock;
-    if (!this.shopOpen) { this.shopPanel.setVisible(false); return; }
-    if (this.invOpen) this.toggleInventory(false);
-    const w = this.world();
-    if (!w?.player) return;
-    const p = w.player;
-    this.clearCells(this.shopCells);
-    const { pw, ph } = this.shopDims;
-    this.shopGold.setText(`${p.gold}g`);
-    const rows = [...stock.map((id) => gearById(id)).filter(Boolean)];
-    rows.unshift({ id: '__potion', name: 'Potion (+45 HP)', price: 3, stats: {}, desc: 'Drink with Q.' });
-    const rh = this.small ? 52 : 48;
-    rows.forEach((g, i) => {
-      const y = -ph / 2 + 70 + i * (rh + 6);
-      if (y > ph / 2 - 30) return;
-      const [bgFill, bg] = this._nsPair(0, y, pw - 28, rh, 'ui.panel2', 4, 4, 4, 4, 0x000000, 0.7);
-      this.shopPanel.add(bgFill); this.shopCells.push(bgFill);
-      const ic = g.id === '__potion'
-        ? (this.textures.exists('icon.potion')
-            ? this.add.image(-pw / 2 + 34, y, 'icon.potion').setScale(1.1)
-            : this.add.circle(-pw / 2 + 34, y, 10, 0xe74c3c))
-        : this.add.image(-pw / 2 + 34, y, `gear.icon.${g.id}`).setScale(2.5);
-      const nm = this.add.text(-pw / 2 + 56, y - 14, g.name, {
-        fontFamily: '"Silkscreen", monospace', fontSize: '11px', color: '#fff', fontStyle: 'bold',
-      });
-      const st = this.add.text(-pw / 2 + 56, y + 2,
-        g.id === '__potion' ? g.desc : `${statLine(g.stats)} · ${g.desc || ''}`,
-        { fontFamily: '"Silkscreen", monospace', fontSize: '9px', color: '#aed6f1', wordWrap: { width: pw - 150 } });
-      const pr = this.add.text(pw / 2 - 30, y, `${g.price}g`, {
-        fontFamily: '"Silkscreen", monospace', fontSize: '12px', color: '#f4c542', fontStyle: 'bold',
-      }).setOrigin(0.5);
-      this.shopPanel.add([bg, ic, nm, st, pr]);
-      this.shopCells.push(bg, ic, nm, st, pr);
-      bg.setInteractive({ useHandCursor: true });
-      bg.on('pointerdown', () => {
-        if (p.gold < g.price) { audio.play('error', 0.7); this.shopGold.setText(`${p.gold}g — not enough!`); return; }
-        p.gold -= g.price;
-        if (g.id === '__potion') p.potions += 1;
-        else p.inventory.push(g.id);
-        audio.play('gold');
-        bus.emit(Events.PLAYER_HP, w.hpPayload());
-        w.saveNow();
-        this.shopGold.setText(`${p.gold}g`);
-        this.say(`Bought ${g.name} (${g.price}g).`);
-      });
-    });
-    this.shopPanel.setVisible(true);
+    const w = () => this.world()?.player || null;
+    const hooks = {
+      player: w,
+      say: (m) => this.say(m),
+      changed: () => {
+        const wd = this.world();
+        if (!wd?.player) return;
+        bus.emit(Events.PLAYER_HP, wd.hpPayload());
+        wd.saveNow();
+      },
+    };
+    this.equip = new EquipPanel(this, hooks);
+    this.shop = new ShopPanel(this, hooks);
+    this.scale.on('resize', () => { this.equip.resize(); this.shop.refresh(); });
   }
 
   update() {
@@ -582,7 +432,7 @@ export class UIScene extends Phaser.Scene {
       const ab = slot.s.ab;
       let remain = 0, total = 1;
       if (ab && w?.player) {
-        total  = ab.cd;
+        total  = w.player.skillCd(ab);
         remain = Math.max(0, ((w.player.cooldowns[ab.id] || 0) - now) / 1000);
       }
       const on = remain > 0;
@@ -598,22 +448,83 @@ export class UIScene extends Phaser.Scene {
       if (frac < 0.3 && !w.player.dead) this.vignette.setAlpha(0.15 + 0.1 * Math.sin(this.time.now / 200));
       else if (this.vignette.alpha < 0.2) this.vignette.setAlpha(Math.max(0, this.vignette.alpha - 0.02));
     }
-    // Minimap: zone rects + player/NPC dots
-    this.mapG.clear();
-    if (!this.minimapOn) return;
+    this.updateMinimap(w);
+  }
+
+  // ── minimap ────────────────────────────────────────────────────────────────
+  buildMinimap() {
+    const MAP_T = 128;                     // world is 128x128 tiles
+    const COL = { water: '#2f6fb0', meadow: '#6cb850', woods: '#2f6b3a', town: '#d8c184', ruins: '#5f6f80' };
+    const order = ['meadow', 'woods', 'ruins', 'town'];
+    if (!this.textures.exists('hud.mapTerrain')) {
+      const t = this.textures.createCanvas('hud.mapTerrain', MAP_T, MAP_T);
+      const c = t.getContext();
+      c.fillStyle = COL.water; c.fillRect(0, 0, MAP_T, MAP_T);
+      for (const id of order) {
+        const z = ZONES.find((q) => q.id === id); if (!z) continue;
+        c.fillStyle = COL[id]; c.fillRect(z.rect.x, z.rect.y, z.rect.w, z.rect.h);
+      }
+      t.refresh(); t.setFilter(0);
+    }
+    if (this.textures.exists('hud.mapFog')) this.textures.remove('hud.mapFog');
+    this.fogTex = this.textures.createCanvas('hud.mapFog', MAP_T, MAP_T);
+    this.fogCtx = this.fogTex.getContext();
+    this.fogCtx.fillStyle = '#0d1018'; this.fogCtx.fillRect(0, 0, MAP_T, MAP_T);
+    this.fogTex.refresh(); this.fogTex.setFilter(0);
+    this.fogLast = null;
+
+    this.mapFrame = this.add.graphics().setDepth(100);
+    this.mapImg = this.add.image(0, 0, 'hud.mapTerrain').setOrigin(0).setDepth(101);
+    this.fogImg = this.add.image(0, 0, 'hud.mapFog').setOrigin(0).setDepth(102);
+    this.mapG = this.add.graphics().setDepth(103);
+    this.mapLbl = this.add.text(0, 0, 'M', { fontFamily: '"Silkscreen", monospace', fontSize: '8px', color: '#ffd84a',
+      stroke: '#1a1024', strokeThickness: 3 }).setOrigin(1, 0).setDepth(104);
+    this.mapHit = this.add.zone(0, 0, 10, 10).setOrigin(0).setInteractive({ useHandCursor: true }).setDepth(105);
+    this.mapHit.on('pointerdown', () => { this.mapLarge = !this.mapLarge; this.layoutMinimap(); });
+    this.scale.on('resize', () => this.layoutMinimap());
+    this.layoutMinimap();
+  }
+
+  layoutMinimap() {
     const { width: W, height: H } = this.scale;
-    // ox/oy = content centre, same as original formula
-    const ms = this.mapSize, ox = W - ms / 2 - 8, oy = H - ms / 2 - 8, s = ms / 128;
-    for (const z of ZONES) {
-      const c = z.id === 'town' ? 0xc9b458 : z.id === 'meadow' ? 0x7ec850 : z.id === 'woods' ? 0x3e8e41 : 0x6b7f8e;
-      this.mapG.fillStyle(c, 0.9).fillRect(ox - 42 + z.rect.x * s, oy - 42 + z.rect.y * s, z.rect.w * s, z.rect.h * s);
+    const ms = this.mapLarge ? (this.small ? 150 : 200) : (this.small ? 84 : 112);
+    const x = W - ms - 14, y = H - ms - 14;
+    this.mapRect = { x, y, ms };
+    this.mapImg.setPosition(x, y).setDisplaySize(ms, ms);
+    this.fogImg.setPosition(x, y).setDisplaySize(ms, ms);
+    this.mapHit.setPosition(x - 4, y - 4).setSize(ms + 8, ms + 8);
+    if (this.mapHit.input?.hitArea) { this.mapHit.input.hitArea.width = ms + 8; this.mapHit.input.hitArea.height = ms + 8; }
+    this.mapLbl.setPosition(x + ms - 2, y + 2);
+    const g = this.mapFrame.clear();
+    g.fillStyle(0x1a1024, 1).fillRect(x - 5, y - 5, ms + 10, ms + 10);
+    g.fillStyle(0x8a5a2b, 1).fillRect(x - 4, y - 4, ms + 8, ms + 8);
+    g.fillStyle(0xd8b070, 1).fillRect(x - 3, y - 3, ms + 6, 1).fillRect(x - 3, y - 3, 1, ms + 6);
+    g.fillStyle(0x5a3a1a, 1).fillRect(x - 3, y + ms + 2, ms + 6, 1).fillRect(x + ms + 2, y - 3, 1, ms + 6);
+    g.fillStyle(0x1a1024, 1).fillRect(x - 2, y - 2, ms + 4, ms + 4);
+  }
+
+  updateMinimap(w) {
+    const g = this.mapG; g.clear();
+    if (!w?.player || !this.mapRect) return;
+    const { x, y, ms } = this.mapRect, k = ms / 128, T = CONFIG.tile;
+    const tx = w.player.x / T, ty = w.player.y / T;
+    // fog-of-war: carve a soft circle whenever the player has moved 2+ tiles
+    if (!this.fogLast || Math.hypot(tx - this.fogLast.x, ty - this.fogLast.y) >= 2) {
+      this.fogLast = { x: tx, y: ty };
+      const c = this.fogCtx;
+      c.save(); c.globalCompositeOperation = 'destination-out';
+      for (const [r, a] of [[22, 0.3], [19, 0.5], [16, 1]]) {
+        c.fillStyle = `rgba(0,0,0,${a})`; c.beginPath(); c.arc(tx, ty, r, 0, Math.PI * 2); c.fill();
+      }
+      c.restore(); this.fogTex.refresh();
     }
-    if (w?.player) {
-      const px = ox - 42 + (w.player.x / 16) * s, py = oy - 42 + (w.player.y / 16) * s;
-      this.mapG.fillStyle(0xffffff, 1).fillCircle(px, py, 2.5);
-      // NPC dots
-      this.mapG.fillStyle(0xf1c40f, 1);
-      for (const n of w.npcs || []) this.mapG.fillCircle(ox - 42 + (n.x / 16) * s, oy - 42 + (n.y / 16) * s, 1.5);
-    }
+    // zone outlines (only where explored is fine: fog covers them)
+    const dot = (px, py, r, fill) => { g.fillStyle(0x1a1024, 1).fillCircle(px, py, r + 1); g.fillStyle(fill, 1).fillCircle(px, py, r); };
+    for (const n of w.npcs || []) dot(x + (n.x / T) * k, y + (n.y / T) * k, 1.6, 0xffd84a);
+    w.sync?.remotes?.forEach((r) => dot(x + (r.x / T) * k, y + (r.y / T) * k, 2, 0x5ad0ff));
+    const blink = 0.5 + 0.5 * Math.sin(this.time.now / 250);
+    const px = x + tx * k, py = y + ty * k;
+    g.fillStyle(0xffffff, 0.25 + 0.3 * blink).fillCircle(px, py, 4.5);
+    dot(px, py, 2.4, 0xffffff);
   }
 }

@@ -10,9 +10,17 @@ import { WorldSync } from '../net/WorldSync.js';
 import { net } from '../net/NetworkManager.js';
 import { DayNight } from '../systems/daynight.js';
 import { audio } from '../systems/audio.js';
+import { installWorldZoom } from '../core/display.js';
 import { loadProgress, saveProgress } from '../core/save.js';
-import { gearById, rollGearDrop, statLine } from '../data/gear.js';
-import { SHOP_STOCK } from '../data/gear.js';
+import { gearById, rollGearDrop, statLine, RARITY, sellPrice } from '../data/gear.js';
+import { BAG_SIZE } from '../core/save.js';
+import { initPrompt, updatePrompt, showRoomCode } from '../systems/worldFeel.js';
+import { castFx } from '../systems/skillFx.js';
+import { skillDmgMul } from '../data/stats.js';
+import { Boss } from '../entities/Boss.js';
+import { AreaManager } from '../world/areas.js';
+import { buildOverworldFeatures, overworldClearings } from '../world/overworldFeatures.js';
+import { rollDefDrop } from '../data/worldEnemies.js';
 
 // Open world: town (safe) + meadow + woods + ruins in ONE 128×128 map.
 // Solo = full simulation. Host = authoritative + broadcasts. Guest = applies
@@ -24,38 +32,39 @@ export class WorldScene extends Phaser.Scene {
   create() {
     audio.attach(this);
     const t = CONFIG.tile;
-    const { spawn, solids, W, H } = buildOverworld(this, ZONES);
+    const tz = ZONES[0].rect;
+    const { spawn, solids, W, H, houses } = buildOverworld(this, ZONES, { clearings: overworldClearings({ x: (tz.x + tz.w / 2) * t, y: (tz.y + tz.h / 2) * t }) });
     this.spawn = spawn;
     this.touchInput = { x: 0, y: 0 }; // written by UIScene touch controls
+    this.uiLock = false; this.uiLockUntil = 0; this.transitioning = false; // set by OverlayScene / AreaManager
 
     this.player = new ModularPlayer(this, spawn.x, spawn.y, this.heroData);
     // Restore solo/guest-local progress (level, gold, pos, quest)
     const saved = loadProgress(this.pname);
     if (saved && saved.job === this.player.job.id) {
       this.player.level = saved.level || 1; this.player.xp = saved.xp || 0;
-      this.player.xpNext = saved.xpNext || 100;
       this.player.gold = saved.gold ?? 20; this.player.potions = saved.potions ?? 3;
-      this.player.maxHp = saved.maxHp || this.player.maxHp;
-      this.player.maxMp = saved.maxMp || this.player.maxMp;
-      this.player.atk = saved.atk || this.player.atk;
+      this.player.applyProgression(saved.prog); // derived HP/MP/ATK come from stats now
       this.player.hp = this.player.effMaxHp(); this.player.mp = this.player.effMaxMp();
       this.player.setPosition(saved.x || spawn.x, saved.y || spawn.y);
       this.questState = saved.quest || { idx: 0, kills: {} };
-      if (Array.isArray(saved.inventory)) this.player.inventory = saved.inventory.filter((id) => gearById(id));
-      if (saved.equipped) {
-        for (const slot of ['head', 'chest', 'weapon', 'trinket']) {
-          const id = saved.equipped[slot];
-          if (id && gearById(id)) this.player.equipped[slot] = id;
-        }
-        this.player.applyGearVisuals();
-      }
+      // gear state is normalised by loadProgress (old saves: chest/trinket migrate, unknown ids dropped)
+      this.player.inventory = saved.inventory;
+      this.player.setLook({ equipped: saved.equipped, dyes: saved.dyes });
+      this.player.hp = Math.min(this.player.hp, this.player.effMaxHp());
     } else {
       this.questState = { idx: 0, kills: {} };
+      // New hero: wear the starter cosmetics picked in the creator.
+      const st = this.heroData.starter || {};
+      const eq = {};
+      for (const [slot, id] of Object.entries(st)) { const g = id && gearById(id); if (g && g.slot === slot) eq[slot] = id; }
+      this.player.setLook({ equipped: eq, dyes: {} });
     }
+    this.player.onLookChange = () => net.pushHero(this.player.lookHero());
     this.saveAcc = 0;
     this.physics.add.collider(this.player, solids);
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
-    this.cameras.main.setZoom(CONFIG.isMobile ? 2.25 : 3); // wider view on phones
+    installWorldZoom(this); // integer zoom (auto-fit, or - / = / 0 keys); UIScene stays unzoomed
     this.cameras.main.setBounds(0, 0, W, H);
 
     // NPCs: Pip (quests), Maren (shop/potions), Old Tob (lore) — real sprites
@@ -64,7 +73,9 @@ export class WorldScene extends Phaser.Scene {
     // Old Tob up the middle — nothing stacks on torches (±36,+28 / 0,+54).
     const npcDefs = [
       { name: 'Pip', tex: 'Villager', dx: -30, dy: 30, text: 'Slimes in the meadow, friend! 5 of them. Come back after.' },
-      { name: 'Maren', tex: 'Woman', dx: 30, dy: 30, text: 'Potions: press Q (3 gold). Stay safe out there!' },
+      { name: 'Maren', tex: 'Woman', dx: 30, dy: 30, shop: 'maren', text: 'Potions: press Q (3 gold). Stay safe out there!' },
+      { name: 'Dovey', tex: 'Noble', dx: 138, dy: 78, shop: 'dovey', text: 'Hats, masks and capes! Dyes are free at the wardrobe (press I).' },
+      { name: 'Bram', tex: 'GladiatorBlue', dx: -82, dy: 78, shop: 'bram', text: 'Steel for every class. Sell me your spares.' },
       { name: 'Old Tob', tex: 'OldMan', dx: 0, dy: -46, text: 'Tidehollow sleeps below the south cliffs. Lv 8, or not at all.' },
     ];
     for (const n of npcDefs) {
@@ -82,13 +93,18 @@ export class WorldScene extends Phaser.Scene {
     this.enemies = this.physics.add.group();
     this.spawnEnemies(solids);
     this.physics.add.collider(this.enemies, solids);
+    // Interiors, expansion maps, portals, signs, waystones, ambient NPCs (world/areas.js)
+    this.areas = new AreaManager(this, { solids, W, H, spawn });
+    buildOverworldFeatures(this, this.areas, { spawn, houses, solids });
     this.physics.add.overlap(this.player, this.enemies, (p, e) => {
       const ed = e instanceof Enemy ? e : null;
       if (!ed) return;
+      if (ed.windingUp) return; // telegraphing: no damage until it actually lunges
       // Safe zones (town) are truly safe: no contact damage
-      const pt = CONFIG.tile;
-      if (zoneAt(Math.floor(this.player.x / pt), Math.floor(this.player.y / pt), ZONES).safe) return;
-      const raw = ed.def.atk * 0.15 + 1;
+      if (this.zoneHere(this.player.x, this.player.y).safe) return;
+      if ((ed.areaId || null) !== (this.areas.current?.id || null)) return;
+      if (this.player.tryDodge()) return; // FLEE-based dodge
+      const raw = ed.def.dmg ?? (ed.def.atk * 0.15 + 1);
       const n = Math.max(1, Math.round(raw - this.player.effDef() * 0.5));
       if (this.player.hurt(n)) {
         bus.emit(Events.PLAYER_HP, this.hpPayload());
@@ -111,12 +127,14 @@ export class WorldScene extends Phaser.Scene {
     Object.entries({ ONE: '1', TWO: '2', THREE: '3', FOUR: '4' }).forEach(([k, n]) => {
       this.input.keyboard.on(`keydown-${n}`, () => this.cast(n));
     });
+    ['FIVE', 'SIX'].forEach((k, i) => this.input.keyboard.on(`keydown-${k}`, () => this.cast(String(i + 5)))); // advanced-class skills
     this.input.keyboard.on('keydown-J', () => this.attack());
     this.input.keyboard.on('keydown-Q', () => this.drinkPotion());
     this.input.keyboard.on('keydown-E', () => this.interact());
-    this.input.keyboard.on('keydown-I', () => bus.emit(Events.GEAR, { open: 'inventory' }));
+    this.input.keyboard.on('keydown-I', () => { if (!this.chatOpen) bus.emit(Events.GEAR, { open: 'inventory' }); });
+    this.input.keyboard.on('keydown-B', () => { if (!this.chatOpen) bus.emit(Events.GEAR, { open: 'inventory' }); });
     this.input.keyboard.on('keydown-M', () => bus.emit(Events.SYSTEM, 'toggle-minimap'));
-    this.input.on('pointerdown', (p) => { if (p.button === 0 && !this.chatOpen) this.attack(p.worldX, p.worldY); });
+    this.input.on('pointerdown', (p) => { if (p.button === 0 && !this.chatOpen && !this.uiLock && !this.uiModal) this.attack(p.worldX, p.worldY); });
 
     // Loot pickups (gear drops + bonus gold)
     this.drops = this.physics.add.group();
@@ -125,7 +143,7 @@ export class WorldScene extends Phaser.Scene {
     this.daynight = new DayNight(this);
     this.sync = new WorldSync();
     this.sync.attach(this, this.player, this.heroData);
-    if (net.connected) net.pushHero(this.heroData); // Creator choices > join-time snapshot
+    if (net.connected) net.pushHero(this.player.lookHero()); // Creator choices + worn gear > join-time snapshot
 
     this.zoneId = 'town';
     audio.musicFor('town');
@@ -136,13 +154,18 @@ export class WorldScene extends Phaser.Scene {
     bus.emit(Events.QUEST, this.questText());
     bus.emit(Events.PLAYER_HP, this.hpPayload());
     bus.emit(Events.PLAYER_XP, this.xpPayload());
-    this.events.once('shutdown', () => { this.saveNow(); this.sync.destroy(); });
+    this.events.once('shutdown', () => { this.saveNow(); this.sync.destroy(); this.scene.stop('overlay'); });
     this.scene.launch('ui', { hero: this.heroData, name: this.pname, job: this.player.job });
+    initPrompt(this); showRoomCode(this);
+    this.scene.launch('character'); // RPG panels (C / K) + level-up toasts, see CharacterScene.js
+    this.scene.launch('overlay');
   }
 
-  hpPayload() { return { hp: Math.ceil(this.player.hp), maxHp: this.player.effMaxHp(), mp: Math.ceil(this.player.mp), maxMp: this.player.effMaxMp(), potions: this.player.potions, gold: this.player.gold, level: this.player.level, atk: this.player.effAtk(), def: this.player.effDef() }; }
+  hpPayload() { return { hp: Math.ceil(this.player.hp), maxHp: this.player.effMaxHp(), mp: Math.ceil(this.player.mp), maxMp: this.player.effMaxMp(), potions: this.player.potions, gold: this.player.gold, level: this.player.level, atk: Math.round(this.player.effAtk()), def: this.player.effDef() }; }
   xpPayload() { return { xp: this.player.xp, xpNext: this.player.xpNext, level: this.player.level }; }
   questText() {
+    const sideLine = this.areas?.questLine();
+    if (sideLine) return sideLine;
     const q = QUESTS[this.questState.idx];
     if (!q) return 'All errands done! The ruins are yours, Wayfarer.';
     const got = this.questState.kills[q.need.enemy] || 0;
@@ -163,10 +186,27 @@ export class WorldScene extends Phaser.Scene {
       for (let i = 0; i < n; i++) {
         const tx = z.rect.x + 1 + Math.floor(rnd() * (z.rect.w - 2));
         const ty = z.rect.y + 1 + Math.floor(rnd() * (z.rect.h - 2));
-        const e = new Enemy(this, tx * t + 8, ty * t + 8, type);
-        this.enemies.add(e);
+        if (zoneAt(tx, ty, ZONES).id !== zoneId) continue; // keep enemies out of town/woods enclaves of their parent rect
+        this.makeEnemy(tx * t + 8, ty * t + 8, type, null);
       }
     }
+  }
+
+  // Factory shared by the overworld spawner, area spawns and respawns (bosses get their own class).
+  makeEnemy(x, y, typeId, areaId = null) {
+    const def = ENEMY_TABLE[typeId];
+    const e = def && def.boss ? new Boss(this, x, y, typeId) : new Enemy(this, x, y, typeId);
+    e.areaId = areaId;
+    this.enemies.add(e);
+    return e;
+  }
+
+  // Which zone (overworld rect or area/sub-zone) contains this world position.
+  zoneHere(x, y) {
+    const a = this.areas?.zoneHere(x, y);
+    if (a) return a;
+    const t = CONFIG.tile;
+    return zoneAt(Math.floor(x / t), Math.floor(y / t), ZONES);
   }
 
   saveNow() {
@@ -174,8 +214,9 @@ export class WorldScene extends Phaser.Scene {
       job: this.player.job.id, level: this.player.level, xp: this.player.xp, xpNext: this.player.xpNext,
       gold: this.player.gold, potions: this.player.potions,
       maxHp: this.player.maxHp, maxMp: this.player.maxMp, atk: this.player.atk,
-      x: Math.round(this.player.x), y: Math.round(this.player.y), quest: this.questState,
-      inventory: [...this.player.inventory], equipped: { ...this.player.equipped },
+      x: Math.round(this.areas?.savePos()?.x ?? this.player.x), y: Math.round(this.areas?.savePos()?.y ?? this.player.y), quest: this.questState,
+      inventory: [...this.player.inventory], equipped: { ...this.player.equipped }, dyes: { ...this.player.dyes },
+      prog: this.player.prog,
     });
   }
 
@@ -185,9 +226,11 @@ export class WorldScene extends Phaser.Scene {
     const g = gearById(gearId);
     if (!g) return;
     const c = this.add.container(x, y).setDepth(y); // y-sorted pickup
-    const glow = this.add.circle(0, 0, 10, 0xf4c542, 0.35);
-    const icon = this.add.image(0, -4, `gear.icon.${g.id}`).setScale(3);
-    const label = this.add.text(0, 10, g.name, { fontFamily: '"Silkscreen", monospace', fontSize: '8px', color: '#fff', backgroundColor: '#00000088' }).setOrigin(0.5);
+    const R = RARITY[g.rarity] || RARITY.common;
+    const glow = this.add.circle(0, 0, g.rarity === 'epic' ? 13 : 10, R.tint, g.rarity === 'common' ? 0.25 : 0.42);
+    if (g.rarity !== 'common') this.tweens.add({ targets: glow, scale: 1.4, alpha: 0.12, duration: 700, yoyo: true, repeat: -1 });
+    const icon = this.add.image(0, -4, `gear.icon.${g.id}`).setScale(1.6);
+    const label = this.add.text(0, 10, g.name, { fontFamily: '"Silkscreen", monospace', fontSize: '8px', color: R.color, backgroundColor: '#000000aa' }).setOrigin(0.5);
     c.add([glow, icon, label]);
     this.physics.add.existing(c);
     c.body.setSize(20, 20);
@@ -202,13 +245,30 @@ export class WorldScene extends Phaser.Scene {
     const g = id && gearById(id);
     if (!g || this.player.dead) return;
     d.destroy();
+    if (this.player.inventory.length >= BAG_SIZE) {
+      const v = sellPrice(g); this.player.gold += v;
+      bus.emit(Events.SYSTEM, `Bag full! Sold ${g.name} on the spot (+${v}g).`);
+      bus.emit(Events.PLAYER_HP, this.hpPayload());
+      return;
+    }
     this.player.inventory.push(id);
     audio.play('gold');
     this.spawnFx(this.player.x, this.player.y - 12, 'fx.spark', 1.2);
-    bus.emit(Events.SYSTEM, `Loot: ${g.name} (${statLine(g.stats)}) — press I to equip`);
+    bus.emit(Events.SYSTEM, `Loot: ${g.name} [${RARITY[g.rarity].name}] (${statLine(g.stats)}) — press I to equip`);
     bus.emit(Events.GEAR, { changed: true });
     bus.emit(Events.PLAYER_HP, this.hpPayload());
     this.saveNow();
+  }
+
+  // Put an item in the bag (used by quest rewards).
+  grantGear(id, why = 'Reward') {
+    const g = id && gearById(id);
+    if (!g) return false;
+    if (this.player.inventory.length >= BAG_SIZE) { this.player.gold += sellPrice(g); bus.emit(Events.SYSTEM, `${why}: ${g.name} (bag full, sold +${sellPrice(g)}g)`); return false; }
+    this.player.inventory.push(id);
+    bus.emit(Events.SYSTEM, `${why}: ${g.name} [${RARITY[g.rarity].name}] — press I to equip`);
+    bus.emit(Events.GEAR, { changed: true });
+    return true;
   }
 
   damageNumber(x, y, text, color = '#ffffff') {
@@ -261,7 +321,7 @@ export class WorldScene extends Phaser.Scene {
       this.spawnFx(ed.x, ed.y - 6, 'fx.smoke', 1.2);
       const coin = this.add.image(ed.x, ed.y, 'fx.coin').setDepth(2600).setScale(2);
       this.tweens.add({ targets: coin, y: ed.y - 14, duration: 250, yoyo: true, onComplete: () => coin.destroy() });
-      const dropId = rollGearDrop(ed.typeId);
+      const dropId = rollGearDrop(ed.typeId, this.player.equipBonuses().luk) || rollDefDrop(ed.typeId, gearById);
       if (dropId) this.spawnDrop(ed.x, ed.y - 4, dropId);
       const gold = ed.def.gold[0] + Math.floor(Math.random() * (ed.def.gold[1] - ed.def.gold[0]));
       this.player.gold += gold;
@@ -273,12 +333,15 @@ export class WorldScene extends Phaser.Scene {
         this.spawnFx(this.player.x, this.player.y - 10, 'fx.boost', 1.4);
         bus.emit(Events.SYSTEM, `${this.pname} reached Lv ${this.player.level}!`);
       }
+      ed.onSlain?.(this);
+      this.areas?.onKill(ed);
       this.player.questKills[ed.typeId] = (this.player.questKills[ed.typeId] || 0) + 1;
       this.questState.kills[ed.typeId] = (this.questState.kills[ed.typeId] || 0) + 1;
       const q = QUESTS[this.questState.idx];
       if (q && this.questState.kills[q.need.enemy] >= q.need.count) {
         this.player.gainXp(q.reward.xp); this.player.gold += q.reward.gold;
         bus.emit(Events.SYSTEM, `Quest complete: ${q.name}! +${q.reward.xp} XP, +${q.reward.gold}g`);
+        this.grantGear(q.reward.gear, 'Quest reward');
         audio.play('quest');
         this.spawnFx(this.player.x, this.player.y - 12, 'fx.circleOrange', 1.6);
         this.questState.idx += 1; this.questState.kills = {};
@@ -288,22 +351,22 @@ export class WorldScene extends Phaser.Scene {
       bus.emit(Events.QUEST, this.questText());
       this.saveNow();
       // respawn after 12s (host or solo)
-      const { x, y, typeId } = { x: ed.home.x, y: ed.home.y, typeId: ed.typeId };
+      const { x, y, typeId, areaId } = { x: ed.home.x, y: ed.home.y, typeId: ed.typeId, areaId: ed.areaId || null };
       ed.destroy();
-      this.time.delayedCall(12000, () => { if (this.scene.isActive()) this.enemies.add(new Enemy(this, x, y, typeId)); });
+      this.time.delayedCall(ed.def.respawn || 12000, () => { if (this.scene.isActive()) this.makeEnemy(x, y, typeId, areaId); });
     }
   }
 
   attack(tx, ty) {
-    if (this.player.dead) return;
+    if (this.player.dead || this.uiLock || this.transitioning || this.time.now < this.uiLockUntil) return;
     const cd = this.player.cooldowns.slash || 0;
     if (this.time.now < cd) return;
-    this.player.cooldowns.slash = this.time.now + 350;
+    this.player.cooldowns.slash = this.time.now + this.player.attackDelay();
     this.player.attackPose();
     const kind = this.player.weaponKind();
     const bow = kind === 'bow';
     const mage = kind === 'wand';
-    const dmg = this.player.effAtk() + Math.floor(Math.random() * 4);
+    const dmg = this.player.rollCrit(this.player.effAtk() + Math.floor(Math.random() * 4));
     const ang = { right: 0, down: 90, left: 180, up: 270 }[this.player.facing] ?? 0;
     if (bow || mage) {
       audio.play(mage ? 'cast' : 'arrow');
@@ -324,11 +387,15 @@ export class WorldScene extends Phaser.Scene {
   }
 
   cast(slot) {
-    const ab = this.player.job.abilities[Number(slot) - 1];
-    if (!ab || this.player.dead) return;
+    const ab = this.player.abilityForKey(slot);
+    if (!ab || this.player.dead || this.uiLock || this.transitioning) return;
+    const lv = this.player.skillLv(ab.id); // skill level 1-5 scales dmg/effect (+15%/lv) and cooldown (-6%/lv)
+    if (lv < 1) { bus.emit(Events.SYSTEM, `Learn ${ab.name} in Skills (K) first.`); audio.play('error', 0.7); return; }
+    const dm = skillDmgMul(lv);
     const cd = this.player.cooldowns[ab.id] || 0;
     if (this.time.now < cd) { audio.play('error', 0.7); return; }
-    const setCd = () => { this.player.cooldowns[ab.id] = this.time.now + ab.cd * 1000; bus.emit(Events.PLAYER_HP, this.hpPayload()); };
+    const setCd = () => { this.player.cooldowns[ab.id] = this.time.now + this.player.skillCd(ab) * 1000; bus.emit(Events.PLAYER_HP, this.hpPayload()); };
+    if (castFx(this, ab, lv, setCd)) return;
     if (ab.id === 'camp') {
       setCd();
       audio.play('heal');
@@ -336,7 +403,7 @@ export class WorldScene extends Phaser.Scene {
       const f = this.add.circle(this.player.x, this.player.y + 6, 8, 0xe67e22).setDepth(2600);
       this.tweens.add({ targets: f, scale: 1.3, duration: 400, yoyo: true, repeat: 9, onComplete: () => f.destroy() });
       this.time.addEvent({ delay: 1000, repeat: 9, callback: () => {
-        this.player.heal(4); this.damageNumber(this.player.x, this.player.y, '+4', '#2ecc71');
+        const h = Math.round(4 * dm); this.player.heal(h); this.damageNumber(this.player.x, this.player.y, `+${h}`, '#2ecc71');
         bus.emit(Events.PLAYER_HP, this.hpPayload());
       } });
       bus.emit(Events.SYSTEM, `${ab.name}: campfire heals 4 HP/s`);
@@ -345,7 +412,7 @@ export class WorldScene extends Phaser.Scene {
     if (ab.id === 'ward') {
       if (this.player.mp < 20) { audio.play('error', 0.7); bus.emit(Events.SYSTEM, 'Not enough MP!'); return; }
       this.player.mp -= 20;
-      this.player.invulnUntil = this.time.now + 3000;
+      this.player.invulnUntil = this.time.now + 3000 * dm;
       setCd();
       audio.play('cast');
       const sh = this.spawnFx(this.player.x, this.player.y - 8, 'fx.shieldBlue', 1.4);
@@ -359,10 +426,12 @@ export class WorldScene extends Phaser.Scene {
       const a = this.facingAngle();
       this.spawnFx(this.player.x, this.player.y - 8, 'fx.dust', 1.4);
       if (ab.id === 'blink') {
-        this.player.setPosition(
-          Phaser.Math.Clamp(this.player.x + Math.cos(a) * 64, 40, 2048 - 40),
-          Phaser.Math.Clamp(this.player.y + Math.sin(a) * 64, 40, 2048 - 40),
-        );
+        const bb = this.areas.bounds(); // stay inside the current space; never blink into a wall
+        let bd = 64;
+        const tx = () => Phaser.Math.Clamp(this.player.x + Math.cos(a) * bd, bb.x0, bb.x1);
+        const ty = () => Phaser.Math.Clamp(this.player.y + Math.sin(a) * bd, bb.y0, bb.y1);
+        while (bd > 0 && this.areas.blockedAt(tx(), ty())) bd -= 8;
+        this.player.setPosition(tx(), ty());
         this.spawnFx(this.player.x, this.player.y - 8, 'fx.spark', 1.2);
       } else {
         this.player.body.setVelocity(Math.cos(a) * 420, Math.sin(a) * 420);
@@ -382,7 +451,7 @@ export class WorldScene extends Phaser.Scene {
           e.setData('slowUntil', this.time.now + 4000);
           e.sprite.setTint(0x88ccff);
           this.time.delayedCall(4000, () => e.active && e.sprite.clearTint());
-          if (ab.id === 'smoke') this.damageEnemy(e, this.player.effAtk());
+          if (ab.id === 'smoke') this.damageEnemy(e, this.player.effAtk() * dm);
           n += 1;
         }
         return true;
@@ -397,18 +466,18 @@ export class WorldScene extends Phaser.Scene {
     this.player.attackPose();
     if (ab.id === 'fan' || ab.id === 'volley') {
       audio.play('arrow');
-      for (let i = -1; i <= 1; i++) this.fireShot(this.player.x, this.player.y - 8, this.facingAngle() + i * 0.3, this.player.effAtk(), 'kunai');
+      for (let i = -1; i <= 1; i++) this.fireShot(this.player.x, this.player.y - 8, this.facingAngle() + i * 0.3, this.player.effAtk() * dm, 'kunai');
     } else if (ab.id === 'burst') {
       audio.play('explosion');
       this.spawnFx(this.player.x, this.player.y - 8, 'fx.explosion', 2);
       this.cameras.main.shake(120, 0.003);
       this.enemies.children.each((e) => {
-        if (e instanceof Enemy && Phaser.Math.Distance.Between(this.player.x, this.player.y, e.x, e.y) < 56) this.damageEnemy(e, this.player.effAtk() + 6);
+        if (e instanceof Enemy && Phaser.Math.Distance.Between(this.player.x, this.player.y, e.x, e.y) < 56) this.damageEnemy(e, (this.player.effAtk() + 6) * dm);
         return true;
       });
     } else {
       audio.play('fireball');
-      this.fireShot(this.player.x, this.player.y - 8, this.facingAngle(), this.player.effAtk() + 4, ab.id === 'bolt' ? 'fire' : 'shuriken');
+      this.fireShot(this.player.x, this.player.y - 8, this.facingAngle(), (this.player.effAtk() + 4) * dm, ab.id === 'bolt' ? 'fire' : 'shuriken');
     }
   }
 
@@ -427,6 +496,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   interact() {
+    if (this.areas?.interact()) return; // doors, signs, waystones, area/ambient NPCs
     let best = null, bd = CONFIG.interactRadius;
     for (const n of this.npcs) {
       const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, n.x, n.y);
@@ -436,9 +506,9 @@ export class WorldScene extends Phaser.Scene {
       audio.play('npc');
       this.spawnFx(best.x, best.y - 20, 'fx.spark', 0.9);
       const def = best.getData('def');
-      if (def.name === 'Maren') {
-        bus.emit(Events.GEAR, { open: 'shop', stock: SHOP_STOCK });
-        bus.emit(Events.SYSTEM, 'Maren: have a look at my wares!');
+      if (def.shop) {
+        bus.emit(Events.GEAR, { open: 'shop', shop: def.shop });
+        bus.emit(Events.SYSTEM, `${def.name}: have a look at my wares!`);
       } else {
         bus.emit(Events.SYSTEM, `${def.name}: ${def.text}`);
       }
@@ -453,6 +523,7 @@ export class WorldScene extends Phaser.Scene {
     this.time.delayedCall(1200, () => {
       this.player.hp = this.player.effMaxHp(); this.player.mp = this.player.effMaxMp();
       this.player.dead = false;
+      this.areas?.leaveInstant();
       this.player.setPosition(this.spawn.x, this.spawn.y);
       this.spawnFx(this.spawn.x, this.spawn.y - 8, 'fx.boost', 1.2);
       bus.emit(Events.PLAYER_HP, this.hpPayload());
@@ -464,6 +535,33 @@ export class WorldScene extends Phaser.Scene {
     if (!Array.isArray(list)) return;
     const kids = this.enemies.getChildren();
     list.forEach((s, i) => { const e = kids[i]; if (e instanceof Enemy) { e.setPosition(s.x, s.y); if (typeof s.hp === 'number') { e.hp = s.hp; } } });
+  }
+
+  // Nameplates: fade with distance to the hero and nudge upward so labels of
+  // nearby NPCs / remote players never overprint each other.
+  updateNameplates() {
+    const me = this.player;
+    if (!me) return;
+    const items = [];
+    const add = (c, l) => { if (c && l && l.active) items.push({ c, l }); };
+    for (const n of this.npcs || []) add(n, n.list?.[2]);
+    this.sync?.remotes?.forEach((r) => add(r, r.label));
+    const placed = [];
+    items.sort((a, b) => a.c.y - b.c.y);
+    for (const it of items) {
+      const d = Math.hypot(it.c.x - me.x, it.c.y - me.y);
+      const a = Phaser.Math.Clamp(1 - (d - 70) / 50, 0, 1);
+      it.l.setAlpha(a).setVisible(a > 0.03);
+      if (a <= 0.03) continue;
+      let off = 0;
+      for (let tries = 0; tries < 6; tries++) {
+        const hit = placed.find((q) => Math.abs(q.x - it.c.x) < 44 && Math.abs(q.y - (it.c.y + off)) < 11);
+        if (!hit) break;
+        off -= 11;
+      }
+      it.l.y = -26 + off;
+      placed.push({ x: it.c.x, y: it.c.y + off });
+    }
   }
 
   update(time, delta) {
@@ -482,7 +580,7 @@ export class WorldScene extends Phaser.Scene {
     if (k.W.isDown || k.UP.isDown) vy -= 1;
     if (k.S.isDown || k.DOWN.isDown) vy += 1;
     vx += this.touchInput.x; vy += this.touchInput.y;
-    if (!this.player.dead) {
+    if (!this.player.dead && !this.uiLock && !this.transitioning) {
       const len = Math.hypot(vx, vy);
       const mag = Math.min(1, len);
       const nx = len > 0.15 ? vx / (len || 1) : 0, ny = len > 0.15 ? vy / (len || 1) : 0;
@@ -495,18 +593,20 @@ export class WorldScene extends Phaser.Scene {
       if (moving) audio.footstep(time);
     } else this.player.body.setVelocity(0, 0);
     this.player.setDepth(this.player.y); // y-sort against trees/props/NPCs
+    this.areas.update(time, delta);
 
     // zone tracking
     const t = CONFIG.tile;
-    const z = zoneAt(Math.floor(this.player.x / t), Math.floor(this.player.y / t), ZONES);
+    const z = this.zoneHere(this.player.x, this.player.y);
     if (z.id !== this.zoneId) {
       this.zoneId = z.id;
       audio.musicFor(z.id);
       bus.emit(Events.ZONE, z);
       bus.emit(Events.SYSTEM, `${z.safe ? '— ' : ''}${z.name}: ${z.desc}`);
-      if (!z.safe && this.player.level < z.level - 1) {
+      if (!z.safe && this.player.level < z.level - 1 && !this.areas.current) {
         audio.play('alert', 0.8);
         bus.emit(Events.SYSTEM, `Careful: ${z.name} is Lv ${z.level}+!`);
+        this.scene.get('overlay')?.warn?.(`DANGER: ${z.name} is Lv ${z.lv ? z.lv[0] : z.level}+  (you are Lv ${this.player.level})`);
       }
     }
 
@@ -516,7 +616,10 @@ export class WorldScene extends Phaser.Scene {
       if (!(e instanceof Enemy)) return true;
       const slowed = this.time.now < (e.getData('slowUntil') || 0);
       const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, e.x, e.y);
-      const safe = zoneAt(Math.floor(e.x / t), Math.floor(e.y / t), ZONES).safe;
+      // enemies only simulate while the player is in their space (overworld / interior / map)
+      if ((e.areaId || null) !== (this.areas.current?.id || null)) { e.body.setVelocity(0, 0); return true; }
+      if (e.aiUpdate) { e.aiUpdate(this, delta); e.setDepth(e.y); return true; }
+      const safe = this.zoneHere(e.x, e.y).safe;
       let evx = 0, evy = 0;
       if (this.player.dead || safe || d > 130) {
         const hx = e.home.x - e.x, hy = e.home.y - e.y;
@@ -527,6 +630,8 @@ export class WorldScene extends Phaser.Scene {
         const sp = CONFIG.enemySpeed * nightBoost * (slowed ? 0.25 : 1);
         evx = Math.cos(a) * sp; evy = Math.sin(a) * sp;
       }
+      // telegraphed attack (wind-up / lunge) + idle wobble; busy enemies skip steering
+      if (e.updateFeel(time, d, this.player, !this.player.dead && !safe && !slowed)) { e.setDepth(e.y); return true; }
       // knockback decays: only steer when slow-moving
       const cvx = e.body.velocity.x, cvy = e.body.velocity.y;
       if (Math.hypot(cvx, cvy) < 100) { e.body.setVelocity(evx, evy); e.setFacingByVelocity(evx, evy); }
@@ -534,12 +639,15 @@ export class WorldScene extends Phaser.Scene {
       return true;
     });
 
+    updatePrompt(this, dt);
+
     // autosave progress every 10s
     this.saveAcc += dt;
     if (this.saveAcc > 10) { this.saveAcc = 0; this.saveNow(); }
 
     // net
     this.sync.update(dt);
+    this.updateNameplates();
     if (net.connected && net.isHost && Math.floor(time / 300) !== Math.floor((time - delta) / 300)) {
       net.sendSnapshot(this.enemies.getChildren().filter((e) => e instanceof Enemy).slice(0, 40).map((e) => ({ x: Math.round(e.x), y: Math.round(e.y), hp: Math.round(e.hp) })));
     }

@@ -24,8 +24,20 @@ const OGG = {
   npc: ['sfx_npc_blip'],
   alert: ['sfx_alert'],
   step: ['sfx_step_0', 'sfx_step_1'],
+  door: ['sfx_door_open'],
+  roar: ['sfx_boss_roar'],
+  slam: ['sfx_impact_heavy'],
+  chest: ['sfx_chest_unlock'],
+  warp: ['sfx_powerup'],
+  pickup: ['sfx_pickup'],
 };
-const MUSIC_FOR_ZONE = { title: 'mus_title', town: 'mus_village', meadow: 'mus_forest', woods: 'mus_forest', ruins: 'mus_ruins' };
+const MUSIC_FOR_ZONE = {
+  title: 'mus_title', town: 'mus_village', meadow: 'mus_forest', woods: 'mus_forest', ruins: 'mus_ruins',
+  // expansion maps + interiors
+  inn: 'mus_village', cottage_a: 'mus_village', cottage_b: 'mus_village',
+  dock: 'mus_village_alt', dock_beach: 'mus_village_alt',
+  crypt: 'mus_crypt', frost: 'mus_tension', frost_camp: 'mus_tension',
+};
 
 class AudioBus {
   constructor() {
@@ -43,7 +55,7 @@ class AudioBus {
     this.blipFor(logical);
   }
   musicFor(zoneId) {
-    const key = MUSIC_FOR_ZONE[zoneId] || 'mus_forest';
+    const key = MUSIC_FOR_ZONE[zoneId] || (String(zoneId).startsWith('mus_') ? zoneId : 'mus_forest');
     if (key === this.musicKey || !this.enabled) return;
     if (!this.canPlay(key)) return;
     try {
