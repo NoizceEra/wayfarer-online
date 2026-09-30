@@ -51,11 +51,11 @@ export function retroProg(level) {
 }
 
 // total stat values. job: {base, growth}; adv: advanced class def or null.
-export function totalStats(job, adv, level, alloc) {
+export function totalStats(job, adv, level, alloc, bonus = null) {
   const out = {};
   for (const s of STAT_IDS) {
     out[s] = Math.round((job.base?.[s] ?? 5) + (alloc?.[s] || 0)
-      + Math.floor((level - 1) * (job.growth?.[s] || 0)) + (adv?.bonus?.[s] || 0));
+      + Math.floor((level - 1) * (job.growth?.[s] || 0)) + (adv?.bonus?.[s] || 0) + (bonus?.[s] || 0));
   }
   return out;
 }
@@ -70,8 +70,8 @@ export function totalStats(job, adv, level, alloc) {
 //  CRIT%  = 1 + 0.3*LUK (+adv)     dodge% = min(40, 0.5*(AGI + 0.2*LUK))
 //  atkSpd = 1 + min(1, 0.008*AGI + 0.003*DEX + adv)   (attack delay = 350ms / atkSpd)
 //  move   = job.spd * (1 + min(0.25, 0.002*AGI) + adv.move)
-export function computeDerived({ job, adv = null, level = 1, alloc, weaponKind = 'melee' }) {
-  const T = totalStats(job, adv, level, alloc);
+export function computeDerived({ job, adv = null, level = 1, alloc, weaponKind = 'melee', bonus = null }) {
+  const T = totalStats(job, adv, level, alloc, bonus);
   const hpBase = job.hp + (level - 1) * (job.hpLv ?? 10);
   const mpBase = job.mp + (level - 1) * (job.mpLv ?? 5);
   const main = weaponKind === 'bow' ? T.dex : T.str;

@@ -12,8 +12,8 @@ import { DayNight } from '../systems/daynight.js';
 import { audio } from '../systems/audio.js';
 import { installWorldZoom } from '../core/display.js';
 import { loadProgress, saveProgress } from '../core/save.js';
-import { gearById, rollGearDrop, statLine } from '../data/gear.js';
-import { SHOP_STOCK } from '../data/gear.js';
+import { gearById, rollGearDrop, statLine, RARITY, sellPrice } from '../data/gear.js';
+import { BAG_SIZE } from '../core/save.js';
 import { initPrompt, updatePrompt, showRoomCode } from '../systems/worldFeel.js';
 import { castFx } from '../systems/skillFx.js';
 import { skillDmgMul } from '../data/stats.js';
@@ -48,17 +48,19 @@ export class WorldScene extends Phaser.Scene {
       this.player.hp = this.player.effMaxHp(); this.player.mp = this.player.effMaxMp();
       this.player.setPosition(saved.x || spawn.x, saved.y || spawn.y);
       this.questState = saved.quest || { idx: 0, kills: {} };
-      if (Array.isArray(saved.inventory)) this.player.inventory = saved.inventory.filter((id) => gearById(id));
-      if (saved.equipped) {
-        for (const slot of ['head', 'chest', 'weapon', 'trinket']) {
-          const id = saved.equipped[slot];
-          if (id && gearById(id)) this.player.equipped[slot] = id;
-        }
-        this.player.applyGearVisuals();
-      }
+      // gear state is normalised by loadProgress (old saves: chest/trinket migrate, unknown ids dropped)
+      this.player.inventory = saved.inventory;
+      this.player.setLook({ equipped: saved.equipped, dyes: saved.dyes });
+      this.player.hp = Math.min(this.player.hp, this.player.effMaxHp());
     } else {
       this.questState = { idx: 0, kills: {} };
+      // New hero: wear the starter cosmetics picked in the creator.
+      const st = this.heroData.starter || {};
+      const eq = {};
+      for (const [slot, id] of Object.entries(st)) { const g = id && gearById(id); if (g && g.slot === slot) eq[slot] = id; }
+      this.player.setLook({ equipped: eq, dyes: {} });
     }
+    this.player.onLookChange = () => net.pushHero(this.player.lookHero());
     this.saveAcc = 0;
     this.physics.add.collider(this.player, solids);
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
@@ -71,7 +73,9 @@ export class WorldScene extends Phaser.Scene {
     // Old Tob up the middle — nothing stacks on torches (±36,+28 / 0,+54).
     const npcDefs = [
       { name: 'Pip', tex: 'Villager', dx: -30, dy: 30, text: 'Slimes in the meadow, friend! 5 of them. Come back after.' },
-      { name: 'Maren', tex: 'Woman', dx: 30, dy: 30, text: 'Potions: press Q (3 gold). Stay safe out there!' },
+      { name: 'Maren', tex: 'Woman', dx: 30, dy: 30, shop: 'maren', text: 'Potions: press Q (3 gold). Stay safe out there!' },
+      { name: 'Dovey', tex: 'Noble', dx: 138, dy: 78, shop: 'dovey', text: 'Hats, masks and capes! Dyes are free at the wardrobe (press I).' },
+      { name: 'Bram', tex: 'GladiatorBlue', dx: -82, dy: 78, shop: 'bram', text: 'Steel for every class. Sell me your spares.' },
       { name: 'Old Tob', tex: 'OldMan', dx: 0, dy: -46, text: 'Tidehollow sleeps below the south cliffs. Lv 8, or not at all.' },
     ];
     for (const n of npcDefs) {
@@ -127,9 +131,10 @@ export class WorldScene extends Phaser.Scene {
     this.input.keyboard.on('keydown-J', () => this.attack());
     this.input.keyboard.on('keydown-Q', () => this.drinkPotion());
     this.input.keyboard.on('keydown-E', () => this.interact());
-    this.input.keyboard.on('keydown-I', () => bus.emit(Events.GEAR, { open: 'inventory' }));
+    this.input.keyboard.on('keydown-I', () => { if (!this.chatOpen) bus.emit(Events.GEAR, { open: 'inventory' }); });
+    this.input.keyboard.on('keydown-B', () => { if (!this.chatOpen) bus.emit(Events.GEAR, { open: 'inventory' }); });
     this.input.keyboard.on('keydown-M', () => bus.emit(Events.SYSTEM, 'toggle-minimap'));
-    this.input.on('pointerdown', (p) => { if (p.button === 0 && !this.chatOpen && !this.uiLock) this.attack(p.worldX, p.worldY); });
+    this.input.on('pointerdown', (p) => { if (p.button === 0 && !this.chatOpen && !this.uiLock && !this.uiModal) this.attack(p.worldX, p.worldY); });
 
     // Loot pickups (gear drops + bonus gold)
     this.drops = this.physics.add.group();
@@ -138,7 +143,7 @@ export class WorldScene extends Phaser.Scene {
     this.daynight = new DayNight(this);
     this.sync = new WorldSync();
     this.sync.attach(this, this.player, this.heroData);
-    if (net.connected) net.pushHero(this.heroData); // Creator choices > join-time snapshot
+    if (net.connected) net.pushHero(this.player.lookHero()); // Creator choices + worn gear > join-time snapshot
 
     this.zoneId = 'town';
     audio.musicFor('town');
@@ -210,7 +215,7 @@ export class WorldScene extends Phaser.Scene {
       gold: this.player.gold, potions: this.player.potions,
       maxHp: this.player.maxHp, maxMp: this.player.maxMp, atk: this.player.atk,
       x: Math.round(this.areas?.savePos()?.x ?? this.player.x), y: Math.round(this.areas?.savePos()?.y ?? this.player.y), quest: this.questState,
-      inventory: [...this.player.inventory], equipped: { ...this.player.equipped },
+      inventory: [...this.player.inventory], equipped: { ...this.player.equipped }, dyes: { ...this.player.dyes },
       prog: this.player.prog,
     });
   }
@@ -221,9 +226,11 @@ export class WorldScene extends Phaser.Scene {
     const g = gearById(gearId);
     if (!g) return;
     const c = this.add.container(x, y).setDepth(y); // y-sorted pickup
-    const glow = this.add.circle(0, 0, 10, 0xf4c542, 0.35);
-    const icon = this.add.image(0, -4, `gear.icon.${g.id}`).setScale(3);
-    const label = this.add.text(0, 10, g.name, { fontFamily: '"Silkscreen", monospace', fontSize: '8px', color: '#fff', backgroundColor: '#00000088' }).setOrigin(0.5);
+    const R = RARITY[g.rarity] || RARITY.common;
+    const glow = this.add.circle(0, 0, g.rarity === 'epic' ? 13 : 10, R.tint, g.rarity === 'common' ? 0.25 : 0.42);
+    if (g.rarity !== 'common') this.tweens.add({ targets: glow, scale: 1.4, alpha: 0.12, duration: 700, yoyo: true, repeat: -1 });
+    const icon = this.add.image(0, -4, `gear.icon.${g.id}`).setScale(1.6);
+    const label = this.add.text(0, 10, g.name, { fontFamily: '"Silkscreen", monospace', fontSize: '8px', color: R.color, backgroundColor: '#000000aa' }).setOrigin(0.5);
     c.add([glow, icon, label]);
     this.physics.add.existing(c);
     c.body.setSize(20, 20);
@@ -238,13 +245,30 @@ export class WorldScene extends Phaser.Scene {
     const g = id && gearById(id);
     if (!g || this.player.dead) return;
     d.destroy();
+    if (this.player.inventory.length >= BAG_SIZE) {
+      const v = sellPrice(g); this.player.gold += v;
+      bus.emit(Events.SYSTEM, `Bag full! Sold ${g.name} on the spot (+${v}g).`);
+      bus.emit(Events.PLAYER_HP, this.hpPayload());
+      return;
+    }
     this.player.inventory.push(id);
     audio.play('gold');
     this.spawnFx(this.player.x, this.player.y - 12, 'fx.spark', 1.2);
-    bus.emit(Events.SYSTEM, `Loot: ${g.name} (${statLine(g.stats)}) — press I to equip`);
+    bus.emit(Events.SYSTEM, `Loot: ${g.name} [${RARITY[g.rarity].name}] (${statLine(g.stats)}) — press I to equip`);
     bus.emit(Events.GEAR, { changed: true });
     bus.emit(Events.PLAYER_HP, this.hpPayload());
     this.saveNow();
+  }
+
+  // Put an item in the bag (used by quest rewards).
+  grantGear(id, why = 'Reward') {
+    const g = id && gearById(id);
+    if (!g) return false;
+    if (this.player.inventory.length >= BAG_SIZE) { this.player.gold += sellPrice(g); bus.emit(Events.SYSTEM, `${why}: ${g.name} (bag full, sold +${sellPrice(g)}g)`); return false; }
+    this.player.inventory.push(id);
+    bus.emit(Events.SYSTEM, `${why}: ${g.name} [${RARITY[g.rarity].name}] — press I to equip`);
+    bus.emit(Events.GEAR, { changed: true });
+    return true;
   }
 
   damageNumber(x, y, text, color = '#ffffff') {
@@ -297,7 +321,7 @@ export class WorldScene extends Phaser.Scene {
       this.spawnFx(ed.x, ed.y - 6, 'fx.smoke', 1.2);
       const coin = this.add.image(ed.x, ed.y, 'fx.coin').setDepth(2600).setScale(2);
       this.tweens.add({ targets: coin, y: ed.y - 14, duration: 250, yoyo: true, onComplete: () => coin.destroy() });
-      const dropId = rollGearDrop(ed.typeId) || rollDefDrop(ed.typeId, gearById);
+      const dropId = rollGearDrop(ed.typeId, this.player.equipBonuses().luk) || rollDefDrop(ed.typeId, gearById);
       if (dropId) this.spawnDrop(ed.x, ed.y - 4, dropId);
       const gold = ed.def.gold[0] + Math.floor(Math.random() * (ed.def.gold[1] - ed.def.gold[0]));
       this.player.gold += gold;
@@ -317,6 +341,7 @@ export class WorldScene extends Phaser.Scene {
       if (q && this.questState.kills[q.need.enemy] >= q.need.count) {
         this.player.gainXp(q.reward.xp); this.player.gold += q.reward.gold;
         bus.emit(Events.SYSTEM, `Quest complete: ${q.name}! +${q.reward.xp} XP, +${q.reward.gold}g`);
+        this.grantGear(q.reward.gear, 'Quest reward');
         audio.play('quest');
         this.spawnFx(this.player.x, this.player.y - 12, 'fx.circleOrange', 1.6);
         this.questState.idx += 1; this.questState.kills = {};
@@ -481,9 +506,9 @@ export class WorldScene extends Phaser.Scene {
       audio.play('npc');
       this.spawnFx(best.x, best.y - 20, 'fx.spark', 0.9);
       const def = best.getData('def');
-      if (def.name === 'Maren') {
-        bus.emit(Events.GEAR, { open: 'shop', stock: SHOP_STOCK });
-        bus.emit(Events.SYSTEM, 'Maren: have a look at my wares!');
+      if (def.shop) {
+        bus.emit(Events.GEAR, { open: 'shop', shop: def.shop });
+        bus.emit(Events.SYSTEM, `${def.name}: have a look at my wares!`);
       } else {
         bus.emit(Events.SYSTEM, `${def.name}: ${def.text}`);
       }

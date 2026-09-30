@@ -6,7 +6,8 @@ import { ZONES } from '../data/zones.js';
 import { audio } from '../systems/audio.js';
 import { CONFIG } from '../config.js';
 import { makeHudIcons, HUD_ABILITY_ICON } from '../systems/hudIcons.js';
-import { gearById, statLine, SHOP_STOCK, SLOTS } from '../data/gear.js';
+import { EquipPanel } from '../ui/EquipPanel.js';
+import { ShopPanel } from '../ui/ShopPanel.js';
 
 // HUD: HP/MP/XP bars, hotbar with cooldown sweep (clickable), minimap,
 // quest tracker, chat, party, pause (palette + mute), GB tint + scanlines,
@@ -63,7 +64,6 @@ export class UIScene extends Phaser.Scene {
     this.minimapOn = true;
     this.lastHp = null;
     this.small = W < 560;
-    this.invOpen = false; this.shopOpen = false;
 
     // ── GB palette tint + scanlines ─────────────────────────────────────────
     const pal = PALETTES[this.hero.palette] || PALETTES.classic;
@@ -268,7 +268,7 @@ export class UIScene extends Phaser.Scene {
       } else { net.leave(); audio.stopMusic(); this.scene.stop('world'); this.scene.start('title'); }
     });
 
-    this.input.keyboard.on('keydown-ESC',   () => this.togglePause());
+    this.input.keyboard.on('keydown-ESC',   () => { if (this.equip?.isOpen || this.shop?.isOpen) { this.equip.toggle(false); this.shop.close(); } else this.togglePause(); });
     this.input.keyboard.on('keydown-ENTER', () => this.openChat());
     this.input.keyboard.on('keydown-P',     () => { const on = audio.toggle(); this.say(`Sound ${on ? 'on' : 'muted'} (P)`); });
 
@@ -281,11 +281,12 @@ export class UIScene extends Phaser.Scene {
     bus.on(Events.SYSTEM,    (s) => {
       if (s === 'toggle-minimap') { this.mapLarge = !this.mapLarge; this.layoutMinimap(); }
     });
-    bus.on(Events.GEAR, (m) => {
-      if      (m.open === 'inventory') this.toggleInventory();
-      else if (m.open === 'shop')      this.openShop(m.stock || []);
-      else if (m.changed)              { if (this.invOpen) this.drawInventory(); }
+    const offGear = bus.on(Events.GEAR, (m) => {
+      if      (m.open === 'inventory') { this.shop?.close(); this.equip.toggle(); }
+      else if (m.open === 'shop')      { this.equip.toggle(false); this.shop.show(m.shop || 'maren'); }
+      else if (m.changed)              { this.equip.refresh(); this.shop.refresh(); }
     });
+    this.events.once('shutdown', () => { offGear(); this.equip?.destroy(); this.shop?.destroy(); });
 
     this.buildTouch();
     this.buildPanels();
@@ -405,174 +406,22 @@ export class UIScene extends Phaser.Scene {
     mkBtn(W - 184, H - 110, 'BAG', () => bus.emit(Events.GEAR, { open: 'inventory' }));
   }
 
-  // ── inventory + shop panels ────────────────────────────────────────────────
+  // ── equipment + shop panels (src/ui/EquipPanel.js, ShopPanel.js) ───────────
   buildPanels() {
-    const { width: W, height: H } = this.scale;
-    const pw = Math.min(W - 32, this.small ? 340 : 420);
-    const ph = Math.min(H - 120, this.small ? 380 : 440);
-
-    // Inventory
-    this.invPanel = this.add.container(W / 2, H / 2).setDepth(180).setVisible(false);
-    const [invBgFill, invBgNs] = this._nsPair(0, 0, pw, ph, 'ui.panelBg');
-    this.invBg = invBgNs.setAlpha(0.97);
-    this.invPanel.add(invBgFill);
-    this.invTitle = this.add.text(0, -ph / 2 + 22, 'GEAR (tap to equip)', {
-      fontFamily: '"Silkscreen", monospace', fontSize: '14px', color: '#f4c542', fontStyle: 'bold',
-    }).setOrigin(0.5);
-    this.invClose = this.add.text(pw / 2 - 24, -ph / 2 + 20, 'X', {
-      fontFamily: '"Silkscreen", monospace', fontSize: '14px', color: '#ffe0d0',
-      backgroundColor: '#7b2d26', padding: { x: 8, y: 4 },
-    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-    this.invClose.on('pointerdown', () => this.toggleInventory(false));
-    this.invDetail = this.add.text(-pw / 2 + 14, ph / 2 - 52, '', {
-      fontFamily: '"Silkscreen", monospace', fontSize: '10px', color: '#e6f2c0',
-      wordWrap: { width: pw - 28 },
-    });
-    this.invPanel.add([this.invBg, this.invTitle, this.invClose, this.invDetail]);
-    this.invCells = [];
-    this.invDims = { pw, ph };
-
-    // Shop
-    this.shopPanel = this.add.container(W / 2, H / 2).setDepth(180).setVisible(false);
-    const [shopBgFill, shopBgNs] = this._nsPair(0, 0, pw, ph, 'ui.panelBg');
-    this.shopBg = shopBgNs.setAlpha(0.97);
-    this.shopPanel.add(shopBgFill);
-    this.shopTitle = this.add.text(0, -ph / 2 + 22, "MAREN'S WARES", {
-      fontFamily: '"Silkscreen", monospace', fontSize: '14px', color: '#f4c542', fontStyle: 'bold',
-    }).setOrigin(0.5);
-    this.shopGold = this.add.text(-pw / 2 + 14, -ph / 2 + 22, '', {
-      fontFamily: '"Silkscreen", monospace', fontSize: '11px', color: '#fdebd0',
-    });
-    this.shopClose = this.add.text(pw / 2 - 24, -ph / 2 + 20, 'X', {
-      fontFamily: '"Silkscreen", monospace', fontSize: '14px', color: '#ffe0d0',
-      backgroundColor: '#7b2d26', padding: { x: 8, y: 4 },
-    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-    this.shopClose.on('pointerdown', () => this.openShop(null));
-    this.shopPanel.add([this.shopBg, this.shopTitle, this.shopGold, this.shopClose]);
-    this.shopCells = [];
-    this.shopDims = { pw, ph };
-  }
-
-  clearCells(list) { for (const c of list) c.destroy(); list.length = 0; }
-
-  toggleInventory(force) {
-    this.invOpen = force !== undefined ? force : !this.invOpen;
-    if (this.invOpen) this.openShop(null);
-    this.invPanel.setVisible(this.invOpen);
-    if (this.invOpen) this.drawInventory();
-    else this.invDetail.setText('');
-  }
-
-  drawInventory() {
-    const w = this.world();
-    if (!w?.player) return;
-    const p = w.player;
-    this.clearCells(this.invCells);
-    const { pw, ph } = this.invDims;
-    const cellS = this.small ? 46 : 44, gap = 6;
-
-    // Equipped row
-    SLOTS.forEach((slot, i) => {
-      const id = p.equipped[slot];
-      const g  = id && gearById(id);
-      const x  = -pw / 2 + 30 + i * (cellS + gap + 34), y = -ph / 2 + 66;
-      const [cellFill, bg] = this._nsPair(x, y, cellS, cellS, 'ui.cell', 3, 3, 3, 3, 0x1e6b2f, 1);
-      bg.setTint(0x70e890);
-      const lab = this.add.text(x, y + cellS / 2 + 6, slot.toUpperCase(), {
-        fontFamily: '"Silkscreen", monospace', fontSize: '8px', color: '#9bbc0f',
-      }).setOrigin(0.5, 0);
-      this.invPanel.add([cellFill, bg, lab]); this.invCells.push(cellFill, bg, lab);
-      if (g && this.textures.exists(`gear.icon.${g.id}`)) {
-        const ic = this.add.image(x, y, `gear.icon.${g.id}`).setScale(3);
-        this.invPanel.add(ic); this.invCells.push(ic);
-      }
-      bg.setInteractive({ useHandCursor: true });
-      bg.on('pointerdown', () => {
-        if (p.unequip(slot)) {
-          audio.play('ui', 0.7);
-          bus.emit(Events.PLAYER_HP, w.hpPayload());
-          w.saveNow();
-          this.drawInventory();
-          this.invDetail.setText(`Unequipped ${g.name}.`);
-        }
-      });
-    });
-
-    // Inventory grid
-    const cols = this.small ? 5 : 6;
-    p.inventory.forEach((id, i) => {
-      const g = gearById(id);
-      if (!g) return;
-      const cx = i % cols, cy = Math.floor(i / cols);
-      const x = -pw / 2 + 30 + cx * (cellS + gap), y = -ph / 2 + 140 + cy * (cellS + gap);
-      const [cellFill, bg] = this._nsPair(x, y, cellS, cellS, 'ui.cell', 3, 3, 3, 3, 0x000000, 0.7);
-      this.invPanel.add([cellFill, bg]); this.invCells.push(cellFill, bg);
-      if (this.textures.exists(`gear.icon.${g.id}`)) {
-        const ic = this.add.image(x, y, `gear.icon.${g.id}`).setScale(2.5);
-        this.invPanel.add(ic); this.invCells.push(ic);
-      }
-      bg.setInteractive({ useHandCursor: true });
-      bg.on('pointerdown', () => {
-        if (p.equip(id)) {
-          audio.play('gold', 0.7);
-          bus.emit(Events.PLAYER_HP, w.hpPayload());
-          w.saveNow();
-          this.drawInventory();
-          this.invDetail.setText(`${g.name} (${g.slot}) — ${statLine(g.stats)}. ${g.desc || ''}`);
-        }
-      });
-    });
-    if (!p.inventory.length) this.invDetail.setText('Empty pockets. Monsters drop gear — Maren sells it too.');
-  }
-
-  openShop(stock) {
-    this.shopOpen = !!stock;
-    if (!this.shopOpen) { this.shopPanel.setVisible(false); return; }
-    if (this.invOpen) this.toggleInventory(false);
-    const w = this.world();
-    if (!w?.player) return;
-    const p = w.player;
-    this.clearCells(this.shopCells);
-    const { pw, ph } = this.shopDims;
-    this.shopGold.setText(`${p.gold}g`);
-    const rows = [...stock.map((id) => gearById(id)).filter(Boolean)];
-    rows.unshift({ id: '__potion', name: 'Potion (+45 HP)', price: 3, stats: {}, desc: 'Drink with Q.' });
-    const rh = this.small ? 52 : 48;
-    rows.forEach((g, i) => {
-      const y = -ph / 2 + 70 + i * (rh + 6);
-      if (y > ph / 2 - 30) return;
-      const [bgFill, bg] = this._nsPair(0, y, pw - 28, rh, 'ui.panel2', 4, 4, 4, 4, 0x000000, 0.7);
-      this.shopPanel.add(bgFill); this.shopCells.push(bgFill);
-      const ic = g.id === '__potion'
-        ? (this.textures.exists('hud.potion')
-            ? this.add.image(-pw / 2 + 34, y, 'hud.potion').setScale(2)
-            : this.add.circle(-pw / 2 + 34, y, 10, 0xe74c3c))
-        : this.add.image(-pw / 2 + 34, y, `gear.icon.${g.id}`).setScale(2.5);
-      const nm = this.add.text(-pw / 2 + 56, y - 14, g.name, {
-        fontFamily: '"Silkscreen", monospace', fontSize: '11px', color: '#fff', fontStyle: 'bold',
-      });
-      const st = this.add.text(-pw / 2 + 56, y + 2,
-        g.id === '__potion' ? g.desc : `${statLine(g.stats)} · ${g.desc || ''}`,
-        { fontFamily: '"Silkscreen", monospace', fontSize: '9px', color: '#aed6f1', wordWrap: { width: pw - 150 } });
-      const pr = this.add.text(pw / 2 - 30, y, `${g.price}g`, {
-        fontFamily: '"Silkscreen", monospace', fontSize: '12px', color: '#f4c542', fontStyle: 'bold',
-      }).setOrigin(0.5);
-      this.shopPanel.add([bg, ic, nm, st, pr]);
-      this.shopCells.push(bg, ic, nm, st, pr);
-      bg.setInteractive({ useHandCursor: true });
-      bg.on('pointerdown', () => {
-        if (p.gold < g.price) { audio.play('error', 0.7); this.shopGold.setText(`${p.gold}g — not enough!`); return; }
-        p.gold -= g.price;
-        if (g.id === '__potion') p.potions += 1;
-        else p.inventory.push(g.id);
-        audio.play('gold');
-        bus.emit(Events.PLAYER_HP, w.hpPayload());
-        w.saveNow();
-        this.shopGold.setText(`${p.gold}g`);
-        this.say(`Bought ${g.name} (${g.price}g).`);
-      });
-    });
-    this.shopPanel.setVisible(true);
+    const w = () => this.world()?.player || null;
+    const hooks = {
+      player: w,
+      say: (m) => this.say(m),
+      changed: () => {
+        const wd = this.world();
+        if (!wd?.player) return;
+        bus.emit(Events.PLAYER_HP, wd.hpPayload());
+        wd.saveNow();
+      },
+    };
+    this.equip = new EquipPanel(this, hooks);
+    this.shop = new ShopPanel(this, hooks);
+    this.scale.on('resize', () => { this.equip.resize(); this.shop.refresh(); });
   }
 
   update() {
