@@ -7,187 +7,276 @@ import { setupMenuCamera } from '../core/display.js';
 
 // Title screen — pixel-art Game Boy aesthetic.
 // Fonts: Jacquard12 (display title), Silkscreen (buttons/labels), PixelifySans (body/hints).
-// Layout: proportional to H so it holds across window sizes.
+//
+// Input notes (why clicks used to feel flaky):
+//  * Layout was built once for the launch size and never rebuilt, so after a
+//    window resize the drawn buttons and the canvas no longer agreed. The scene
+//    now rebuilds itself on scale 'resize'.
+//  * Name / room-code entry relied on window.prompt(), which many browsers and
+//    embedded webviews silently suppress (click "does nothing"). Text entry is
+//    now in-canvas and keyboard driven.
+//  * Each button is ONE interactive rectangle (no stacked decorative objects
+//    above it), with hover / pressed / keyboard-focus states.
+const FOCUS_ORDER = ['name', 'play', 'host', 'join', 'creator'];
+
 export class TitleScene extends Phaser.Scene {
   constructor() { super('title'); }
 
   create() {
     audio.attach(this);
     audio.musicFor('title');
-
     this.cameras.main.setBackgroundColor('#0f380f');
     // Integer-zoomed, centered logical layout (640x560 max) — see core/display.js
-    const { W, H } = setupMenuCamera(this, { minW: 360, minH: 420, maxW: 640, maxH: 560, data: this.sys.settings.data });
+    const { W, H } = this.menuSize = setupMenuCamera(this, { minW: 360, minH: 420, maxW: 640, maxH: 560, data: this.sys.settings.data });
 
-    const prof   = loadProfile() || { name: '' };
-    const small  = W < 560;
-    const bw     = Math.min(300, W - 40); // button / field width
-    const bh     = small ? 30 : 38;       // button height
+    const prof = loadProfile() || { name: '' };
+    this.nameValue = (prof.name || 'Pip').slice(0, 14);
+    this.codeValue = '';
+    this.focus = 'play';      // keyboard focus item
+    this.editing = null;      // 'name' | 'code' | null (text entry mode)
+    this.busy = false;
+    this.toastMsg = '';
 
-    // ─── Proportional Y positions ──────────────────────────────────────
-    const titleY    = Math.round(H * 0.13);
-    const subY      = Math.round(H * 0.22);
-    const labelY    = Math.round(H * 0.30);
-    const fieldY    = Math.round(H * 0.38);
-    const divY      = Math.round(H * 0.46);
-    const b1Y       = Math.round(H * 0.54);
-    const bSpacing  = Math.max(40, Math.round(H * 0.115));
+    this.build();
 
-    // ─── Helper: bordered button with drop-shadow ──────────────────────
-    // Returns the background rectangle (for hover-state testing if needed).
-    const btn = (y, label, cb) => {
-      const x = W / 2;
-
-      // Drop-shadow
-      this.add.rectangle(x + 3, y + 3, bw, bh, 0x0a1e0a).setOrigin(0.5);
-
-      // Button body
-      const bg = this.add.rectangle(x, y, bw, bh, 0x8bac0f).setOrigin(0.5);
-
-      // 2-px top highlight to give depth
-      this.add.rectangle(x, y - Math.round(bh / 2) + 2, bw - 6, 2, 0xb4cc22, 0.55)
-        .setOrigin(0.5, 0.5);
-
-      // Darker border (1-px stroke via Graphics)
-      const g = this.add.graphics();
-      g.lineStyle(2, 0x306230, 1);
-      g.strokeRect(x - bw / 2, y - bh / 2, bw, bh);
-
-      // Label text — no fixedWidth so nothing clips
-      this.add.text(x, y, label, {
-        fontSize: small ? '12px' : '16px',
-        color: '#0f380f',
-        fontFamily: '"Silkscreen"',
-        align: 'center',
-      }).setOrigin(0.5);
-
-      // Invisible zone covering full button area handles all pointer events
-      const zone = this.add.zone(x, y, bw, bh).setOrigin(0.5).setInteractive({ useHandCursor: true });
-      zone.on('pointerover',  () => bg.setFillStyle(0x9bbc0f));
-      zone.on('pointerout',   () => bg.setFillStyle(0x8bac0f));
-      zone.on('pointerdown',  () => { audio.ui(); bg.setFillStyle(0x6a8c0f); cb(); });
-
-      return bg;
-    };
-
-    // ─── Title ────────────────────────────────────────────────────────
-    this.add.text(W / 2, titleY, 'WAYFARER ONLINE', {
-      fontSize: small ? '34px' : '56px',
-      color: '#9bbc0f',
-      fontFamily: '"Jacquard12"',
-    }).setOrigin(0.5);
-
-    this.add.text(W / 2, subY, 'a cozy open world  ~  solo or together', {
-      fontSize: small ? '10px' : '13px',
-      color: '#8bac0f',
-      fontFamily: '"PixelifySans"',
-    }).setOrigin(0.5);
-
-    // ─── Name field ───────────────────────────────────────────────────
-    this.add.text(W / 2 - bw / 2, labelY, 'WAYFARER NAME', {
-      fontSize: small ? '9px' : '11px',
-      color: '#6b8c0f',
-      fontFamily: '"Silkscreen"',
-    }).setOrigin(0, 0.5);
-
-    const fieldH = small ? 28 : 34;
-    // Shadow
-    this.add.rectangle(W / 2 + 3, fieldY + 3, bw, fieldH, 0x0a1e0a).setOrigin(0.5);
-    // Border
-    const gField = this.add.graphics();
-    gField.lineStyle(2, 0x306230, 1);
-    gField.strokeRect(W / 2 - bw / 2, fieldY - fieldH / 2, bw, fieldH);
-    // Fill
-    this.add.rectangle(W / 2, fieldY, bw - 4, fieldH - 4, 0x9bbc0f).setOrigin(0.5);
-
-    const nameText = this.add.text(W / 2 - bw / 2 + 10, fieldY, prof.name || 'Pip', {
-      fontSize: small ? '14px' : '18px',
-      color: '#0f380f',
-      fontFamily: '"Silkscreen"',
-    }).setOrigin(0, 0.5);
-
-    // Blinking cursor
-    const cursor = this.add.text(0, fieldY, '_', {
-      fontSize: small ? '14px' : '18px',
-      color: '#0f380f',
-      fontFamily: '"Silkscreen"',
-    }).setOrigin(0, 0.5);
-    this.time.addEvent({ delay: 530, loop: true, callback: () => { cursor.setVisible(!cursor.visible); } });
-
-    const syncCursor = () => {
-      cursor.setX(W / 2 - bw / 2 + 10 + nameText.displayWidth + 2);
-    };
-    syncCursor();
-
-    // Full-width click zone for name field
-    const nameZone = this.add.zone(W / 2, fieldY, bw, fieldH).setOrigin(0.5).setInteractive({ useHandCursor: true });
-    const editName = () => {
-      const v = window.prompt('Wayfarer name (max 14 chars):', nameText.text) || nameText.text;
-      nameText.setText(v.slice(0, 14));
-      syncCursor();
-    };
-    nameZone.on('pointerdown', () => { audio.ui(); editName(); });
-
-    // ─── Divider ──────────────────────────────────────────────────────
-    const gDiv = this.add.graphics();
-    gDiv.lineStyle(1, 0x306230, 0.6);
-    gDiv.lineBetween(W / 2 - bw / 2, divY, W / 2 + bw / 2, divY);
-
-    // ─── Action buttons ───────────────────────────────────────────────
-    this.toast = this.add.text(W / 2, H - 44, '', {
-      fontSize: small ? '10px' : '12px',
-      color: '#ffdddd',
-      backgroundColor: '#00000099',
-      padding: { x: 8, y: 4 },
-      fontFamily: '"PixelifySans"',
-    }).setOrigin(0.5).setVisible(false);
-    const say = (s) => { this.toast.setText(s); this.toast.setVisible(!!s); };
-
-    const goWorld = (mode) => {
-      const name = (nameText.text || 'Pip').slice(0, 14);
-      saveProfile({ name });
-      this.scene.start('creator', { name, mode });
-    };
-
-    btn(b1Y,                    loadHero() ? '> Continue Journey'  : '> New Journey', () => goWorld('solo'));
-    btn(b1Y + bSpacing,         '+ Host Co-op',                    async () => {
-      const name = (nameText.text || 'Pip').slice(0, 14);
-      saveProfile({ name });
-      say('Creating room...');
-      try {
-        const hero = loadHero() || { name, job: 'wayfarer' };
-        const id   = await net.host(name, hero);
-        say(`Room ${id.slice(-5).toUpperCase()} -- tell friends! Starting...`);
-        setTimeout(() => this.scene.start('creator', { name, mode: 'host' }), 600);
-      } catch (e) { say(`Host failed: ${e.message} (server up? try Solo)`); audio.error(); }
+    // Native listener: Phaser's generic 'keydown' fired several times per press
+    // for us (repeated letters while typing), so text entry uses the DOM event.
+    this.domKey = (ev) => { if (!ev.repeat || this.editing) this.onKey(ev); };
+    window.addEventListener('keydown', this.domKey);
+    this.events.once('shutdown', () => {
+      window.removeEventListener('keydown', this.domKey);
+      if (this.rebuildTimer) this.rebuildTimer.remove(false);
     });
-    btn(b1Y + bSpacing * 2,    '~ Join Co-op (enter code)',        async () => {
-      const name = (nameText.text || 'Pip').slice(0, 14);
-      saveProfile({ name });
-      const code = window.prompt('Room code (5 letters):', '') || '';
-      if (!code) return;
-      say('Joining...');
-      try {
-        const hero = loadHero() || { name, job: 'wayfarer' };
-        await net.join(code.trim(), name, hero);
-        this.scene.start('creator', { name, mode: 'guest' });
-      } catch (e) { say(`Join failed: ${e.message}`); audio.error(); }
-    });
-    btn(b1Y + bSpacing * 3,    '* Character Creator',              () => goWorld(net.connected ? (net.isHost ? 'host' : 'guest') : 'solo'));
-
-    // ─── Help text ────────────────────────────────────────────────────
-    this.add.text(W / 2, H - 20, 'WASD move  J atk  E talk  Enter play  CC0 assets', {
-      fontSize: '9px',
-      color: '#306230',
-      fontFamily: '"Silkscreen"',
-      align: 'center',
-      wordWrap: { width: W - 24 },
-    }).setOrigin(0.5);
-
-    // ─── Keyboard shortcuts ───────────────────────────────────────────
-    this.input.keyboard.on('keydown-ENTER', () => goWorld('solo'));
-    this.input.keyboard.on('keydown-C',     () => goWorld(net.connected ? (net.isHost ? 'host' : 'guest') : 'solo'));
-
     bus.emit(Events.SYSTEM, 'title');
+  }
+
+  onResize() {
+    // Debounce: RESIZE mode fires many events while dragging a window edge.
+    if (this.rebuildTimer) this.rebuildTimer.remove(false);
+    this.rebuildTimer = this.time.delayedCall(60, () => { if (this.scene.isActive()) this.build(); });
+  }
+
+  // ─── Layout ─────────────────────────────────────────────────────────
+  build() {
+    if (this.root) this.root.destroy(true);
+    if (this.blinkTimer) this.blinkTimer.remove(false);
+    this.root = this.add.container(0, 0);
+    this.items = {};
+    const add = (o) => { this.root.add(o); return o; };
+
+    const { W, H } = this.menuSize; // logical centered layout (camera zoom handled by setupMenuCamera)
+    const small = W < 560;
+    const short = H < 560;
+    const bw = Math.min(300, W - 40);
+    const bh = small || short ? 30 : 38;
+
+    const titleY = Math.round(H * (short ? 0.10 : 0.13));
+    const subY = Math.round(H * (short ? 0.18 : 0.22));
+    const labelY = Math.round(H * (short ? 0.255 : 0.30));
+    const fieldY = Math.round(H * (short ? 0.325 : 0.38));
+    const b1Y = Math.round(H * (short ? 0.44 : 0.50));
+    const bottom = H - 34; // keep clear of help text / toast
+    const spacing = Math.max(bh + 12, Math.min(Math.round(H * 0.115) + 8, Math.floor((bottom - b1Y - bh / 2) / 3)));
+    const capSize = small ? '11px' : '12px';
+    this.cx = W / 2;
+
+    add(this.add.text(W / 2, titleY, 'WAYFARER ONLINE', {
+      fontSize: small ? '34px' : short ? '44px' : '56px', color: '#9bbc0f', fontFamily: '"Jacquard12"',
+    }).setOrigin(0.5));
+    add(this.add.text(W / 2, subY, 'a cozy open world  ~  solo or together', {
+      fontSize: small ? '10px' : '13px', color: '#8bac0f', fontFamily: '"PixelifySans"',
+    }).setOrigin(0.5));
+
+    // ─── Name field ───
+    add(this.add.text(W / 2 - bw / 2, labelY, 'WAYFARER NAME', {
+      fontSize: small ? '9px' : '11px', color: '#6b8c0f', fontFamily: '"Silkscreen"',
+    }).setOrigin(0, 0.5));
+    const fieldH = small || short ? 28 : 34;
+    add(this.add.rectangle(W / 2 + 3, fieldY + 3, bw, fieldH, 0x0a1e0a));
+    const fieldBorder = add(this.add.rectangle(W / 2, fieldY, bw, fieldH, 0x9bbc0f).setStrokeStyle(2, 0x306230));
+    const nameText = add(this.add.text(W / 2 - bw / 2 + 10, fieldY, this.nameValue, {
+      fontSize: small ? '14px' : '18px', color: '#0f380f', fontFamily: '"Silkscreen"',
+    }).setOrigin(0, 0.5));
+    const cursor = add(this.add.text(0, fieldY, '_', {
+      fontSize: small ? '14px' : '18px', color: '#0f380f', fontFamily: '"Silkscreen"',
+    }).setOrigin(0, 0.5));
+    this.blinkTimer = this.time.addEvent({ delay: 530, loop: true, callback: () => { cursor.setAlpha(cursor.alpha ? 0 : 1); } });
+    fieldBorder.setInteractive({ useHandCursor: true });
+    fieldBorder.on('pointerover', () => { this.hover = 'name'; this.refresh(); });
+    fieldBorder.on('pointerout', () => { if (this.hover === 'name') this.hover = null; this.refresh(); });
+    fieldBorder.on('pointerdown', () => { audio.ui(); this.setFocus('name'); this.editing = 'name'; this.refresh(); });
+    this.items.name = { kind: 'field', border: fieldBorder, nameText, cursor, fieldW: bw };
+
+    // ─── Buttons + captions ───
+    const specs = [
+      { id: 'play', label: loadHero() ? '> Continue Journey' : '> New Journey', cap: '' },
+      { id: 'host', label: '+ Host Co-op', cap: 'Host: get a room code to share' },
+      { id: 'join', label: '~ Join Co-op', cap: "Join: enter a friend's code" },
+      { id: 'creator', label: '* Character Creator', cap: '' },
+    ];
+    specs.forEach((s, i) => {
+      const y = b1Y + spacing * i;
+      const x = W / 2;
+      add(this.add.rectangle(x + 3, y + 3, bw, bh, 0x0a1e0a));
+      const bg = add(this.add.rectangle(x, y, bw, bh, 0x8bac0f).setStrokeStyle(2, 0x306230));
+      add(this.add.rectangle(x, y - Math.round(bh / 2) + 3, bw - 8, 2, 0xb4cc22, 0.55));
+      const label = add(this.add.text(x, y, s.label, {
+        fontSize: small || short ? '12px' : '16px', color: '#0f380f', fontFamily: '"Silkscreen"', align: 'center',
+      }).setOrigin(0.5));
+      const arrowL = add(this.add.text(x - bw / 2 - 8, y, '>', { fontSize: '16px', color: '#9bbc0f', fontFamily: '"Silkscreen"' }).setOrigin(1, 0.5));
+      const arrowR = add(this.add.text(x + bw / 2 + 8, y, '<', { fontSize: '16px', color: '#9bbc0f', fontFamily: '"Silkscreen"' }).setOrigin(0, 0.5));
+      const cap = add(this.add.text(x, y + bh / 2 + 9, s.cap, {
+        fontSize: capSize, color: '#7fa00f', fontFamily: '"PixelifySans"', align: 'center', wordWrap: { width: W - 24 },
+      }).setOrigin(0.5));
+      // the background rectangle itself is the hit area: one object, no overlap games
+      bg.setInteractive({ useHandCursor: true });
+      bg.on('pointerover', () => { this.hover = s.id; this.refresh(); });
+      bg.on('pointerout', () => { if (this.hover === s.id) this.hover = null; this.pressed = null; this.refresh(); });
+      bg.on('pointerdown', () => { this.pressed = s.id; this.setFocus(s.id); this.refresh(); });
+      bg.on('pointerup', () => {
+        if (this.pressed !== s.id) return;
+        this.pressed = null; this.refresh(); audio.ui(); this.activate(s.id);
+      });
+      this.items[s.id] = { kind: 'btn', bg, label, arrowL, arrowR, cap, baseCap: s.cap, y };
+    });
+
+    // toast + help
+    this.toast = add(this.add.text(W / 2, H - 50, this.toastMsg, {
+      fontSize: small ? '10px' : '12px', color: '#ffdddd', backgroundColor: '#000000aa',
+      padding: { x: 8, y: 4 }, fontFamily: '"PixelifySans"', align: 'center', wordWrap: { width: W - 24 },
+    }).setOrigin(0.5).setVisible(!!this.toastMsg));
+    add(this.add.text(W / 2, H - 16, 'Up/Down choose  Enter select  WASD move  J atk  E talk', {
+      fontSize: '9px', color: '#4a7a2a', fontFamily: '"Silkscreen"', align: 'center', wordWrap: { width: W - 24 },
+    }).setOrigin(0.5));
+
+    this.refresh();
+  }
+
+  // ─── State → visuals ────────────────────────────────────────────────
+  refresh() {
+    if (!this.items) return;
+    for (const id of FOCUS_ORDER) {
+      const it = this.items[id];
+      if (!it) continue;
+      const focused = this.focus === id;
+      const hot = this.hover === id;
+      if (it.kind === 'btn') {
+        const pressed = this.pressed === id;
+        it.bg.setFillStyle(pressed ? 0x6a8c0f : hot || focused ? 0x9bbc0f : 0x8bac0f);
+        it.bg.setStrokeStyle(focused ? 3 : 2, focused ? 0xe8f5a0 : 0x306230);
+        it.label.setY(it.y + (pressed ? 1 : 0));
+        it.arrowL.setVisible(focused); it.arrowR.setVisible(focused);
+        let cap = it.baseCap;
+        if (id === 'join' && this.editing === 'code') cap = `CODE: ${this.codeValue}_   Enter = join   Esc = cancel`;
+        it.cap.setText(cap); it.cap.setColor(id === 'join' && this.editing === 'code' ? '#e8f5a0' : (focused || hot) ? '#b4cc22' : '#7fa00f');
+      } else {
+        const editing = this.editing === 'name';
+        it.border.setStrokeStyle(focused || editing ? 3 : 2, focused || editing ? 0xe8f5a0 : 0x306230);
+        it.border.setFillStyle(editing || hot ? 0xb4cc22 : 0x9bbc0f);
+        it.nameText.setText(this.nameValue);
+        it.cursor.setX(it.nameText.x + it.nameText.displayWidth + 2);
+        it.cursor.setVisible(editing || focused);
+      }
+    }
+  }
+
+  setFocus(id) {
+    if (id !== 'name' && this.editing === 'name') this.editing = null;
+    if (id !== 'join' && this.editing === 'code') this.editing = null;
+    this.focus = id;
+  }
+
+  say(s) {
+    this.toastMsg = s;
+    if (this.toast && this.toast.active) { this.toast.setText(s); this.toast.setVisible(!!s); }
+  }
+
+  // ─── Keyboard ───────────────────────────────────────────────────────
+  onKey(ev) {
+    const k = ev.key;
+    if (this.editing) {
+      const field = this.editing; // 'name' | 'code'
+      const cur = field === 'name' ? this.nameValue : this.codeValue;
+      if (k === 'Enter') {
+        if (field === 'name') { this.editing = null; if (!this.nameValue.trim()) this.nameValue = 'Pip'; this.refresh(); }
+        else this.doJoin();
+      } else if (k === 'Escape') { this.editing = null; this.refresh(); }
+      else if (k === 'Backspace') { this.setField(field, cur.slice(0, -1)); }
+      else if (k === 'ArrowUp' || k === 'ArrowDown') { this.editing = null; this.moveFocus(k === 'ArrowUp' ? -1 : 1); }
+      else if (k.length === 1 && /[\w \-']/.test(k)) {
+        if (field === 'name' && cur.length < 14) this.setField('name', cur + k);
+        else if (field === 'code' && cur.length < 8 && /[A-Za-z0-9]/.test(k)) this.setField('code', (cur + k).toUpperCase());
+      }
+      ev.preventDefault?.();
+      return;
+    }
+    if (k === 'ArrowUp' || k === 'w' || k === 'W') this.moveFocus(-1);
+    else if (k === 'ArrowDown' || k === 's' || k === 'S') this.moveFocus(1);
+    else if (k === 'Enter' || k === ' ') { audio.ui(); this.activate(this.focus); }
+    else if (k === 'c' || k === 'C') this.activate('creator');
+  }
+
+  setField(field, v) {
+    if (field === 'name') this.nameValue = v; else this.codeValue = v;
+    this.refresh();
+  }
+
+  moveFocus(d) {
+    const i = FOCUS_ORDER.indexOf(this.focus);
+    this.focus = FOCUS_ORDER[(i + d + FOCUS_ORDER.length) % FOCUS_ORDER.length];
+    this.refresh();
+  }
+
+  // ─── Actions ────────────────────────────────────────────────────────
+  cleanName() { return (this.nameValue.trim() || 'Pip').slice(0, 14); }
+
+  activate(id) {
+    if (this.busy) return;
+    if (id === 'name') { this.editing = 'name'; this.refresh(); return; }
+    if (id === 'play') return this.goCreator('solo');
+    if (id === 'creator') return this.goCreator(net.connected ? (net.isHost ? 'host' : 'guest') : 'solo');
+    if (id === 'host') return this.doHost();
+    if (id === 'join') {
+      if (this.editing === 'code') return this.doJoin();
+      this.editing = 'code'; this.say(''); this.refresh();
+    }
+  }
+
+  goCreator(mode) {
+    const name = this.cleanName();
+    saveProfile({ name });
+    this.scene.start('creator', { name, mode });
+  }
+
+  async doHost() {
+    const name = this.cleanName();
+    saveProfile({ name });
+    this.busy = true; this.say('Creating room...');
+    try {
+      const hero = loadHero() || { name, job: 'wayfarer' };
+      await net.host(name, hero);
+      this.say(`ROOM CODE ${net.code} -- tell your friends!  Starting...`);
+      setTimeout(() => { this.busy = false; this.scene.start('creator', { name, mode: 'host' }); }, 1400);
+    } catch (e) {
+      this.busy = false;
+      this.say(`Host failed: ${e.message} (server up? try Solo)`); audio.error();
+    }
+  }
+
+  async doJoin() {
+    const code = this.codeValue.trim();
+    if (!code) { this.say("Type your friend's room code first."); audio.error(); return; }
+    const name = this.cleanName();
+    saveProfile({ name });
+    this.busy = true; this.say('Joining...');
+    try {
+      const hero = loadHero() || { name, job: 'wayfarer' };
+      await net.join(code, name, hero);
+      this.busy = false; this.editing = null;
+      this.scene.start('creator', { name, mode: 'guest' });
+    } catch (e) {
+      this.busy = false;
+      this.say(`Join failed: ${e.message}`); audio.error();
+    }
   }
 }
