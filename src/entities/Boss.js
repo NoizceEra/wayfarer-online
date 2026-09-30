@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { Enemy } from './Enemy.js';
 import { bus, Events } from '../core/events.js';
 import { audio } from '../systems/audio.js';
+import { bossIntro } from '../systems/skillVfx.js';
 
 const ENRAGE_MS = 120000; // hard enrage after 2 minutes of fighting
 
@@ -47,6 +48,8 @@ export class Boss extends Enemy {
     this.showBars(true);
     audio.play('roar');
     scene.cameras.main.shake(300, 0.004);
+    this.timer = 2600; // entrance: camera pan + banner + sting before the first attack
+    bossIntro(scene, this);
     bus.emit(Events.SYSTEM, `${this.def.name} awakens! Watch the red markers on the floor. (Enrages in 2:00)`);
   }
 

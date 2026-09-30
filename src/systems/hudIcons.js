@@ -141,6 +141,92 @@ const ICONS = {
   },
   sword(g) { ICONS.slash(g); },
   shield(g) { ICONS.ward(g); },
+
+  // — advanced class skills (same flat fills + auto outline as above) —
+  bash(g) { // shield hitting with an impact star
+    g.disc(6, 9, 5, 'steel'); g.disc(6, 9, 3, 'steelLo'); g.disc(6, 9, 1, 'gold'); g.px(6, 9, 'yellow'); g.px(3, 6, 'steelHi'); g.px(4, 5, 'steelHi'); g.px(5, 5, 'steelHi');
+    g.line(11, 9, 15, 9, 'yellow'); g.line(11, 6, 15, 2, 'orange'); g.line(11, 12, 15, 15, 'orange'); g.line(11, 7, 14, 5, 'yellow'); g.line(11, 11, 14, 13, 'yellow'); g.px(15, 9, 'white'); g.px(15, 2, 'yellow'); g.px(14, 15, 'yellow');
+  },
+  bulwark(g) { // tall golden-trimmed shield with a glow
+    g.rect(4, 1, 8, 9, 'gold'); g.rect(5, 10, 6, 2, 'gold'); g.rect(6, 12, 4, 2, 'gold'); g.rect(7, 14, 2, 1, 'gold');
+    g.rect(5, 2, 6, 8, 'blue'); g.rect(6, 10, 4, 2, 'blue'); g.rect(7, 12, 2, 1, 'blue');
+    g.rect(5, 2, 6, 1, 'blueHi'); g.rect(5, 2, 1, 7, 'blueHi'); g.rect(10, 3, 1, 7, 'blueLo');
+    g.rect(7, 4, 2, 6, 'yellow'); g.rect(6, 6, 4, 2, 'yellow'); g.px(7, 4, 'white'); g.px(2, 4, 'yellow'); g.px(13, 4, 'yellow'); g.px(2, 9, 'orange'); g.px(13, 9, 'orange');
+  },
+  beacon(g) { // lantern with a rising beam
+    g.rect(7, 0, 2, 7, 'yellow'); g.px(7, 0, 'white'); g.px(8, 1, 'white'); g.px(5, 2, 'yellow'); g.px(10, 2, 'yellow'); g.px(4, 4, 'orange'); g.px(11, 4, 'orange');
+    g.rect(5, 7, 6, 5, 'gold'); g.rect(6, 8, 4, 3, 'yellow'); g.px(7, 9, 'white'); g.px(8, 9, 'white');
+    g.rect(4, 7, 8, 1, 'woodLo'); g.rect(4, 12, 8, 1, 'woodLo'); g.rect(5, 13, 6, 1, 'wood'); g.px(7, 6, 'steel'); g.px(8, 6, 'steel');
+  },
+  sunburst(g) { // big sun, long rays
+    g.disc(8, 8, 3, 'orange'); g.disc(8, 8, 2, 'yellow'); g.px(8, 8, 'white'); g.px(7, 7, 'white');
+    for (let a = 0; a < 12; a++) {
+      const t = (a / 12) * Math.PI * 2, long = a % 3 === 0;
+      g.px(8 + Math.cos(t) * 5.5, 8 + Math.sin(t) * 5.5, long ? 'yellow' : 'orange');
+      if (long) g.px(8 + Math.cos(t) * 7, 8 + Math.sin(t) * 7, 'gold');
+    }
+  },
+  pierce(g) { // one heavy arrow through a ring
+    for (let a = 0; a < 16; a++) { const t = (a / 16) * Math.PI * 2; g.px(9 + Math.cos(t) * 4.5, 8 + Math.sin(t) * 4.5, 'red'); }
+    g.px(9, 8, 'redHi');
+    g.line(1, 8, 13, 8, 'wood'); g.line(1, 7, 13, 7, 'woodLo');
+    g.rect(13, 6, 2, 4, 'steel'); g.px(15, 7, 'steelHi'); g.px(15, 8, 'steelHi'); g.px(12, 5, 'steel'); g.px(12, 10, 'steel');
+    g.rect(1, 5, 2, 1, 'green'); g.rect(1, 10, 2, 1, 'green'); g.rect(2, 6, 1, 1, 'greenHi'); g.rect(2, 9, 1, 1, 'greenHi');
+  },
+  arrowrain(g) { // three arrows falling from a cloud
+    g.disc(5, 3, 2, 'gray'); g.disc(9, 3, 2, 'steel'); g.disc(12, 4, 1, 'gray'); g.rect(3, 4, 11, 1, 'gray');
+    for (const x of [4, 8, 12]) { g.line(x, 6, x, 12, 'wood'); g.px(x, 13, 'steel'); g.px(x, 14, 'steelHi'); g.px(x - 1, 6, 'green'); g.px(x + 1, 6, 'green'); }
+    g.px(6, 11, 'steelLo'); g.px(10, 9, 'steelLo');
+  },
+  thornwall(g) { // row of thorns out of the ground
+    g.rect(1, 12, 14, 3, 'woodLo'); g.rect(1, 12, 14, 1, 'wood');
+    for (const [x, h] of [[2, 6], [5, 9], [8, 11], [11, 8], [14, 5]]) { g.line(x, 12, x, 12 - h + 1, 'green'); g.px(x, 12 - h, 'greenHi'); g.px(x - 1, 12 - h + 2, 'greenLo'); g.px(x + 1, 12 - h + 4, 'greenLo'); }
+    g.px(8, 2, 'greenHi');
+  },
+  wildmend(g) { // leaf with a heart-cross
+    g.disc(8, 8, 5, 'green'); g.disc(7, 7, 3, 'greenHi'); g.line(2, 14, 13, 3, 'greenLo');
+    g.rect(9, 8, 4, 1, 'white'); g.rect(10, 7, 2, 3, 'white'); g.px(4, 10, 'greenLo'); g.px(5, 11, 'greenLo'); g.px(12, 12, 'greenLo');
+  },
+  meteor(g) { // fireball with a streaking tail
+    g.line(1, 2, 8, 9, 'redLo'); g.line(2, 1, 9, 8, 'red'); g.line(1, 5, 6, 10, 'orange'); g.line(4, 1, 9, 6, 'orange');
+    g.disc(10, 10, 4, 'orange'); g.disc(10, 10, 3, 'yellow'); g.disc(10, 10, 1, 'white'); g.px(14, 14, 'red'); g.px(14, 6, 'orange'); g.px(6, 14, 'orange');
+  },
+  chain(g) { // chained lightning bolts
+    g.line(9, 1, 5, 6, 'yellow'); g.line(5, 6, 10, 7, 'yellow'); g.line(10, 7, 6, 14, 'yellow'); g.line(10, 1, 6, 6, 'orange'); g.line(11, 7, 7, 14, 'orange');
+    g.px(9, 1, 'white'); g.px(5, 6, 'white'); g.px(10, 7, 'white');
+    g.disc(3, 13, 1, 'red'); g.disc(13, 3, 1, 'red'); g.px(3, 13, 'redHi'); g.px(13, 3, 'redHi'); g.px(2, 12, 'orange'); g.px(14, 4, 'orange');
+  },
+  tidal(g) { // breaking wave
+    g.rect(1, 11, 14, 3, 'blueLo'); g.rect(1, 11, 14, 1, 'blue');
+    g.rect(2, 8, 4, 3, 'blue'); g.rect(4, 5, 4, 3, 'blue'); g.rect(6, 3, 5, 3, 'blue'); g.rect(10, 3, 3, 2, 'blue'); g.rect(11, 5, 2, 2, 'blue');
+    g.rect(6, 3, 5, 1, 'blueHi'); g.rect(4, 5, 2, 1, 'blueHi'); g.px(12, 3, 'white'); g.px(13, 4, 'white'); g.px(10, 6, 'white'); g.px(8, 8, 'blueHi'); g.px(3, 9, 'blueHi'); g.px(13, 7, 'blueHi');
+  },
+  mist(g) { // pale cloud with healing droplets
+    g.disc(5, 6, 3, 'blueHi'); g.disc(9, 5, 3, 'white'); g.disc(12, 7, 2, 'blueHi'); g.rect(3, 7, 11, 2, 'blueHi'); g.rect(4, 6, 9, 1, 'white');
+    g.px(5, 11, 'blue'); g.px(5, 12, 'blueHi'); g.px(9, 12, 'blue'); g.px(9, 13, 'blueHi'); g.px(12, 11, 'blue');
+    g.rect(7, 10, 1, 3, 'green'); g.rect(6, 11, 3, 1, 'green'); g.px(14, 3, 'white');
+  },
+  shadowstep(g) { // fading silhouettes with a blade
+    g.rect(1, 4, 3, 8, 'purpleHi'); g.rect(5, 4, 3, 8, 'purple'); g.rect(9, 4, 3, 8, 'grayLo');
+    g.rect(10, 2, 2, 2, 'grayLo'); g.rect(6, 2, 2, 2, 'purple'); g.rect(2, 2, 2, 2, 'purpleHi');
+    g.line(11, 13, 15, 8, 'steel'); g.px(15, 7, 'steelHi'); g.px(10, 14, 'woodLo'); g.px(12, 13, 'steelLo');
+  },
+  fangdance(g) { // two crossed curved fangs in a circle of motion
+    for (let a = 0; a < 14; a++) { const t = (a / 14) * Math.PI * 2; g.px(8 + Math.cos(t) * 6, 8 + Math.sin(t) * 6, a % 2 ? 'steelLo' : 'steel'); }
+    g.line(3, 12, 12, 3, 'steel'); g.line(4, 12, 13, 4, 'steelLo'); g.line(3, 4, 12, 13, 'redHi'); g.line(4, 3, 13, 12, 'red');
+    g.px(8, 8, 'white'); g.px(3, 12, 'steelHi'); g.px(12, 13, 'redHi');
+  },
+  caltrops(g) { // jacks on the ground
+    for (const [cx, cy] of [[4, 5], [11, 6], [7, 11]]) {
+      g.line(cx, cy - 3, cx, cy + 3, 'steel'); g.line(cx - 3, cy, cx + 3, cy, 'steel'); g.px(cx, cy, 'steelHi'); g.px(cx - 2, cy - 2, 'steelLo'); g.px(cx + 2, cy + 2, 'steelLo');
+      g.px(cx, cy - 3, 'steelHi'); g.px(cx, cy + 3, 'red');
+    }
+  },
+  feint(g) { // double chevron buff over a twin-blade glint
+    g.line(3, 7, 8, 2, 'yellow'); g.line(8, 2, 13, 7, 'yellow'); g.line(3, 11, 8, 6, 'orange'); g.line(8, 6, 13, 11, 'orange');
+    g.line(3, 8, 8, 3, 'gold'); g.line(8, 3, 13, 8, 'gold'); g.line(3, 12, 8, 7, 'red'); g.line(8, 7, 13, 12, 'red');
+    g.px(8, 2, 'white'); g.px(8, 6, 'white'); g.rect(2, 14, 12, 1, 'purple'); g.px(5, 14, 'purpleHi'); g.px(10, 14, 'purpleHi');
+  },
 };
 
 export const HUD_ABILITY_ICON = {
@@ -148,7 +234,14 @@ export const HUD_ABILITY_ICON = {
   shot: 'shot', volley: 'volley', snare: 'snare',
   bolt: 'bolt', burst: 'burst', blink: 'blink', ward: 'ward',
   stab: 'stab', fan: 'fan', smoke: 'smoke',
+  // advanced classes (jobs.js ADVANCED) — every skill has its own icon
+  bash: 'bash', bulwark: 'bulwark', beacon: 'beacon', sunburst: 'sunburst',
+  pierce: 'pierce', arrowrain: 'arrowrain', thornwall: 'thornwall', wildmend: 'wildmend',
+  meteor: 'meteor', chain: 'chain', tidal: 'tidal', mist: 'mist',
+  shadowstep: 'shadowstep', fangdance: 'fangdance', caltrops: 'caltrops', feint: 'feint',
 };
+// texture key for an ability id (null when unknown)
+export const hudIconKey = (id) => (HUD_ABILITY_ICON[id] ? `hud.${HUD_ABILITY_ICON[id]}` : null);
 
 export function makeHudIcons(scene) {
   for (const [name, draw] of Object.entries(ICONS)) {

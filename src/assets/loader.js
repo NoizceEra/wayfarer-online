@@ -6,6 +6,7 @@ import { NPC_SHEETS } from '../data/npcs.js';
 import { ENEMY_TABLE } from '../data/jobs.js';
 import { ITEM_LIST } from '../data/items.js';
 import '../data/worldEnemies.js'; // registers the expanded monster roster into ENEMY_TABLE before we read it
+import '../data/deathFx.js'; // tags every monster def with its death / hit-reaction family (deathFx)
 const NA = 'assets/na';
 export const DIRS = ['down', 'up', 'left', 'right'];
 
@@ -65,6 +66,25 @@ const FX = [
   ['fx.shieldBlue', 'FX/Magic/Shield/SpriteSheetBlue.png', 24, 26, 16],
   ['fx.smoke', 'FX/Smoke/Smoke/SpriteSheet.png', 32, 32, 16],
   ['fx.dust', 'FX/Smoke/SmokeCircular/SpriteSheet.png', 30, 14, 18],
+  // skill VFX sheets (systems/skillVfx.js)
+  ['fx.flam', 'FX/Elemental/Flam/SpriteSheet.png', 25, 30, 16],
+  ['fx.ice', 'FX/Elemental/Ice/SpriteSheet.png', 32, 32, 18],
+  ['fx.iceB', 'FX/Elemental/Ice/SpriteSheetB.png', 32, 32, 14],
+  ['fx.flake', 'FX/Elemental/Ice/SpriteSheetFlake.png', 32, 32, 14],
+  ['fx.thunder', 'FX/Elemental/Thunder/SpriteSheet.png', 20, 28, 20],
+  ['fx.plant', 'FX/Elemental/Plant/SpriteSheet.png', 24, 28, 16],
+  ['fx.water', 'FX/Elemental/Water/SpriteSheet.png', 44, 33, 16],
+  ['fx.pillar', 'FX/Elemental/WaterPillar/SpriteSheet.png', 30, 41, 14],
+  ['fx.rockSpike', 'FX/Elemental/RockSpike/SpriteSheet.png', 54, 48, 18],
+  ['fx.cutX', 'FX/Attack/CutX/SpriteSheet.png', 32, 32, 22],
+  ['fx.slashCurved', 'FX/Attack/SlashCurved/SpriteSheet.png', 32, 32, 22],
+  ['fx.slashDouble', 'FX/Attack/SlashDoubleCurved/SpriteSheet.png', 32, 32, 22],
+  ['fx.circular', 'FX/Attack/CircularSlash/SpriteSheet.png', 32, 32, 22],
+  ['fx.claw', 'FX/Attack/Claw/SpriteSheet.png', 32, 32, 22],
+  ['fx.circleWhite', 'FX/Magic/Circle/SpriteSheetWhite.png', 32, 32, 16],
+  ['fx.circleSpark', 'FX/Magic/Circle/SpriteSheetSpark.png', 32, 32, 16],
+  ['fx.spirit', 'FX/Magic/Spirit/SpriteSheet.png', 32, 32, 14],
+  ['fx.shieldYellow', 'FX/Magic/Shield/SpriteSheetYellow.png', 24, 26, 16],
 ];
 const PROJ_SHEETS = [
   ['proj.energyBall', 'FX/Projectile/EnergyBall.png', 16, 16, 12],
