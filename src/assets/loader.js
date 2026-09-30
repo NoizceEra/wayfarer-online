@@ -159,7 +159,7 @@ export function preloadWorld(scene) {
   L.image('veh.crane', `${NA}/Backgrounds/Vehicles/Crane.png`);
   L.image('veh.net', `${NA}/Backgrounds/Vehicles/FishNetFull.png`);
   for (const it of ITEM_LIST) L.image(`item.src.${it.id}`, `${ITEM_DIR}/${it.src}`);
-  L.image('char.shadow', `${NA}/Actor/Character/Shadow.png`);
+  // (the soft ground shadow 'char.shadow' is generated procedurally in worldLoad.js; the hard PNG is no longer used)
   for (const [name, file] of Object.entries(MONSTER_SHEETS)) {
     L.spritesheet(`mon.${name}`, `${NA}/Actor/Monster/${file}`, { frameWidth: 16, frameHeight: 16 });
   }

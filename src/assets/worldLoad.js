@@ -39,7 +39,7 @@ export function startWorldLoad(scene) {
 // Replace the hard black blob with a soft radial ellipse so sprites sit on the ground.
 function softenShadow(scene) {
   const key = 'char.shadow', W = 32, H = 12;
-  if (scene.textures.exists(key)) scene.textures.remove(key);
+  if (scene.textures.exists(key)) return; // never replace a live texture: images may already reference it
   const tex = scene.textures.createCanvas(key, W, H);
   const ctx = tex.getContext();
   ctx.save(); ctx.translate(W / 2, H / 2); ctx.scale(1, H / W);
