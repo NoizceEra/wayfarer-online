@@ -17,6 +17,8 @@ export const Events = {
   LOOT: 'loot',
   LEVEL_UP: 'level-up',   // {level, statPoints, skillPoints, needsClass}
   PROGRESS: 'progress',   // stat/skill/class changed -> HUD refresh
+  NET_STATUS: 'net-status',       // {status: offline|connecting|online|reconnecting, ping, players, room}
+  NET_RECONNECTED: 'net-reconnected', // {resumed: bool} seat resumed (true) or fresh rejoin (false)
 };
 
 export class Bus {

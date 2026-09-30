@@ -1,12 +1,19 @@
 import Phaser from 'phaser';
 import { ModularPlayer } from './ModularPlayer.js';
 import { defaultHero } from '../data/customization.js';
+import { SnapBuffer } from '../net/interp.js';
 
-// Puppet for other players in the room (host-relay: positions + look).
-// Wraps a physics-free ModularPlayer, so a remote hero wears exactly what its
-// owner wears: skin/hair/face, worn gear for all four facings, dyes, weapon.
-// The hero payload (`{...hero, equipped, dyes}`) arrives via the existing
-// 'peer-join' / 'hero' messages — no new network message types.
+// Puppet for other players in the room.
+// The avatar is a physics-free ModularPlayer, so a remote hero wears exactly
+// what its owner wears: skin/hair/face, worn gear for all four facings, dyes,
+// weapon. The hero payload (`{...hero, equipped, dyes}`) arrives via the
+// 'peer-join' / 'hero' messages.
+//
+// Motion is snapshot-interpolated: WorldSync pushes server-timestamped
+// samples (pushSample) and calls update(renderTime, myArea) every frame.
+// The avatar lives directly in the scene (not inside this container) so its
+// weapon swing FX spawn at the right world position; the container only
+// carries the nameplate (UIScene/WorldScene nameplate code uses r.label).
 export class RemotePlayer extends Phaser.GameObjects.Container {
   constructor(scene, name, hero) {
     super(scene, 0, 0);
@@ -17,34 +24,84 @@ export class RemotePlayer extends Phaser.GameObjects.Container {
     this.avatar.noDust = true;
     this.avatar.shadow.setScale(1.4, 1);
     this.label = scene.add.text(0, -28, name, { fontFamily: '"Silkscreen", monospace', fontSize: '8px', color: '#fff', backgroundColor: '#00000088' }).setOrigin(0.5);
-    this.add([this.avatar, this.label]);
+    this.add([this.label]);
     this.setDepth(9);
-    this.target = { x: 0, y: 0 };
-    this.moving = false;
+    this.buf = new SnapBuffer();
+    this.moving = false; this.movingFlag = 0;
+    this.area = 'ow'; this.otherArea = false;
+    this.lastOw = null;   // last overworld position (minimap while the peer is inside)
+    this.dc = false;
+    this.hp = 100;
+    this.placed = false;
   }
+
+  // server-time sample; x/y may be undefined for facing-only updates
+  pushSample(t, x, y, facing, moving) {
+    if (facing && facing !== this.facing) { this.facing = facing; this.avatar.setFacing(facing); }
+    if (moving !== undefined) this.movingFlag = moving ? 1 : 0;
+    if (x === undefined || y === undefined) return;
+    this.buf.push(t, x, y);
+    if (this.area === 'ow') this.lastOw = { x, y };
+    if (!this.placed) { this.placed = true; this.setPos(x, y); }
+  }
+  setArea(a) {
+    if (a === this.area) return;
+    this.area = a; this.buf.clear(); this.placed = false;
+  }
+  setDisconnected(dc) { this.dc = !!dc; this.label.setText(dc ? `${this.rname} (lag)` : this.rname); }
+
+  // legacy direct set (old 'input' messages)
   remoteSet(x, y, facing, hp) {
-    this.target.x = x; this.target.y = y;
+    this.pushSample(performance.now() + 100, x, y, facing, 1);
     if (typeof hp === 'number') this.hp = hp;
-    if (facing && facing !== this.facing) {
-      this.facing = facing;
-      this.avatar.setFacing(facing);
-    }
   }
-  // New hero payload (creator look + equipped + dyes) from the owner.
+
   setHero(hero) {
     if (!hero) return;
     this.avatar.applyHero({ ...defaultHero(), ...hero });
     this.avatar.setFacing(this.facing);
   }
-  update() {
-    const dx = this.target.x - this.x, dy = this.target.y - this.y;
-    const d = Math.hypot(dx, dy);
-    // peers that changed space (interior/map warp) jump instead of gliding across the world
-    if (d > 400) { this.x = this.target.x; this.y = this.target.y; return; }
-    const moving = d > 3;
+
+  attackPose(facing) {
+    if (facing && facing !== this.facing) { this.facing = facing; this.avatar.setFacing(facing); }
+    if (this.visible) this.avatar.attackPose();
+  }
+
+  setPos(x, y) {
+    this.x = x; this.y = y;
+    this.avatar.x = x; this.avatar.y = y;
+    if (this.area === 'ow') this.lastOw = { x, y };
+  }
+
+  setVisible(v) {
+    super.setVisible(v);
+    this.avatar?.setVisible(v);
+    return this;
+  }
+
+  update(renderT, myArea = 'ow') {
+    this.otherArea = this.area !== myArea;
+    this.setVisible(!this.otherArea && this.placed);
+    if (this.otherArea) return;
+    const s = this.buf.sample(renderT, !!this.movingFlag);
+    if (!s) return;
+    this.setPos(s.x, s.y);
+    const moving = !!(s.moving && this.movingFlag);
     if (moving !== this.moving) { this.moving = moving; this.avatar.setMoving(moving); }
-    this.x += dx * 0.18;
-    this.y += dy * 0.18;
-    this.setDepth(this.y); // y-sort with world
+    const d = Math.round(this.y);
+    this.setDepth(d + 0.1); this.avatar.setDepth(d); // y-sort with world
+  }
+
+  // minimap: {x, y, grey}
+  // (overworld coordinates only: a peer inside an interior/dungeon is shown
+  // greyed at the spot where it left the overworld)
+  mapPos() {
+    if (this.area === 'ow') return this.lastOw ? { x: this.lastOw.x, y: this.lastOw.y, grey: this.otherArea } : null;
+    return this.lastOw ? { x: this.lastOw.x, y: this.lastOw.y, grey: true } : null;
+  }
+
+  destroy(fromScene) {
+    this.avatar?.destroy(fromScene);
+    super.destroy(fromScene);
   }
 }

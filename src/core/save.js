@@ -48,8 +48,13 @@ export function loadProgress(name) {
     return { ...p, ...normalizeGearState(p) };
   } catch { return null; }
 }
-export function saveProgress(name, p) {
-  try { localStorage.setItem(progressKey(name), JSON.stringify({ savedAt: Date.now(), ...p })); } catch { /* quota */ }
+// Save listeners (net/NetworkManager uploads to the server-side character store).
+const saveHooks = new Set();
+export function onProgressSaved(fn) { saveHooks.add(fn); return () => saveHooks.delete(fn); }
+export function saveProgress(name, p, opts = {}) {
+  const rec = { ...p, savedAt: opts.savedAt || Date.now() };
+  try { localStorage.setItem(progressKey(name), JSON.stringify(rec)); } catch { /* quota */ }
+  if (!opts.silent) saveHooks.forEach((fn) => { try { fn(name, rec); } catch { /* ignore */ } });
 }
 export function clearProgress(name) { localStorage.removeItem(progressKey(name)); }
 

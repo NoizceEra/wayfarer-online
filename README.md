@@ -18,7 +18,7 @@ npm run copy-assets   # seeds public/assets from ../rpg-foundation (already done
 npm run dev           # http://localhost:5176
 ```
 
-Co-op server (thin relay, host-authoritative — same model as Lanternfall):
+Online server (public world shards + private co-op, area-authority enemy sync, file-backed saves — details and env vars in [server/README.md](server/README.md)):
 
 ```powershell
 cd server
@@ -32,8 +32,10 @@ Set the client URL via `.env`: `VITE_SERVER_URL=ws://localhost:2567`
 ## Deploy
 
 - **Vercel (client):** import this folder, framework = Vite, build = `npm run build`, output = `dist`.
-- **Railway (co-op relay):** deploy `server/` (railway.json at root points at it).
-  Set `PORT` (provided by Railway) — no DB needed for v1.
+- **Railway (relay):** root `railway.json` builds/starts `server/` (healthcheck `/health`).
+  `PORT` is provided by Railway; mount a **volume** and set `DATA_DIR=/data` so characters
+  survive redeploys; optional `MAX_PLAYERS` (per public shard, default 40). No DB needed.
+  `GET /stats` shows shards, players and anti-cheat counters.
 
 ## Controls
 
@@ -56,7 +58,7 @@ slash) and worn helms/hats render on your character and in co-op.
 1. **Title / Login** — enter a wayfarer name (local profile, no password in v1; ready for accounts).
 2. **Creator** — job (Wayfarer/Ranger/Arcanist/Bandit), body, skin, hair style+color, top tint, accessory, weapon preview, Game Boy palette. Saved to localStorage.
 3. **World** — one large open map (town → meadow → woods → ruins gate), day/night, quests,HUD: HP/MP/XP, hotbar, minimap, quest tracker, chat, party frames.
-4. **Solo or Co-op** — play offline any time. Host (5-char code) or Join from Title → Co-op; host is authoritative for enemies/flags, guests keep their own XP/gold.
+4. **Solo, Online or Co-op** — play offline any time; **Play Online** drops you into the always-on public world (Embervale-1, overflow shards when full); or Host (5-char code) / Join a private room. One player per area simulates its enemies (auto-migrates when they leave); everyone can fight, kills credit every contributor, loot is per player. Auto-reconnect, server-side character saves (anonymous device token) with localStorage fallback. Status pill (bottom-left) shows server / ping / players.
 
 ## Project layout
 
