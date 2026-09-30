@@ -49,7 +49,7 @@ or put it in `asset-staging/` and do not ship it until relicensed/redrawn.
 - Host-relay co-op (`server/` + `src/net/`): solo simulation is authoritative, host relays to guests
 
 ## AI-generated art
-`public/assets/custom/icons_ai/*.png` — 16 item icons generated with an image model
+`public/assets/custom/icons_ai/*.png` — 48 item icons (items, weapons, armor) generated with an image model
 (ElevenLabs creative tools, gpt-image-2) and processed by `tools/slice_icons.py`
 (chroma-key, crop, nearest-neighbour downscale to 32px, 24-colour quantize).
 Not yet wired into the inventory UI. Confirm the generating service's terms allow game use before shipping commercially.
