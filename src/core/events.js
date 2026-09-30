@@ -17,6 +17,12 @@ export const Events = {
   LOOT: 'loot',
   LEVEL_UP: 'level-up',   // {level, statPoints, skillPoints, needsClass}
   PROGRESS: 'progress',   // stat/skill/class changed -> HUD refresh
+  JOURNAL: 'journal',     // {open:true|false|'toggle', tab?} journal panel (L)
+  CRAFT: 'craft',         // {open:true|false|'toggle', station?} crafting panel (U)
+  TOAST: 'toast',         // {title, text, color?, icon?} achievement / quest toasts
+  QUEST_CHANGED: 'quest-changed', // quest log / markers / tracker changed
+  ACH_EVENT: 'ach-event', // {k, n?} internal achievement counters
+  FISH: 'fish',           // {spot} start the fishing mini-game
 };
 
 export class Bus {
