@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { JOBS } from '../data/jobs.js';
-import { SKINS, HAIR_STYLES, HAIR_COLORS, TOPS, ACCESSORIES, WEAPONS, defaultHero } from '../data/customization.js';
+import { SKINS, HAIR_STYLES, HAIR_COLORS, TOPS, CREATOR_ACCESSORIES, WEAPONS, EYES, EYE_COLORS, MARKS, STARTER_SLOTS, starterChoices, defaultHero } from '../data/customization.js';
 import { CONFIG } from '../config.js';
 import { saveHero, loadHero } from '../core/save.js';
 import { audio } from '../systems/audio.js';
@@ -112,11 +112,12 @@ export class CreatorScene extends Phaser.Scene {
 
     // Layout inside right panel
     const PAD       = Math.max(8, Math.floor(rightW * 0.028));
-    const NUM_ROWS  = 8;
+    const NUM_ROWS  = 6;   // rows per tab (BODY / STYLE / WARDROBE)
+    const TAB_H     = 26;
     const DESC_H    = Math.min(54, Math.floor(panelH * 0.1));
-    const rowAreaH  = panelH - PAD * 2 - DESC_H;
+    const rowAreaH  = panelH - PAD * 2 - DESC_H - TAB_H;
     const rowH      = Math.floor(rowAreaH / NUM_ROWS);
-    const rowStart  = panelTop + PAD + 2;
+    const rowStart  = panelTop + PAD + 2 + TAB_H;
 
     // Label column: proportional, min 70px
     const LABEL_W   = Math.max(70, Math.min(110, Math.floor(rightW * 0.30)));
@@ -203,7 +204,7 @@ export class CreatorScene extends Phaser.Scene {
       arR.on('pointerover',  () => arR.setTexture('ui.arrowRH'));
       arR.on('pointerout',   () => arR.setTexture('ui.arrowR'));
 
-      const cur  = () => values.findIndex((v) => v.id === get());
+      const cur  = () => Math.max(0, values.findIndex((v) => v.id === get()));
       const draw = () => {
         const i = cur();
         const name = values[i].name;
@@ -238,17 +239,65 @@ export class CreatorScene extends Phaser.Scene {
       return draw;
     };
 
-    // ── Build all rows ────────────────────────────────────────────
+    // ── Build all rows (3 tabs; objects created per tab are shown/hidden together) ──
     const jobVals = Object.values(JOBS).map((j) => ({ id: j.id, name: j.name }));
-    row(0, 'JOB',        jobVals,     () => this.hero.job,       (v) => { this.hero.job = v; const j = JOBS[v]; this.hero.body = j.body; this.hero.weapon = j.weapon; });
-    row(1, 'SKIN',       SKINS,       () => this.hero.skin,      (v) => (this.hero.skin = v));
-    row(2, 'HAIR',       HAIR_STYLES, () => this.hero.hair,      (v) => (this.hero.hair = v));
-    row(3, 'HAIR COLOR', HAIR_COLORS, () => this.hero.hairColor, (v) => (this.hero.hairColor = v));
-    row(4, 'OUTFIT',     TOPS,        () => this.hero.top,       (v) => (this.hero.top = v));
-    row(5, 'CHARM',      ACCESSORIES, () => this.hero.accessory, (v) => (this.hero.accessory = v));
-    row(6, 'WEAPON',     WEAPONS,     () => this.hero.weapon,    (v) => (this.hero.weapon = v));
-    const palVals = CONFIG.palettes.map((p) => ({ id: p, name: p }));
-    row(7, 'GAME BOY',   palVals,     () => this.hero.palette,   (v) => (this.hero.palette = v));
+    const pages = {};
+    const page = (name, build) => {
+      const start = this.children.list.length;
+      build();
+      pages[name] = this.children.list.slice(start);
+    };
+    const starterRow = (i, label, slot) => row(i, label, starterChoices(slot), () => this.hero.starter?.[slot] || 'none', (v) => {
+      this.hero.starter = { ...(this.hero.starter || {}), [slot]: v === 'none' ? null : v };
+      this.syncPreviewGear();
+    });
+    page('BODY', () => {
+      row(0, 'JOB',        jobVals,     () => this.hero.job,       (v) => { this.hero.job = v; const j = JOBS[v]; this.hero.body = j.body; this.hero.weapon = j.weapon; });
+      row(1, 'SKIN',       SKINS,       () => this.hero.skin,      (v) => (this.hero.skin = v));
+      row(2, 'EYES',       EYES,        () => this.hero.eyes,      (v) => (this.hero.eyes = v));
+      row(3, 'EYE COLOR',  EYE_COLORS,  () => this.hero.eyeColor,  (v) => (this.hero.eyeColor = v));
+      row(4, 'MARKINGS',   MARKS,       () => this.hero.mark,      (v) => (this.hero.mark = v));
+      row(5, 'WEAPON',     WEAPONS,     () => this.hero.weapon,    (v) => (this.hero.weapon = v));
+    });
+    page('STYLE', () => {
+      row(0, 'HAIR',       HAIR_STYLES, () => this.hero.hair,      (v) => (this.hero.hair = v));
+      row(1, 'HAIR COLOR', HAIR_COLORS, () => this.hero.hairColor, (v) => (this.hero.hairColor = v));
+      row(2, 'OUTFIT DYE', TOPS,        () => this.hero.top,       (v) => (this.hero.top = v));
+      row(3, 'NECKWEAR',   CREATOR_ACCESSORIES, () => this.hero.accessory, (v) => (this.hero.accessory = v));
+      const palVals = CONFIG.palettes.map((p) => ({ id: p, name: p }));
+      row(4, 'GAME BOY',   palVals,     () => this.hero.palette,   (v) => (this.hero.palette = v));
+    });
+    page('WARDROBE', () => {
+      starterRow(0, 'HEADWEAR', 'head');
+      starterRow(1, 'FACEWEAR', 'face');
+      starterRow(2, 'BODYWEAR', 'body');
+      starterRow(3, 'BACK',     'back');
+      starterRow(4, 'BOOTS',    'feet');
+      this.add.text(rightX + rightW / 2, rowStart + 5 * rowH + rowH / 2, 'Starter cosmetics are yours to keep.\nFind, buy and dye more in game (I).', {
+        fontSize: '9px', color: '#8a9a80', fontFamily: '"Silkscreen", "Jersey 10", monospace', align: 'center',
+      }).setOrigin(0.5);
+    });
+    // tab buttons
+    const tabNames = Object.keys(pages);
+    const tabW = Math.floor((rightW - PAD * 2) / tabNames.length);
+    const tabBtns = {};
+    const showTab = (name) => {
+      this.tabName = name;
+      tabNames.forEach((n) => {
+        const on = n === name;
+        pages[n].forEach((o) => o.setVisible(on));
+        tabBtns[n].setStyle({ backgroundColor: on ? '#5a4a1a' : '#2a2210', color: on ? '#fff6c8' : '#b9a060' });
+      });
+    };
+    tabNames.forEach((n, i) => {
+      const t = this.add.text(rightX + PAD + i * tabW + tabW / 2, panelTop + PAD + 2 + TAB_H / 2, n, {
+        fontSize: '11px', color: '#b9a060', fontFamily: '"Silkscreen", "Jersey 10", monospace', backgroundColor: '#2a2210', padding: { x: 4, y: 4 },
+      }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+      t.setFixedSize(tabW - 6, 22); t.setAlign('center');
+      t.on('pointerdown', () => { audio.play('ui', 0.6); showTab(n); });
+      tabBtns[n] = t;
+    });
+    showTab('BODY');
 
     refreshMeta();
 
@@ -277,6 +326,14 @@ export class CreatorScene extends Phaser.Scene {
     };
     start.on('pointerdown', begin);
     this.input.keyboard.on('keydown-ENTER', begin);
+  }
+
+  // Starter cosmetics are worn by the preview (and granted on entering the world).
+  syncPreviewGear() {
+    if (!this.preview) return;
+    const eq = {};
+    for (const slot of STARTER_SLOTS) if (this.hero.starter?.[slot]) eq[slot] = this.hero.starter[slot];
+    this.preview.setLook({ equipped: eq, dyes: {} });
   }
 
   // ── Preview panel: pedestal, big integer-scaled hero, facing + action buttons ──
@@ -311,6 +368,7 @@ export class CreatorScene extends Phaser.Scene {
     }
 
     this.preview = new ModularPlayer(this, cx, feetY, this.hero);
+    this.syncPreviewGear();
     this.preview.setScale(sc).setDepth(10);
     if (this.preview.body) this.preview.body.setEnable(false);
     this.preview.shadow.setVisible(false);

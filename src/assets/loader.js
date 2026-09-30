@@ -52,6 +52,15 @@ const WEAPONS = [
   ['weapon.wand', 'Items/Weapons/MagicWand/SpriteInHand.png'],
   ['weapon.sai', 'Items/Weapons/Sai/SpriteInHand.png'],
   ['weapon.ninjaku', 'Items/Weapons/Ninjaku/SpriteInHand.png'],
+  // gear-system weapons (in-hand sprites are hilt-up; 'upright' ones are full sprites, head-up)
+  ['weapon.sword2', 'Items/Weapons/Sword2/SpriteInHand.png'],
+  ['weapon.katana', 'Items/Weapons/Katana/SpriteInHand.png'],
+  ['weapon.rapier', 'Items/Weapons/Rapier/SpriteInHand.png'],
+  ['weapon.bone', 'Items/Weapons/Bone/SpriteInHand.png'],
+  ['weapon.bow2', 'Items/Weapons/Bow2/Sprite.png'],
+  ['weapon.axe', 'Items/Weapons/Axe/Sprite.png'],
+  ['weapon.hammer', 'Items/Weapons/Hammer/Sprite.png'],
+  ['weapon.staff', 'Items/Weapons/MagicWand/Sprite.png'],
 ];
 const ACCESSORIES = [
   ['acc.cape',   'assets/custom/accessories/cape.png'],

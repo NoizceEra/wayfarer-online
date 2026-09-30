@@ -28,9 +28,9 @@ export const ZONES = [
 ];
 
 export const QUESTS = [
-  { id: 'q_meadow', name: 'Field Notes', zone: 'meadow', text: 'Defeat 5 Dew Slimes for Pip in Thistle Town.', need: { enemy: 'dewslime', count: 5 }, reward: { xp: 60, gold: 25 } },
-  { id: 'q_woods', name: 'Moss & Moths', zone: 'woods', text: 'Defeat 5 Thornmites in Mosswood for Pip.', need: { enemy: 'thornmite', count: 5 }, reward: { xp: 140, gold: 60 } },
-  { id: 'q_ruins', name: 'Tidehollow Lantern', zone: 'ruins', text: 'Defeat 3 Bog Spirits deep in Tidehollow for Maren.', need: { enemy: 'bogspirit', count: 3 }, reward: { xp: 300, gold: 150 } },
-  { id: 'q_ruins2', name: 'Rattle & Rust', zone: 'ruins', text: 'Defeat 4 Rust Skulls still guarding the old gate.', need: { enemy: 'rustskull', count: 4 }, reward: { xp: 380, gold: 180 } },
-  { id: 'q_final', name: 'Eye of the Tide', zone: 'ruins', text: 'Defeat 2 Tide Eyes to close the rift. Maren will owe you one.', need: { enemy: 'tideeye', count: 2 }, reward: { xp: 520, gold: 260 } },
+  { id: 'q_meadow', name: 'Field Notes', zone: 'meadow', text: 'Defeat 5 Dew Slimes for Pip in Thistle Town.', need: { enemy: 'dewslime', count: 5 }, reward: { xp: 60, gold: 25, gear: 'traveler_cloak' } },
+  { id: 'q_woods', name: 'Moss & Moths', zone: 'woods', text: 'Defeat 5 Thornmites in Mosswood for Pip.', need: { enemy: 'thornmite', count: 5 }, reward: { xp: 140, gold: 60, gear: 'swift_boots' } },
+  { id: 'q_ruins', name: 'Tidehollow Lantern', zone: 'ruins', text: 'Defeat 3 Bog Spirits deep in Tidehollow for Maren.', need: { enemy: 'bogspirit', count: 3 }, reward: { xp: 300, gold: 150, gear: 'glimmer_orb' } },
+  { id: 'q_ruins2', name: 'Rattle & Rust', zone: 'ruins', text: 'Defeat 4 Rust Skulls still guarding the old gate.', need: { enemy: 'rustskull', count: 4 }, reward: { xp: 380, gold: 180, gear: 'horned_helm' } },
+  { id: 'q_final', name: 'Eye of the Tide', zone: 'ruins', text: 'Defeat 2 Tide Eyes to close the rift. Maren will owe you one.', need: { enemy: 'tideeye', count: 2 }, reward: { xp: 520, gold: 260, gear: 'royal_mantle' } },
 ];

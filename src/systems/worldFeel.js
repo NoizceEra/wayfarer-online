@@ -36,7 +36,7 @@ export function updatePrompt(scene, dt) {
   if (best) {
     pb.target = best;
     const def = best.getData('def');
-    const label = def.name === 'Maren' ? 'E  Open' : 'E  Talk';
+    const label = def.shop ? 'E  Shop' : 'E  Talk';
     if (pb.txt.text !== label) pb.txt.setText(label);
   }
   // Full strength in interaction range, softer while approaching.
