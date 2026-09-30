@@ -37,6 +37,31 @@ Object.assign(ENEMY_TABLE, {
   },
 });
 
+// Combat behaviour for every enemy (base table in jobs.js + the ones above).
+//  lv      — level the base stats are tuned for (instances roll lv..lv+2 within the zone range)
+//  ai      — hopper (slow lunge) | swarm (fast darting, circles) | charger (long wind-up dash)
+//            | ranged (kites + fires orbs) | melee (standard lunge)
+//  aggro   — proactive aggro radius (px); social — pulls nearby kin into the fight
+//  flee    — HP fraction below which it runs away (then returns when healed a bit)
+//  inflict — status applied on hit {id, chance}; spd — move speed multiplier
+const BEHAVIOUR = {
+  dewslime:     { lv: 1,  ai: 'hopper',  aggro: 70,  social: true,  spd: 0.8 },
+  mossbat:      { lv: 2,  ai: 'swarm',   aggro: 95,  social: true,  spd: 1.35, flee: 0.2 },
+  thornmite:    { lv: 4,  ai: 'charger', aggro: 90,  inflict: { id: 'poison', chance: 0.35 } },
+  capling:      { lv: 5,  ai: 'melee',   aggro: 70,  flee: 0.25, inflict: { id: 'slow', chance: 0.3 } },
+  willowisp:    { lv: 6,  ai: 'ranged',  aggro: 115, inflict: { id: 'burn', chance: 0.4 }, shot: 0xa6ff6a },
+  bogspirit:    { lv: 9,  ai: 'melee',   aggro: 95,  social: true, inflict: { id: 'slow', chance: 0.35 } },
+  rustskull:    { lv: 8,  ai: 'charger', aggro: 100, social: true, inflict: { id: 'bleed', chance: 0.35 } },
+  tideeye:      { lv: 10, ai: 'ranged',  aggro: 130, inflict: { id: 'stun', chance: 0.18 }, shot: 0x6ad8ff },
+  shorecrab:    { lv: 3,  ai: 'melee',   aggro: 75,  social: true, flee: 0.2, inflict: { id: 'bleed', chance: 0.25 } },
+  bonesentinel: { lv: 10, ai: 'melee',   aggro: 100, social: true, spd: 0.85, inflict: { id: 'stun', chance: 0.15 } },
+  gravebat:     { lv: 9,  ai: 'swarm',   aggro: 120, social: true, spd: 1.4, inflict: { id: 'bleed', chance: 0.3 } },
+  gravemaw:     { lv: 13, ai: 'boss' },
+  frostwisp:    { lv: 12, ai: 'ranged',  aggro: 125, inflict: { id: 'slow', chance: 0.5 }, shot: 0xbfe8ff },
+  rimecrawler:  { lv: 13, ai: 'charger', aggro: 95,  social: true, inflict: { id: 'poison', chance: 0.3 } },
+};
+for (const [id, b] of Object.entries(BEHAVIOUR)) if (ENEMY_TABLE[id]) Object.assign(ENEMY_TABLE[id], b);
+
 // Roll a def-level gear drop (for enemies not listed in gear.js drop tables).
 export function rollDefDrop(typeId, gearById) {
   const def = ENEMY_TABLE[typeId];

@@ -17,6 +17,9 @@ export const Events = {
   LOOT: 'loot',
   LEVEL_UP: 'level-up',   // {level, statPoints, skillPoints, needsClass}
   PROGRESS: 'progress',   // stat/skill/class changed -> HUD refresh
+  KILL: 'kill',           // hero killed an enemy {typeId, name, level, rank, boss, xp, x, y, areaId, by}
+  PLAYER_DIED: 'player-died', // {xpLoss, goldLoss, respawn}
+  PARTY_KILL: 'party-kill',   // (consumed) party-mate kill share {typeId, xp, by, questCredit?}
 };
 
 export class Bus {
