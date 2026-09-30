@@ -467,6 +467,33 @@ export class WorldScene extends Phaser.Scene {
     list.forEach((s, i) => { const e = kids[i]; if (e instanceof Enemy) { e.setPosition(s.x, s.y); if (typeof s.hp === 'number') { e.hp = s.hp; } } });
   }
 
+  // Nameplates: fade with distance to the hero and nudge upward so labels of
+  // nearby NPCs / remote players never overprint each other.
+  updateNameplates() {
+    const me = this.player;
+    if (!me) return;
+    const items = [];
+    const add = (c, l) => { if (c && l && l.active) items.push({ c, l }); };
+    for (const n of this.npcs || []) add(n, n.list?.[2]);
+    this.sync?.remotes?.forEach((r) => add(r, r.label));
+    const placed = [];
+    items.sort((a, b) => a.c.y - b.c.y);
+    for (const it of items) {
+      const d = Math.hypot(it.c.x - me.x, it.c.y - me.y);
+      const a = Phaser.Math.Clamp(1 - (d - 70) / 50, 0, 1);
+      it.l.setAlpha(a).setVisible(a > 0.03);
+      if (a <= 0.03) continue;
+      let off = 0;
+      for (let tries = 0; tries < 6; tries++) {
+        const hit = placed.find((q) => Math.abs(q.x - it.c.x) < 44 && Math.abs(q.y - (it.c.y + off)) < 11);
+        if (!hit) break;
+        off -= 11;
+      }
+      it.l.y = -26 + off;
+      placed.push({ x: it.c.x, y: it.c.y + off });
+    }
+  }
+
   update(time, delta) {
     const dt = delta / 1000;
     this.daynight.update(dt);
@@ -541,6 +568,7 @@ export class WorldScene extends Phaser.Scene {
 
     // net
     this.sync.update(dt);
+    this.updateNameplates();
     if (net.connected && net.isHost && Math.floor(time / 300) !== Math.floor((time - delta) / 300)) {
       net.sendSnapshot(this.enemies.getChildren().filter((e) => e instanceof Enemy).slice(0, 40).map((e) => ({ x: Math.round(e.x), y: Math.round(e.y), hp: Math.round(e.hp) })));
     }
