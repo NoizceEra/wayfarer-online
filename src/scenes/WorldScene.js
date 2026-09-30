@@ -9,6 +9,7 @@ import { bus, Events } from '../core/events.js';
 import { WorldSync } from '../net/WorldSync.js';
 import { net } from '../net/NetworkManager.js';
 import { DayNight } from '../systems/daynight.js';
+import { Fx } from '../systems/fx.js';
 import { audio } from '../systems/audio.js';
 import { installWorldZoom } from '../core/display.js';
 import { loadProgress, saveProgress } from '../core/save.js';
@@ -33,7 +34,7 @@ export class WorldScene extends Phaser.Scene {
     audio.attach(this);
     const t = CONFIG.tile;
     const tz = ZONES[0].rect;
-    const { spawn, solids, W, H, houses } = buildOverworld(this, ZONES, { clearings: overworldClearings({ x: (tz.x + tz.w / 2) * t, y: (tz.y + tz.h / 2) * t }) });
+    const { spawn, solids, W, H, houses, windows } = buildOverworld(this, ZONES, { clearings: overworldClearings({ x: (tz.x + tz.w / 2) * t, y: (tz.y + tz.h / 2) * t }) });
     this.spawn = spawn;
     this.touchInput = { x: 0, y: 0 }; // written by UIScene touch controls
     this.uiLock = false; this.uiLockUntil = 0; this.transitioning = false; // set by OverlayScene / AreaManager
@@ -141,6 +142,9 @@ export class WorldScene extends Phaser.Scene {
     this.physics.add.overlap(this.player, this.drops, (p, d) => this.collectDrop(d));
 
     this.daynight = new DayNight(this);
+    // Visual systems: weather, dynamic night lighting, water, foliage sway, ambient particles (systems/fx.js)
+    this.fx = new Fx(this, { windows, spawn });
+    this.weather = this.fx.weather;
     this.sync = new WorldSync();
     this.sync.attach(this, this.player, this.heroData);
     if (net.connected) net.pushHero(this.player.lookHero()); // Creator choices + worn gear > join-time snapshot
@@ -640,6 +644,7 @@ export class WorldScene extends Phaser.Scene {
     });
 
     updatePrompt(this, dt);
+    this.fx.update(time, dt);
 
     // autosave progress every 10s
     this.saveAcc += dt;
