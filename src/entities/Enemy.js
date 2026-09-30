@@ -15,11 +15,14 @@ export class Enemy extends Phaser.GameObjects.Container {
     this.shadow = scene.add.image(0, 3, 'char.shadow').setScale(1.2, 1);
     this.texKey = `mon.${def.sprite}`;
     if (!scene.textures.exists(this.texKey)) this.texKey = 'mon.Slime';
-    this.sprite = scene.add.sprite(0, -6, this.texKey, 0);
+    this.sprite = scene.add.sprite(0, -6 * (def.scale || 1), this.texKey, 0);
+    if (def.scale) { this.sprite.setScale(def.scale); this.shadow.setScale(1.2 * def.scale, def.scale); this.body.setSize(14 * def.scale, 12 * def.scale); }
+    if (def.tint) this.sprite.setTint(def.tint);
     // Per-type HP bar y: Slime sits only in the bottom half of the 16px frame
     // (visual top at container y≈-8), so the default y=-18 floats way above it.
     // All other monsters fill from y=0 of frame (container top ≈-14), y=-18 is fine.
-    const hpBarY = (def.sprite === 'Slime') ? -12 : -18;
+    const sc = def.scale || 1;
+    const hpBarY = (def.sprite === 'Slime') ? -12 : -18 - Math.round(8 * (sc - 1));
     this.hpbarBg = scene.add.rectangle(0, hpBarY, 18, 3, 0x000000, 0.6).setVisible(false);
     this.hpbar = scene.add.rectangle(-8, hpBarY, 16, 2, 0x2ecc71).setOrigin(0, 0.5).setVisible(false);
     this.add([this.shadow, this.sprite, this.hpbarBg, this.hpbar]);
@@ -43,7 +46,7 @@ export class Enemy extends Phaser.GameObjects.Container {
     this.hpbar.setDisplaySize(16 * frac, 2);
     this.hpbar.setFillStyle(frac > 0.5 ? 0x2ecc71 : frac > 0.25 ? 0xf39c12 : 0xe74c3c);
     this.sprite.setTintFill(0xffffff);
-    this.scene.time.delayedCall(80, () => this.sprite.clearTint());
+    this.scene.time.delayedCall(80, () => { this.sprite.clearTint(); if (this.def.tint) this.sprite.setTint(this.def.tint); });
     // knockback away from player
     const p = this.scene.player;
     if (p) {

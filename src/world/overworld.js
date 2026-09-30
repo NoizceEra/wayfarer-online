@@ -15,8 +15,11 @@ export function zoneAt(tx, ty, ZONES) {
 
 const TILE_TEX = { town: 'tile.town', meadow: 'tile.meadow', woods: 'tile.woods', ruins: 'tile.ruins' };
 
-export function buildOverworld(scene, ZONES) {
+export function buildOverworld(scene, ZONES, extras = {}) {
   const t = CONFIG.tile;
+  // Clearings (gates, signposts, waystone) keep scatter props off their footprint.
+  const clearings = extras.clearings || [];
+  const cleared = (x, y) => clearings.some((c) => Math.hypot(c.x - x, c.y - y) < c.r);
   const W = CONFIG.worldCols * t, H = CONFIG.worldRows * t;
 
   // Textured ground per zone (generated 16×16 noise tiles).
@@ -153,6 +156,7 @@ export function buildOverworld(scene, ZONES) {
   // variety, not a mismatched duplex; NPC row + torches sit south in the open.
   placeHouse(spawn.x - 60, spawn.y - 32, 0xb03a2e);
   placeHouse(spawn.x + 60, spawn.y - 32, 0x2e86c1);
+  placeHouse(spawn.x, spawn.y - 124, 0xd68910); // the inn (enterable, see world/overworldFeatures.js)
 
   for (let i = 0; i < 900; i++) {
     const tx = 2 + Math.floor(rnd() * (CONFIG.worldCols - 4));
@@ -161,7 +165,7 @@ export function buildOverworld(scene, ZONES) {
     const x = tx * t + 8, y = ty * t + 8;
     if (zone.id === 'town') {
       const tooClose = housePositions.some((p) => Math.hypot(p.x - x, p.y - y) < HOUSE_MIN_DIST);
-      if (rnd() < 0.05) { if (!tooClose) placeHouse(x, y, pick([0xb03a2e, 0x2e86c1, 0x7d3c98])); }
+      if (rnd() < 0.05) { if (!tooClose && !cleared(x, y)) placeHouse(x, y, pick([0xb03a2e, 0x2e86c1, 0x7d3c98])); }
       else if (rnd() < 0.06) {
         const fk = ['flora.flowerA', 'flora.flowerB', 'env.flower'].find((k) => scene.textures.exists(k));
         if (fk) scene.add.image(x, y, fk).setDepth(1).setScale(1.5);
@@ -169,6 +173,7 @@ export function buildOverworld(scene, ZONES) {
       continue;
     }
     const r = rnd();
+    if (cleared(x, y)) { if (zone.id === 'ruins' && r >= 0.40 && r < 0.46) rnd(); continue; } // keeps the RNG stream identical
     if (zone.id === 'woods' ? r < 0.24 : r < 0.06) {
       makeTree(x, y, zone.id === 'woods' && r < 0.08);
     } else if (r < 0.32) {
@@ -206,6 +211,7 @@ export function buildOverworld(scene, ZONES) {
   // never shifts). Tileset frames per the verified comment inside.
   // Function declaration (not const arrow) so it hoists above the 900-loop.
   function buildPillar(x, y, h, v) {
+    if (cleared(x, y)) return;
     const c = scene.add.container(x, y).setDepth(y);
     if (useRuins) {
       // Column 2, rows 3-5 of TilesetVillageAbandoned is a genuine
@@ -305,5 +311,5 @@ export function buildOverworld(scene, ZONES) {
   for (let ty = townR.y; ty < townR.y + townR.h; ty++) { ringAt(townR.x - 1, ty); ringAt(townR.x + townR.w, ty); }
 
   scene.physics.world.setBounds(32, 32, W - 64, H - 64);
-  return { spawn, solids, W, H, windows, glows };
+  return { spawn, solids, W, H, windows, glows, houses: housePositions.slice(0, 3) };
 }

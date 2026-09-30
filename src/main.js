@@ -4,6 +4,7 @@ import { TitleScene } from './scenes/TitleScene.js';
 import { CreatorScene } from './scenes/CreatorScene.js';
 import { WorldScene } from './scenes/WorldScene.js';
 import { UIScene } from './scenes/UIScene.js';
+import { OverlayScene } from './scenes/OverlayScene.js';
 
 // Mobile hardening: no pinch-zoom gestures, no long-press menu, no dblclick zoom.
 document.addEventListener('gesturestart', (e) => e.preventDefault());
@@ -33,7 +34,7 @@ const game = new Phaser.Game({  type: forceCanvas ? Phaser.CANVAS : Phaser.AUTO,
   fps: { target: 60, smoothStep: true },
   render: { antialias: false, roundPixels: true },
   physics: { default: 'arcade', arcade: { gravity: { y: 0 }, debug: false, fps: 60 } },
-  scene: [BootScene, TitleScene, CreatorScene, WorldScene, UIScene],
+  scene: [BootScene, TitleScene, CreatorScene, WorldScene, UIScene, OverlayScene],
   scale: { mode: Phaser.Scale.RESIZE, autoCenter: Phaser.Scale.CENTER_BOTH },
 });
 
