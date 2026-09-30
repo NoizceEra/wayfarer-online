@@ -32,6 +32,10 @@ export const Events = {
   QUEST_CHANGED: 'quest-changed', // quest log / markers / tracker changed
   ACH_EVENT: 'ach-event', // {k, n?} internal achievement counters
   FISH: 'fish',           // {spot} start the fishing mini-game
+  // KILL (see combat) — {typeId, name, level, rank, boss, xp, x, y, areaId, by}
+  //KILL_DUP: 'kill',           // hero killed an enemy {typeId, name, level, rank, boss, xp, x, y, areaId, by}
+  PLAYER_DIED: 'player-died', // {xpLoss, goldLoss, respawn}
+  PARTY_KILL: 'party-kill',   // (consumed) party-mate kill share {typeId, xp, by, questCredit?}
 };
 
 export class Bus {

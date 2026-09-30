@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { CONFIG } from '../config.js';
 import { JOBS, ENEMY_TABLE } from '../data/jobs.js';
-import { ZONES } from '../data/zones.js';
+import { ZONES, QUESTS, AREAS } from '../data/zones.js';
 import { buildOverworld, zoneAt } from '../world/overworld.js';
 import { ModularPlayer } from '../entities/ModularPlayer.js';
 import { Enemy } from '../entities/Enemy.js';
@@ -29,6 +29,9 @@ import { Achievements } from '../systems/achievements.js';
 import { addMat } from '../systems/pack.js';
 import { rollMatDrops } from '../data/materials.js';
 import { NPC_SPOTS } from '../data/quests.js';
+import { Combat } from '../systems/combat.js';
+import { Spawner } from '../systems/spawner.js';
+import { RANKS, rollRank, rollMobLevel } from '../data/combatMath.js';
 
 // Open world: town (safe) + meadow + woods + ruins in ONE 128×128 map.
 // Solo = full simulation. Host = authoritative + broadcasts. Guest = applies
@@ -107,6 +110,7 @@ export class WorldScene extends Phaser.Scene {
 
     // Enemies scattered per zone
     this.enemies = this.physics.add.group();
+    this.spawner = new Spawner(this); // zone caps + respawn timers (systems/spawner.js)
     this.spawnEnemies(solids);
     this.physics.add.collider(this.enemies, solids);
     // Interiors, expansion maps, portals, signs, waystones, ambient NPCs (world/areas.js)
@@ -120,23 +124,8 @@ export class WorldScene extends Phaser.Scene {
       this.quests.registerNpc(BOARD, bc, null);
       this.areas.addInteract({ area: null, x: bx, y: by + 6, r: 38, label: 'Read Notice Board', onUse: () => this.quests.openBoard() });
     }
-    this.physics.add.overlap(this.player, this.enemies, (p, e) => {
-      const ed = e instanceof Enemy ? e : null;
-      if (!ed) return;
-      if (ed.windingUp) return; // telegraphing: no damage until it actually lunges
-      // Safe zones (town) are truly safe: no contact damage
-      if (this.zoneHere(this.player.x, this.player.y).safe) return;
-      if ((ed.areaId || null) !== (this.areas.current?.id || null)) return;
-      if (this.player.tryDodge()) return; // FLEE-based dodge
-      const raw = ed.def.dmg ?? (ed.def.atk * 0.15 + 1);
-      const n = Math.max(1, Math.round(raw - this.player.effDef() * 0.5));
-      if (this.player.hurt(n)) {
-        bus.emit(Events.PLAYER_HP, this.hpPayload());
-        audio.play('hurt');
-        this.cameras.main.shake(80, 0.002);
-        if (this.player.dead) this.onDeath();
-      }
-    });
+    // Enemy damage is dealt by their telegraphed lunges / shots (Enemy.aiTick → combat.enemyHitPlayer),
+    // not by body contact.
 
     // Projectiles
     this.shots = this.physics.add.group();
@@ -144,7 +133,7 @@ export class WorldScene extends Phaser.Scene {
       const ed = e instanceof Enemy ? e : null;
       if (!ed || s.getData('dead')) return;
       s.setData('dead', true); s.destroy();
-      this.damageEnemy(ed, s.getData('dmg') || 10, s.getData('owner') === 'remote' ? true : false);
+      this.damageEnemy(ed, s.getData('dmg') || 10, s.getData('owner') === 'remote', { crit: s.getData('crit'), status: s.getData('status'), knock: 110 });
     });
 
     this.keys = this.input.keyboard.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT,J,E,Q,M,ENTER,ONE,TWO,THREE,FOUR,I');
@@ -162,7 +151,9 @@ export class WorldScene extends Phaser.Scene {
 
     // Loot pickups (gear drops + bonus gold)
     this.drops = this.physics.add.group();
-    this.physics.add.overlap(this.player, this.drops, (p, d) => this.collectDrop(d));
+    this.physics.add.overlap(this.player, this.drops, (p, d) => { if (this.time.now >= (d.getData('ready') || 0)) this.collectDrop(d); });
+    // Hero combat: damage numbers, target lock (Tab/click), dodge (Space/Shift), statuses, loot, death (systems/combat.js)
+    this.combat = new Combat(this);
 
     this.daynight = new DayNight(this);
     this.sync = new WorldSync();
@@ -192,31 +183,18 @@ export class WorldScene extends Phaser.Scene {
     return this.quests ? this.quests.trackerText() : '';
   }
 
-  spawnEnemies(solids) {
-    const t = CONFIG.tile;
-    const table = [
-      ['dewslime', 26, 'meadow'], ['mossbat', 14, 'meadow'],
-      ['thornmite', 16, 'woods'], ['capling', 12, 'woods'], ['willowisp', 10, 'woods'],
-      ['bogspirit', 10, 'ruins'], ['rustskull', 10, 'ruins'], ['tideeye', 6, 'ruins'],
-      ...EXTRA_OVERWORLD_SPAWNS, // expansion roster (data/worldEnemies.js)
-    ];
-    let seed = 987654;
-    const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
-    for (const [type, n, zoneId] of table) {
-      const z = ZONES.find((zz) => zz.id === zoneId);
-      for (let i = 0; i < n; i++) {
-        const tx = z.rect.x + 1 + Math.floor(rnd() * (z.rect.w - 2));
-        const ty = z.rect.y + 1 + Math.floor(rnd() * (z.rect.h - 2));
-        if (zoneAt(tx, ty, ZONES).id !== zoneId) continue; // keep enemies out of town/woods enclaves of their parent rect
-        this.makeEnemy(tx * t + 8, ty * t + 8, type, null);
-      }
-    }
+  spawnEnemies() {
+    this.spawner.populateOverworld();
   }
 
   // Factory shared by the overworld spawner, area spawns and respawns (bosses get their own class).
-  makeEnemy(x, y, typeId, areaId = null) {
-    const def = ENEMY_TABLE[typeId];
-    const e = def && def.boss ? new Boss(this, x, y, typeId) : new Enemy(this, x, y, typeId);
+  // Level rolls inside the zone's range; non-boss enemies may roll an elite / champion rank.
+  makeEnemy(x, y, typeId, areaId = null, opts = {}) {
+    const def = ENEMY_TABLE[typeId] || ENEMY_TABLE.dewslime;
+    const rnd = opts.rnd || Math.random;
+    const zoneLv = areaId ? AREAS[areaId]?.lv : this.zoneHere(x, y).lv;
+    const eo = { zoneLv, level: rollMobLevel(def, zoneLv, rnd), rank: def.boss ? RANKS.normal : rollRank(rnd) };
+    const e = def.boss ? new Boss(this, x, y, typeId, eo) : new Enemy(this, x, y, typeId, eo);
     e.areaId = areaId;
     this.enemies.add(e);
     this.sync?.registerEnemy(e); // net: stable id for co-op enemy sync
@@ -244,29 +222,15 @@ export class WorldScene extends Phaser.Scene {
 
   // — loot drops —
   spawnDrop(x, y, gearId) {
-    if (this.drops.getLength() > 24) return;
-    const g = gearById(gearId);
-    if (!g) return;
-    const c = this.add.container(x, y).setDepth(y); // y-sorted pickup
-    const R = RARITY[g.rarity] || RARITY.common;
-    const glow = this.add.circle(0, 0, g.rarity === 'epic' ? 13 : 10, R.tint, g.rarity === 'common' ? 0.25 : 0.42);
-    if (g.rarity !== 'common') this.tweens.add({ targets: glow, scale: 1.4, alpha: 0.12, duration: 700, yoyo: true, repeat: -1 });
-    const icon = this.add.image(0, -4, `gear.icon.${g.id}`).setScale(1.6);
-    const label = this.add.text(0, 10, g.name, { fontFamily: '"Silkscreen", monospace', fontSize: '8px', color: R.color, backgroundColor: '#000000aa' }).setOrigin(0.5);
-    c.add([glow, icon, label]);
-    this.physics.add.existing(c);
-    c.body.setSize(20, 20);
-    c.setData('gearId', g.id);
-    this.tweens.add({ targets: icon, y: -8, duration: 600, yoyo: true, repeat: -1, ease: 'sine.inout' });
-    this.drops.add(c);
-    this.time.delayedCall(60000, () => { if (c.active) c.destroy(); });
+    return this.combat?.spawnItemDrop(x, y, gearId) || null; // bounce-out + rarity beam + magnet
   }
 
   collectDrop(d) {
     const id = d.getData('gearId');
     const g = id && gearById(id);
-    if (!g || this.player.dead) return;
+    if (!g || this.player.dead || !d.active) return;
     d.destroy();
+    this.combat?.floatText(this.player.x, this.player.y - 34, g.name, RARITY[g.rarity]?.color || '#fff', 'small');
     if (this.player.inventory.length >= BAG_SIZE) {
       const v = sellPrice(g); this.player.gold += v;
       bus.emit(Events.SYSTEM, `Bag full! Sold ${g.name} on the spot (+${v}g).`);
@@ -293,11 +257,9 @@ export class WorldScene extends Phaser.Scene {
     return true;
   }
 
+  // Floating combat text (pooled in systems/combat.js).
   damageNumber(x, y, text, color = '#ffffff') {
-    const d = this.add.text(x + Phaser.Math.Between(-6, 6), y - 20, String(text), {
-      fontFamily: '"Silkscreen", monospace', fontSize: '11px', color, fontStyle: 'bold', stroke: '#000000', strokeThickness: 2,
-    }).setOrigin(0.5).setDepth(2800);
-    this.tweens.add({ targets: d, y: d.y - 14, alpha: 0, duration: 650, onComplete: () => d.destroy() });
+    this.combat?.floatText(x, y - 20, text, color);
   }
 
   spawnFx(x, y, key, scale = 1.5, angle = 0) {
@@ -310,7 +272,8 @@ export class WorldScene extends Phaser.Scene {
     return s;
   }
 
-  fireShot(x, y, angle, dmg, kind) {
+  // opts: { status: {id, chance}, scale }
+  fireShot(x, y, angle, dmg, kind, opts = {}) {
     // kind: arrow | kunai | energy | fire | shuriken
     let s;
     if (kind === 'arrow' && this.textures.exists('proj.arrow')) {
@@ -324,6 +287,9 @@ export class WorldScene extends Phaser.Scene {
     }
     this.physics.add.existing(s);
     s.setData('dmg', dmg);
+    s.setData('crit', this.combat ? this.combat.isCrit(dmg) : false);
+    s.setData('status', opts.status || (kind === 'fire' ? { id: 'burn', chance: 0.35 } : null));
+    if (opts.scale) s.setScale(opts.scale);
     this.shots.add(s);
     s.body.setVelocity(Math.cos(angle) * 280, Math.sin(angle) * 280);
     if (kind === 'shuriken') this.tweens.add({ targets: s, angle: 360, duration: 400, repeat: -1 });
@@ -331,46 +297,17 @@ export class WorldScene extends Phaser.Scene {
     return s;
   }
 
-  damageEnemy(ed, dmg, fromRemote = false) {
-    if (this.sync?.interceptHit(ed, dmg, fromRemote)) return; // co-op: non-authority hits go to the area authority
-    dmg = Math.max(1, Math.round(dmg));
-    const died = ed.hurt(dmg);
-    audio.play('hit', 0.8);
-    this.damageNumber(ed.x, ed.y, dmg);
-    this.spawnFx(ed.x, ed.y - 8, 'fx.cut', 1);
-    if (died) {
-      audio.play('monsterDie');
-      this.spawnFx(ed.x, ed.y - 6, 'fx.smoke', 1.2);
-      const coin = this.add.image(ed.x, ed.y, 'fx.coin').setDepth(2600).setScale(2);
-      this.tweens.add({ targets: coin, y: ed.y - 14, duration: 250, yoyo: true, onComplete: () => coin.destroy() });
-      const dropId = rollGearDrop(ed.typeId, this.player.equipBonuses().luk) || rollDefDrop(ed.typeId, gearById);
-      if (dropId) this.spawnDrop(ed.x, ed.y - 4, dropId);
-      rollItemDrops(this, ed); // food / scrolls / resources (data/items.js)
-      const gold = ed.def.gold[0] + Math.floor(Math.random() * (ed.def.gold[1] - ed.def.gold[0]));
-      this.player.gold += gold;
-      this.damageNumber(ed.x, ed.y - 8, `+${gold}g`, '#f4c542');
-      const leveled = this.player.gainXp(ed.def.xp);
-      bus.emit(Events.KILL, { xp: ed.def.xp, x: ed.x, y: ed.y, typeId: ed.typeId }); // party XP share (systems/social)
-      audio.play('coin', 0.7);
-      if (leveled) {
-        audio.play('level');
-        this.spawnFx(this.player.x, this.player.y - 10, 'fx.boost', 1.4);
-        bus.emit(Events.SYSTEM, `${this.pname} reached Lv ${this.player.level}!`);
-      }
-      ed.onSlain?.(this);
-      this.areas?.onKill(ed);
-      this.player.questKills[ed.typeId] = (this.player.questKills[ed.typeId] || 0) + 1;
-      this.questState.kills[ed.typeId] = (this.questState.kills[ed.typeId] || 0) + 1;
-      this.onKillContent(ed, dropId);
-      bus.emit(Events.PLAYER_HP, this.hpPayload());
-      bus.emit(Events.PLAYER_XP, this.xpPayload());
-      bus.emit(Events.QUEST, this.questText());
-      this.saveNow();
-      // respawn after 12s (host or solo)
-      const { x, y, typeId, areaId } = { x: ed.home.x, y: ed.home.y, typeId: ed.typeId, areaId: ed.areaId || null };
-      ed.destroy();
-      this.time.delayedCall(ed.def.respawn || 12000, () => { if (this.scene.isActive()) this.makeEnemy(x, y, typeId, areaId); });
-    }
+  // opts: { crit, knock, status:{id,chance,secs}, dot } — see systems/combat.js
+  damageEnemy(ed, dmg, fromRemote = false, opts = {}) {
+    return this.combat.damageEnemy(ed, dmg, fromRemote, opts);
+  }
+
+  // Quest / side-quest kill credit (also used for party kill shares; ed may be null).
+  creditKill(typeId, ed) {
+    // quest / bestiary / material / achievement credit is handled by onKillContent (quests v2)
+    this.areas?.onKill(ed || { typeId });
+    this.player.questKills[typeId] = (this.player.questKills[typeId] || 0) + 1;
+    this.questState.kills[typeId] = (this.questState.kills[typeId] || 0) + 1;
   }
 
   // Quests v2 / bestiary / material drops / achievements on a kill.
@@ -389,26 +326,51 @@ export class WorldScene extends Phaser.Scene {
     this.craft.buildStations(this, def.id, def.origin);
   }
 
+  // Basic attack: 3-hit chain (1.0x / 1.1x / 1.6x finisher). Melee hits a frontal arc;
+  // bows / wands fire at the pointer, else the locked target, else the facing.
   attack(tx, ty) {
-    if (this.player.dead || this.uiLock || this.transitioning || this.time.now < this.uiLockUntil) return;
-    const cd = this.player.cooldowns.slash || 0;
-    if (this.time.now < cd) return;
-    this.player.cooldowns.slash = this.time.now + this.player.attackDelay();
-    this.player.attackPose();
-    const kind = this.player.weaponKind();
+    if (!this.combat.canAct()) return;
+    const p = this.player, now = this.time.now;
+    const cd = p.cooldowns.slash || 0;
+    if (now < cd) return;
+    const ch = this.combat.chain;
+    const step = now < ch.until ? (ch.step % 3) + 1 : 1;
+    ch.step = step;
+    const delay = p.attackDelay() * (step === 3 ? 1.5 : 1);
+    p.cooldowns.slash = now + delay;
+    ch.until = now + delay + 650;
+    const kind = p.weaponKind();
     const bow = kind === 'bow';
     const mage = kind === 'wand';
-    const dmg = this.player.rollCrit(this.player.effAtk() + Math.floor(Math.random() * 4));
-    const ang = { right: 0, down: 90, left: 180, up: 270 }[this.player.facing] ?? 0;
+    const mul = [1, 1.1, 1.6][step - 1];
+    const dmg = p.rollCrit((p.effAtk() + Math.floor(Math.random() * 4)) * mul);
+    let a = tx !== undefined ? Math.atan2(ty - p.y, tx - p.x) : this.combat.targetAngle(bow || mage ? 230 : 48);
+    if (a === null) a = this.facingAngle();
+    else if (tx === undefined) { // turn to face the locked target
+      const deg = Phaser.Math.RadToDeg(a);
+      p.setFacing(deg > -45 && deg <= 45 ? 'right' : deg > 45 && deg <= 135 ? 'down' : deg > -135 && deg <= -45 ? 'up' : 'left');
+    }
+    p.attackPose();
     if (bow || mage) {
       audio.play(mage ? 'cast' : 'arrow');
-      const a = tx !== undefined ? Math.atan2(ty - this.player.y, tx - this.player.x) : this.facingAngle();
-      this.fireShot(this.player.x, this.player.y - 8, a, dmg, mage ? 'energy' : 'arrow');
+      if (step === 3 && bow) {
+        for (let i = -1; i <= 1; i++) this.fireShot(p.x, p.y - 8, a + i * 0.16, dmg * (i ? 0.6 : 1), 'arrow', { status: { id: 'slow', chance: 0.5, secs: 2 } });
+      } else if (step === 3) {
+        this.fireShot(p.x, p.y - 8, a, dmg, 'fire', { status: { id: 'burn', chance: 0.6 }, scale: 1.4 });
+      } else this.fireShot(p.x, p.y - 8, a, dmg, mage ? 'energy' : 'arrow');
     } else {
       audio.play('swing');
-      this.spawnFx(this.player.x, this.player.y - 8, 'fx.slashArc', 1.2, ang);
+      const range = step === 3 ? 40 : 32;
+      this.spawnFx(p.x + Math.cos(a) * 6, p.y - 8 + Math.sin(a) * 6, 'fx.slashArc', step === 3 ? 1.6 : 1.2, Phaser.Math.RadToDeg(a) + (step === 2 ? 180 : 0));
+      if (step === 3) this.cameras.main.shake(70, 0.0018);
+      const here = this.areas.current?.id || null;
       this.enemies.children.each((e) => {
-        if (e instanceof Enemy && Phaser.Math.Distance.Between(this.player.x, this.player.y, e.x, e.y) < 32) this.damageEnemy(e, dmg);
+        if (!(e instanceof Enemy) || !e.alive || (e.areaId || null) !== here) return true;
+        const d = Phaser.Math.Distance.Between(p.x, p.y, e.x, e.y);
+        const off = Math.abs(Phaser.Math.Angle.Wrap(Math.atan2(e.y - p.y, e.x - p.x) - a));
+        if (d < range + 4 * (e.vscale - 1) && (d < 14 || off < 1.9)) {
+          this.damageEnemy(e, dmg, false, step === 3 ? { knock: 280, status: { id: 'bleed', chance: 0.3 } } : { knock: 140 });
+        }
         return true;
       });
     }
@@ -420,7 +382,7 @@ export class WorldScene extends Phaser.Scene {
 
   cast(slot) {
     const ab = this.player.abilityForKey(slot);
-    if (!ab || this.player.dead || this.uiLock || this.transitioning) return;
+    if (!ab || !this.combat.canAct()) return;
     const lv = this.player.skillLv(ab.id); // skill level 1-5 scales dmg/effect (+15%/lv) and cooldown (-6%/lv)
     if (lv < 1) { bus.emit(Events.SYSTEM, `Learn ${ab.name} in Skills (K) first.`); audio.play('error', 0.7); return; }
     const dm = skillDmgMul(lv);
@@ -479,10 +441,8 @@ export class WorldScene extends Phaser.Scene {
       this.spawnFx(this.player.x, this.player.y - 8, 'fx.explosion', 1.2);
       let n = 0;
       this.enemies.children.each((e) => {
-        if (e instanceof Enemy && Phaser.Math.Distance.Between(this.player.x, this.player.y, e.x, e.y) < 70) {
-          e.setData('slowUntil', this.time.now + 4000);
-          e.sprite.setTint(0x88ccff);
-          this.time.delayedCall(4000, () => e.active && e.sprite.clearTint());
+        if (e instanceof Enemy && e.alive && Phaser.Math.Distance.Between(this.player.x, this.player.y, e.x, e.y) < 70) {
+          this.combat.applyEnemyStatus(e, ab.id === 'snare' ? 'slow' : 'stun', ab.id === 'snare' ? 4 : 1.5);
           if (ab.id === 'smoke') this.damageEnemy(e, this.player.effAtk() * dm);
           n += 1;
         }
@@ -551,19 +511,9 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
+  // Ghost fade, 5% XP / gold penalty, respawn at the nearest attuned waystone (systems/combat.js).
   onDeath() {
-    audio.play('hurt');
-    this.spawnFx(this.player.x, this.player.y - 8, 'fx.smoke', 1.6);
-    this.saveNow();
-    bus.emit(Events.SYSTEM, 'You fainted! Woke up back in Thistle Town.');
-    this.time.delayedCall(1200, () => {
-      this.player.hp = this.player.effMaxHp(); this.player.mp = this.player.effMaxMp();
-      this.player.dead = false;
-      this.areas?.leaveInstant();
-      this.player.setPosition(this.spawn.x, this.spawn.y);
-      this.spawnFx(this.spawn.x, this.spawn.y - 8, 'fx.boost', 1.2);
-      bus.emit(Events.PLAYER_HP, this.hpPayload());
-    });
+    this.combat.onPlayerDeath();
   }
 
   // Nameplates: fade with distance to the hero and nudge upward so labels of
@@ -596,11 +546,7 @@ export class WorldScene extends Phaser.Scene {
   update(time, delta) {
     const dt = delta / 1000;
     this.daynight.update(dt);
-    // regen
-    if (!this.player.dead && this.player.mp < this.player.maxMp) {
-      this.player.mp = Math.min(this.player.maxMp, this.player.mp + dt * 2);
-      if (Math.floor(time / 500) !== Math.floor((time - delta) / 500)) bus.emit(Events.PLAYER_HP, this.hpPayload());
-    }
+    this.combat.regen(dt, time, delta); // MP always, HP too once out of combat
     // movement (keyboard + touch stick)
     const k = this.keys;
     let vx = 0, vy = 0;
@@ -628,6 +574,8 @@ export class WorldScene extends Phaser.Scene {
     this.craft.update(dt);
     this.quests.update(dt);
     this.ach.update(dt);
+    this.combat.update(time, delta); // roll / stun / slow overrides, statuses, loot magnet
+    this.spawner.update(time);
 
     // zone tracking
     const t = CONFIG.tile;
@@ -644,35 +592,8 @@ export class WorldScene extends Phaser.Scene {
       }
     }
 
-    // enemy AI: hop toward player when close, leash home otherwise
-    const nightBoost = this.daynight.isNight ? 1.25 : 1;
-    this.enemies.children.each((e) => {
-      if (!(e instanceof Enemy)) return true;
-      const slowed = this.time.now < (e.getData('slowUntil') || 0);
-      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, e.x, e.y);
-      // enemies only simulate while the player is in their space (overworld / interior / map)
-      if ((e.areaId || null) !== (this.areas.current?.id || null)) { e.body.setVelocity(0, 0); return true; }
-      if (this.sync?.driveEnemy(e, time, delta)) return true; // co-op: replicas interpolate, authority chases remotes too
-      if (e.aiUpdate) { e.aiUpdate(this, delta); e.setDepth(e.y); return true; }
-      const safe = this.zoneHere(e.x, e.y).safe;
-      let evx = 0, evy = 0;
-      if (this.player.dead || safe || d > 130) {
-        const hx = e.home.x - e.x, hy = e.home.y - e.y;
-        const hd = Math.hypot(hx, hy);
-        if (hd > 6) { evx = (hx / hd) * 25; evy = (hy / hd) * 25; }
-      } else {
-        const a = Math.atan2(this.player.y - e.y, this.player.x - e.x);
-        const sp = CONFIG.enemySpeed * nightBoost * (slowed ? 0.25 : 1);
-        evx = Math.cos(a) * sp; evy = Math.sin(a) * sp;
-      }
-      // telegraphed attack (wind-up / lunge) + idle wobble; busy enemies skip steering
-      if (e.updateFeel(time, d, this.player, !this.player.dead && !safe && !slowed)) { e.setDepth(e.y); return true; }
-      // knockback decays: only steer when slow-moving
-      const cvx = e.body.velocity.x, cvy = e.body.velocity.y;
-      if (Math.hypot(cvx, cvy) < 100) { e.body.setVelocity(evx, evy); e.setFacingByVelocity(evx, evy); }
-      e.setDepth(e.y); // y-sort
-      return true;
-    });
+    // enemy AI: aggro / leash / wander / per-type attacks (Enemy.aiTick, Boss.aiUpdate)
+    this.combat.updateEnemies(time, delta);
 
     updatePrompt(this, dt);
 

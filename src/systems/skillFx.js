@@ -17,14 +17,10 @@ export function castFx(scene, ab, lv, setCd) {
   if (fx.mp) p.mp -= fx.mp;
   setCd();
   const near = (r, cb) => scene.enemies.children.each((e) => {
-    if (e instanceof Enemy && Phaser.Math.Distance.Between(p.x, p.y, e.x, e.y) < r) cb(e);
+    if (e instanceof Enemy && e.alive && (e.areaId || null) === (scene.areas?.current?.id || null) && Phaser.Math.Distance.Between(p.x, p.y, e.x, e.y) < r) cb(e);
     return true;
   });
-  const slow = (e, secs) => {
-    e.setData('slowUntil', scene.time.now + secs * 1000);
-    e.sprite.setTint(0x88ccff);
-    scene.time.delayedCall(secs * 1000, () => e.active && e.sprite.clearTint());
-  };
+  const slow = (e, secs) => scene.combat.applyEnemyStatus(e, 'slow', secs);
 
   if (fx.type === 'aoe') {
     audio.play('explosion', 0.8);
