@@ -1,4 +1,5 @@
 import { CONFIG } from '../config.js';
+import { makeTreeTextures } from './treeArt.js';
 
 // Builds one large open world (128×128 tiles) from textured ground +
 // scattered props. Zones: town (safe), meadow, woods, ruins.
@@ -16,6 +17,7 @@ export function zoneAt(tx, ty, ZONES) {
 export function buildOverworld(scene, ZONES) {
   const t = CONFIG.tile;
   const W = CONFIG.worldCols * t, H = CONFIG.worldRows * t;
+  makeTreeTextures(scene);
 
   // Baked ground: one canvas texture for the whole map. Zone colours blend
   // smoothly (signed-distance falloff + noise-jittered edges), with value-noise
@@ -48,19 +50,11 @@ export function buildOverworld(scene, ZONES) {
     if (scene.textures.exists('char.shadow')) c.add(scene.add.image(0, 4, 'char.shadow').setScale(1.4, 1));
     else c.add(scene.add.ellipse(0, 4, 20, 7, 0x000000, 0.2));
 
-    // Procedural canopy: three overlapping crowns + trunk. Reads cleanly at
-    // 2-3x zoom and never mismatches (tileset-slice trees were retired —
-    // arbitrary 3×2 blocks cut canopies mid-leaf and mixed dead/live pieces).
-    const s = big ? 1.4 : 1;
-    const leaf = big ? 0x2d6a33 : 0x3e8e41;
-    const leafHi = big ? 0x3e8e41 : 0x5cc46a;
-    const leafLo = 0x1e5b26;
-    c.add(scene.add.rectangle(0, 0, 4 * s, 8 * s, 0x5a3a1e)); // trunk
-    c.add(scene.add.circle(-4 * s, -8 * s, 7 * s, leafLo));
-    c.add(scene.add.circle(4 * s, -8 * s, 7 * s, leaf));
-    c.add(scene.add.circle(-2 * s, -11 * s, 5 * s, leafHi));
-    c.add(scene.add.circle(3 * s, -10 * s, 4 * s, leaf));
-    if (big) c.add(scene.add.circle(0, -15 * s, 5 * s, leafHi));
+    // Baked pixel-art tree (see treeArt.js); variant by position hash so the
+    // layout RNG is untouched. Origin sits at the trunk base.
+    const v = vh(Math.floor(x / t), Math.floor(y / t));
+    const key = big ? 'tree.big' : ['tree.a', 'tree.b', 'tree.c'][v % 3];
+    c.add(scene.add.image(0, 3, key).setOrigin(0.5, 1).setFlipX(((v >> 3) & 1) === 1));
 
     const hit = scene.add.rectangle(x, y - 2, 8, 8, 0xffffff, 0);
     solids.add(hit);
@@ -263,9 +257,8 @@ export function buildOverworld(scene, ZONES) {
   // Town ring: sand-patch decals bleed the plaza floor outward with flora
   // between — reads as a worn town edge, not a tile cut.
   const ringAt = (tx, ty) => {
-    if (scene.textures.exists('flora.sandpatch') && frnd() < 0.35) {
-      scene.add.image(tx * t + 8, ty * t + 8, 'flora.sandpatch').setDepth(0).setScale(1.5);
-    } else floraAt(tx, ty, 0.5);
+    frnd(); // keep RNG stream identical now the square decals are gone
+    floraAt(tx, ty, 0.5);
   };
   for (let tx = townR.x - 1; tx <= townR.x + townR.w; tx++) { ringAt(tx, townR.y - 1); ringAt(tx, townR.y + townR.h); }
   for (let ty = townR.y; ty < townR.y + townR.h; ty++) { ringAt(townR.x - 1, ty); ringAt(townR.x + townR.w, ty); }
@@ -301,6 +294,20 @@ function bakeGround(scene, ZONES, W, H, t) {
   for (const z of ZONES) rects[z.id] = { x0: z.rect.x * t, y0: z.rect.y * t, x1: (z.rect.x + z.rect.w) * t, y1: (z.rect.y + z.rect.h) * t };
   const sdf = (r, x, y) => Math.min(x - r.x0, r.x1 - x, y - r.y0, r.y1 - y); // >0 inside
   const sm = (e0, e1, x) => { const k = Math.min(1, Math.max(0, (x - e0) / (e1 - e0))); return k * k * (3 - 2 * k); };
+  // Packed-dirt roads (polylines in tile coords): town → woods gate, town → ruins gate.
+  const ROADS = [
+    [[64, 64], [72, 62], [80, 56], [88, 48], [94, 42]],
+    [[64, 64], [60, 72], [52, 78], [44, 84], [40, 90]],
+  ].map((pl) => pl.map(([a, b]) => [a * t, b * t]));
+  const roadDist = (x, y) => {
+    let best = 1e9;
+    for (const pl of ROADS) for (let k = 0; k < pl.length - 1; k++) {
+      const [ax, ay] = pl[k], [bx, by] = pl[k + 1], dx = bx - ax, dy = by - ay;
+      const u = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy)));
+      best = Math.min(best, Math.hypot(x - ax - u * dx, y - ay - u * dy));
+    }
+    return best;
+  };
   const shore = 24, water = [hex(0x2e86c1), hex(0x3a9bd6), hex(0x1f6fa8)], sand = hex(0xe8d9a0);
 
   for (let y = 0; y < H; y++) {
@@ -338,6 +345,16 @@ function bakeGround(scene, ZONES, W, H, t) {
         // pebbles on ruins, speckle on town
         if (wR > 0.5 && hash(x * 3, y * 5) > 0.992) { r += 30; g += 30; b += 30; }
         if (wT > 0.5 && hash(x * 5, y * 3) > 0.985) { r -= 24; g -= 26; b -= 30; }
+        // dirt road: wavy width, darker rim, pebbles
+        const rd = roadDist(x, y) + (vnoise(x, y, 9) - 0.5) * 7;
+        if (rd < 13) {
+          const core = rd < 9;
+          const dn = (hash(x >> 1, y >> 1) - 0.5) * 16 + (vnoise(x, y, 20) - 0.5) * 16;
+          const base = core ? [176, 140, 88] : [140, 108, 66];
+          r = base[0] + dn; g = base[1] + dn * 0.9; b = base[2] + dn * 0.7;
+          if (core && hash(x * 7, y * 3) > 0.985) { r += 35; g += 30; b += 25; }
+          if (!core && hash(x * 3, y * 7) > 0.9) { r -= 18; g -= 12; b -= 8; }
+        }
         col = [r, g, b];
       }
       d[i] = col[0]; d[i + 1] = col[1]; d[i + 2] = col[2]; d[i + 3] = 255;
