@@ -1,6 +1,11 @@
 // Asset loader — ports the Lanternfall curation (CC0 Ninja Adventure + Kenney)
 // into Wayfarer. Paths are relative to public/: assets/na/..., assets/audio/...,
 // assets/light/.... Only the subset Wayfarer Online actually uses is loaded.
+import { CHAR_SHEETS, MONSTER_FILES } from './catalog.js';
+import { NPC_SHEETS } from '../data/npcs.js';
+import { ENEMY_TABLE } from '../data/jobs.js';
+import { ITEM_LIST } from '../data/items.js';
+import '../data/worldEnemies.js'; // registers the expanded monster roster into ENEMY_TABLE before we read it
 const NA = 'assets/na';
 export const DIRS = ['down', 'up', 'left', 'right'];
 
@@ -10,7 +15,10 @@ export const CHARACTERS = [
   'OldMan', 'Noble', 'GladiatorBlue', 'Villager', 'Woman', 'Monk',
   // expansion NPCs (inn, docks, Frostpeak, town ambient)
   'Sultan', 'OldWoman', 'OldMan2', 'Inspector', 'Hunter', 'Eskimo', 'Child', 'Villager3', 'Villager4', 'Master',
+  // data-driven roster (src/data/npcs.js); every sheet validated by tools/validate_sheets.py -> catalog.js
+  ...NPC_SHEETS.filter((n) => !['Sultan', 'OldWoman', 'OldMan2', 'Inspector', 'Hunter', 'Eskimo', 'Child', 'Villager3', 'Villager4', 'Master', 'Knight', 'ManGreen', 'SorcererOrange', 'NinjaDark', 'OldMan', 'Noble', 'GladiatorBlue', 'Villager', 'Woman', 'Monk'].includes(n)),
 ];
+CHARACTERS.splice(0, CHARACTERS.length, ...new Set(CHARACTERS));
 const FACE_OVERRIDE = { ManGreen: 'Faceset1.png' };
 
 const MONSTER_SHEETS = {
@@ -26,6 +34,23 @@ const MONSTER_SHEETS = {
   YellowsBat: 'YellowsBat/SpriteSheet.png', SkullBlue: 'SkullBlue/SpriteSheet.png', Owl2: 'Owl2/Owl2.png',
   Grey_Trex: 'Grey_Trex/SpriteSheet.png', Flam2: 'Flam2/SpriteSheet.png', Larva2: 'Larva2/Larva2.png',
 };
+// Monsters referenced by the expanded ENEMY_TABLE + ambient critters (validated catalog).
+const AMBIENT_MONSTERS = ['Butterfly', 'ButterflyBlue', 'Fish', 'FishRed', 'Owl', 'Owl2', 'BlueBat', 'YellowsBat'];
+for (const def of Object.values(ENEMY_TABLE)) if (MONSTER_FILES[def.sprite] && !MONSTER_SHEETS[def.sprite]) MONSTER_SHEETS[def.sprite] = MONSTER_FILES[def.sprite];
+for (const n of AMBIENT_MONSTERS) if (MONSTER_FILES[n] && !MONSTER_SHEETS[n]) MONSTER_SHEETS[n] = MONSTER_FILES[n];
+
+// Side-view 2-frame animals (Actor/Animal): [key, path, frameW, frameH]. Sheets are 2 frames wide.
+export const ANIMALS = [
+  ['cat', 'Cat/SpriteSheet.png', 16, 16], ['catBlack', 'CatBlack/SpriteSheet.png', 16, 16], ['catWhite', 'CatWhite/SpriteSheet.png', 17, 15],
+  ['dog', 'DogOrange/SpriteSheet.png', 18, 16], ['dogWhite', 'DogBlack/SpriteSheetWhite.png', 18, 17], ['dogYellow', 'DogYellow/SpriteSheet.png', 21, 17],
+  ['pig', 'Pig/SpriteSheetPink.png', 16, 16], ['pigBlack', 'Pig/SpriteSheetBlack.png', 16, 16],
+  ['chicken', 'Chicken/SpriteSheetWhite.png', 16, 16], ['chickenBrown', 'Chicken/SpriteSheetBrown.png', 16, 16],
+  ['frog', 'Frog/SpriteSheet.png', 16, 16], ['parrotBlue', 'Parrot/SpriteSheetBlue.png', 16, 16], ['parrotRed', 'Parrot/SpriteSheetRed.png', 16, 16],
+  ['cow', 'Cow/SpriteSheetWhite.png', 16, 16], ['donkey', 'Donkey/SpriteSheetGrey.png', 16, 16], ['hamster', 'Hamster/SpriteSheet.png', 15, 15],
+];
+export const FLAG_COLORS = ['Red', 'Blue', 'Green', 'Yellow', 'White', 'Brown'];
+// Item art (data/items.js): loaded as `item.src.<id>`, upscaled to 32px `icon32.<id>` in createAnims.
+const ITEM_DIR = 'assets/na';
 
 // [key, path, frameW, frameH, fps, loop]
 const FX = [
@@ -103,9 +128,18 @@ export function preload(scene) {
   const L = scene.load;
   for (const n of AI_ICONS) L.image(`icon.ai.${n}`, `assets/custom/icons_ai/${n}.png`);
   for (const name of CHARACTERS) {
-    L.spritesheet(`char.${name}`, `${NA}/Actor/Character/${name}/SpriteSheet.png`, { frameWidth: 16, frameHeight: 16 });
-    L.image(`face.${name}`, `${NA}/Actor/Character/${name}/${FACE_OVERRIDE[name] || 'Faceset.png'}`);
+    const [sheet, face] = CHAR_SHEETS[name] || ['SpriteSheet.png', 'Faceset.png'];
+    L.spritesheet(`char.${name}`, `${NA}/Actor/Character/${name}/${sheet}`, { frameWidth: 16, frameHeight: 16 });
+    L.image(`face.${name}`, `${NA}/Actor/Character/${name}/${FACE_OVERRIDE[name] || face || 'Faceset.png'}`);
   }
+  for (const [key, file, fw, fh] of ANIMALS) L.spritesheet(`animal.${key}`, `${NA}/Actor/Animal/${file}`, { frameWidth: fw, frameHeight: fh });
+  for (const c of FLAG_COLORS) L.spritesheet(`env.flag.${c}`, `${NA}/Backgrounds/Animated/Flag/Flag${c}16x16.png`, { frameWidth: 16, frameHeight: 16 });
+  L.spritesheet('env.ripple', `${NA}/Backgrounds/Animated/Water_Ripples/SpriteSheet16x16.png`, { frameWidth: 16, frameHeight: 16 });
+  L.image('veh.boat', `${NA}/Backgrounds/Vehicles/Boat.png`);
+  L.image('veh.sail', `${NA}/Backgrounds/Vehicles/Sail.png`);
+  L.image('veh.crane', `${NA}/Backgrounds/Vehicles/Crane.png`);
+  L.image('veh.net', `${NA}/Backgrounds/Vehicles/FishNetFull.png`);
+  for (const it of ITEM_LIST) L.image(`item.src.${it.id}`, `${ITEM_DIR}/${it.src}`);
   L.image('char.shadow', `${NA}/Actor/Character/Shadow.png`);
   for (const [name, file] of Object.entries(MONSTER_SHEETS)) {
     L.spritesheet(`mon.${name}`, `${NA}/Actor/Monster/${file}`, { frameWidth: 16, frameHeight: 16 });
@@ -125,6 +159,22 @@ export function preload(scene) {
   L.image('fx.glow', 'assets/light/light_soft.png');
   for (const [folder, keys] of Object.entries(AUDIO)) {
     for (const key of keys) L.audio(key, `assets/audio/${folder}/${key}.ogg`);
+  }
+}
+
+// 32x32 nearest-neighbour icon textures (`icon32.<itemId>`) centred in the square.
+function makeItemIcons(scene) {
+  for (const it of ITEM_LIST) {
+    const src = `item.src.${it.id}`, dst = `icon32.${it.id}`;
+    if (scene.textures.exists(dst) || !scene.textures.exists(src)) continue;
+    const img = scene.textures.get(src).getSourceImage();
+    const s = Math.max(1, Math.min(2, Math.floor(32 / Math.max(img.width, img.height))));
+    const tex = scene.textures.createCanvas(dst, 32, 32);
+    const c = tex.getContext();
+    c.imageSmoothingEnabled = false;
+    const w = img.width * s, h = img.height * s;
+    c.drawImage(img, Math.round((32 - w) / 2), Math.round((32 - h) / 2), w, h);
+    tex.refresh();
   }
 }
 
@@ -171,6 +221,13 @@ export function createAnims(scene) {
   for (const [key, , , , fps] of PROJ_SHEETS) {
     makeAnim(scene, { key, frames: A.generateFrameNumbers(key), frameRate: fps, repeat: -1 });
   }
+  for (const [key] of ANIMALS) {
+    const k = `animal.${key}`;
+    if (scene.textures.exists(k)) makeAnim(scene, { key: `${k}.walk`, texture: k, frames: A.generateFrameNumbers(k, { start: 0, end: 1 }), frameRate: 6, repeat: -1 });
+  }
+  for (const c of FLAG_COLORS) makeAnim(scene, { key: `env.flag.${c}`, frames: A.generateFrameNumbers(`env.flag.${c}`), frameRate: 5, repeat: -1 });
+  makeAnim(scene, { key: 'env.ripple', frames: A.generateFrameNumbers('env.ripple'), frameRate: 4, repeat: -1 });
+  makeItemIcons(scene);
   makeAnim(scene, { key: 'env.plant.sway', frames: A.generateFrameNumbers('env.plant'), frameRate: 5, repeat: -1 });
   // Generated fallback textures (coin, ring, ground tiles)
   const T = scene.textures;

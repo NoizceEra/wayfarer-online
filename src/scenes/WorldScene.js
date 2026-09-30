@@ -20,7 +20,7 @@ import { skillDmgMul } from '../data/stats.js';
 import { Boss } from '../entities/Boss.js';
 import { AreaManager } from '../world/areas.js';
 import { buildOverworldFeatures, overworldClearings } from '../world/overworldFeatures.js';
-import { rollDefDrop } from '../data/worldEnemies.js';
+import { rollDefDrop, rollItemDrops, EXTRA_OVERWORLD_SPAWNS } from '../data/worldEnemies.js';
 
 // Open world: town (safe) + meadow + woods + ruins in ONE 128×128 map.
 // Solo = full simulation. Host = authoritative + broadcasts. Guest = applies
@@ -178,6 +178,7 @@ export class WorldScene extends Phaser.Scene {
       ['dewslime', 26, 'meadow'], ['mossbat', 14, 'meadow'],
       ['thornmite', 16, 'woods'], ['capling', 12, 'woods'], ['willowisp', 10, 'woods'],
       ['bogspirit', 10, 'ruins'], ['rustskull', 10, 'ruins'], ['tideeye', 6, 'ruins'],
+      ...EXTRA_OVERWORLD_SPAWNS, // expansion roster (data/worldEnemies.js)
     ];
     let seed = 987654;
     const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
@@ -323,6 +324,7 @@ export class WorldScene extends Phaser.Scene {
       this.tweens.add({ targets: coin, y: ed.y - 14, duration: 250, yoyo: true, onComplete: () => coin.destroy() });
       const dropId = rollGearDrop(ed.typeId, this.player.equipBonuses().luk) || rollDefDrop(ed.typeId, gearById);
       if (dropId) this.spawnDrop(ed.x, ed.y - 4, dropId);
+      rollItemDrops(this, ed); // food / scrolls / resources (data/items.js)
       const gold = ed.def.gold[0] + Math.floor(Math.random() * (ed.def.gold[1] - ed.def.gold[0]));
       this.player.gold += gold;
       this.damageNumber(ed.x, ed.y - 8, `+${gold}g`, '#f4c542');
@@ -594,6 +596,7 @@ export class WorldScene extends Phaser.Scene {
     } else this.player.body.setVelocity(0, 0);
     this.player.setDepth(this.player.y); // y-sort against trees/props/NPCs
     this.areas.update(time, delta);
+    this.life?.update(time, delta); this.townfolk?.update(time, delta); // ambient critters + NPC schedules
 
     // zone tracking
     const t = CONFIG.tile;

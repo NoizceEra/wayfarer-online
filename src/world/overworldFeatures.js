@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { CONFIG } from '../config.js';
 import { DOORS, PORTALS, SIGNS, WAYSTONES, AREAS } from '../data/zones.js';
 import { makeProps } from './propsExtra.js';
+import { installTownfolk } from './townfolk.js';
 
 const T = CONFIG.tile;
 const FONT = '"Silkscreen", monospace';
@@ -94,5 +95,6 @@ export function buildOverworldFeatures(scene, areas, info) {
     { name: 'Old Wick', tex: 'OldMan2', dx: -96, dy: -16, r: 40, text: ['Frostpeak Pass is far to the north-west. Cold enough to freeze your thoughts.', 'Back in my day the Harbour Gate was just a rotten plank. Now look at it!'] },
   ];
   for (const v of vill) areas.addNpc(null, { name: v.name, tex: v.tex, x: spawn.x + v.dx, y: spawn.y + v.dy, wander: v.r, text: v.text }, solids);
+  installTownfolk(scene, areas, info); // data-driven NPC roster + ambient life (data/npcs.js, world/ambient.js)
   void Phaser;
 }

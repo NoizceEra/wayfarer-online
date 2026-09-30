@@ -4,6 +4,8 @@
 // WorldScene: scale, tint, dmg (contact damage override), drops [{id,chance}]
 // (existing gear ids), boss, respawn (ms).
 import { ENEMY_TABLE } from './jobs.js';
+import { AREAS } from './areas.js';
+import { giveItem, ITEMS } from './items.js';
 
 Object.assign(ENEMY_TABLE, {
   // — Driftwood Beach (Dock Town) —
@@ -36,6 +38,94 @@ Object.assign(ENEMY_TABLE, {
     drops: [{ id: 'iron_mail', chance: 0.06 }, { id: 'iron_greatblade', chance: 0.05 }, { id: 'ember_charm', chance: 0.04 }],
   },
 });
+
+// ——— Monster roster expansion (Actor/Monster, all sheets validated 64x64 by tools/validate_sheets.py) ———
+// Zone tiers: meadow Lv1-4, woods 4-8, beach (dock_beach) 2-5, ruins 8-12, crypt 9-13, frost 11-15.
+// `E(id, name, sprite, zones, hp, atk, xp, [goldMin, goldMax], extra)`; `tint` recolours reused sheets.
+const E = (id, name, sprite, zones, hp, atk, xp, gold, extra = {}) => {
+  ENEMY_TABLE[id] = { name, sprite, hp, atk, xp, gold, zones, dmg: Math.max(2, Math.round(atk * 0.42)), ...extra };
+};
+// meadow
+E('fieldmouse', 'Field Mouse', 'Mouse', ['meadow'], 22, 5, 7, [1, 3], { items: [{ id: 'nut_bag', chance: 0.12 }] });
+E('gelgreen', 'Green Gel', 'Slime2', ['meadow'], 34, 6, 9, [1, 4], { items: [{ id: 'grass', chance: 0.15 }] });
+E('gelblue', 'Dew Gel', 'Slime3', ['meadow'], 40, 7, 11, [2, 5], { items: [{ id: 'water_flask', chance: 0.1 }] });
+E('gorselizard', 'Gorse Lizard', 'Lizard', ['meadow'], 32, 7, 10, [1, 5], { items: [{ id: 'feather', chance: 0.08 }] });
+E('burrower', 'Burrower', 'Mole', ['meadow'], 38, 8, 12, [2, 6], { items: [{ id: 'rock', chance: 0.15 }] });
+E('meadowcap', 'Bluecap', 'Mushroom2', ['meadow', 'woods'], 40, 8, 13, [2, 6], { items: [{ id: 'herb_tea', chance: 0.1 }] });
+// woods
+E('stinger', 'Gold Stinger', 'SpiderYellow', ['woods'], 44, 9, 15, [2, 7], { items: [{ id: 'apple_honey', chance: 0.1 }] });
+E('bramblesnake', 'Bramble Snake', 'Snake2', ['woods'], 48, 10, 17, [3, 8], { items: [{ id: 'branch', chance: 0.15 }] });
+E('hootling', 'Hootling', 'Owl', ['woods'], 40, 11, 18, [3, 8], { items: [{ id: 'feather', chance: 0.25 }] });
+E('fernlizard', 'Fern Lizard', 'Lizard2', ['woods'], 52, 11, 19, [3, 9], { items: [{ id: 'gem_green', chance: 0.03 }] });
+E('lilykappa', 'Lily Kappa', 'KappaGreen', ['woods'], 58, 12, 21, [4, 9], { items: [{ id: 'herb_tea', chance: 0.12 }, { id: 'gem_green', chance: 0.03 }] });
+E('pondaxolot', 'Pond Axolotl', 'Axolot', ['woods'], 50, 10, 18, [3, 8], { items: [{ id: 'water_drop', chance: 0.2 }] });
+E('bamboolet', 'Bamboolet', 'Bamboo', ['woods'], 60, 11, 22, [4, 9], { items: [{ id: 'branch', chance: 0.2 }] });
+E('mossbear', 'Moss Bear', 'Panda', ['woods'], 88, 13, 28, [5, 12], { scale: 1.25, items: [{ id: 'meat', chance: 0.25 }] });
+// beach (Dock Town)
+E('sandadder', 'Sand Adder', 'Snake', ['dock_beach'], 46, 9, 16, [3, 8], { items: [{ id: 'shrimp', chance: 0.1 }] });
+E('beachsnail', 'Beach Snail', 'Mollusc', ['dock_beach'], 52, 8, 16, [3, 8], { items: [{ id: 'fish_fresh', chance: 0.12 }] });
+E('tideoctopus', 'Tide Octopus', 'Octopus', ['dock_beach'], 50, 9, 17, [3, 9], { items: [{ id: 'calamari', chance: 0.12 }] });
+E('bandit_racoon', 'Bandit Raccoon', 'GoldRacoon', ['dock_beach'], 56, 10, 19, [6, 14], { items: [{ id: 'silver_coin', chance: 0.25 }] });
+// ruins
+E('mudmollusc', 'Mud Mollusc', 'Mollusc2', ['ruins'], 82, 14, 28, [4, 11], { items: [{ id: 'bar_copper', chance: 0.06 }] });
+E('reedoctopus', 'Reed Octopus', 'GreenOctopus', ['ruins'], 86, 15, 30, [5, 12], { items: [{ id: 'octopus_leg', chance: 0.12 }] });
+E('mirefiend', 'Mire Fiend', 'Reptile', ['ruins'], 98, 17, 34, [6, 13], { items: [{ id: 'gem_yellow', chance: 0.04 }] });
+E('embercyclops', 'Ember Cyclops', 'Cyclope', ['ruins'], 112, 18, 38, [6, 14], { scale: 1.2, items: [{ id: 'bar_iron', chance: 0.06 }, { id: 'scroll_fire', chance: 0.03 }] });
+E('ruinlantern', 'Ruin Lantern', 'LanternRed', ['ruins'], 72, 17, 32, [5, 12], { items: [{ id: 'scroll_fire', chance: 0.04 }] });
+E('rexling', 'Rexling', 'TRex', ['ruins'], 120, 19, 40, [7, 15], { items: [{ id: 'meat', chance: 0.2 }] });
+// crypt
+E('ashghost', 'Ash Ghost', 'Spirit2', ['crypt'], 86, 18, 40, [5, 12], { items: [{ id: 'scroll_home', chance: 0.03 }] });
+E('bloodheart', 'Blood Heart', 'HeartRed', ['crypt'], 96, 19, 42, [6, 13], { items: [{ id: 'heart_charm', chance: 0.08 }] });
+E('gravedigger', 'Gravedigger', 'Mole2', ['crypt'], 102, 18, 41, [6, 14], { items: [{ id: 'tool_shovel', chance: 0.03 }, { id: 'bar_silver', chance: 0.04 }] });
+E('bloodeye', 'Blood Eye', 'Eye2', ['crypt'], 90, 20, 44, [6, 14], { items: [{ id: 'gem_red', chance: 0.04 }] });
+E('cryptadder', 'Crypt Adder', 'Snake4', ['crypt'], 80, 19, 40, [5, 12], { items: [{ id: 'gem_purple', chance: 0.03 }] });
+E('shadehound', 'Shade Beast', 'Beast2', ['crypt'], 118, 20, 46, [7, 15], { scale: 1.2, items: [{ id: 'bar_iron', chance: 0.06 }] });
+// frost
+E('icejelly', 'Ice Jelly', 'AxolotBlue', ['frost'], 100, 20, 48, [7, 16], { items: [{ id: 'scroll_ice', chance: 0.04 }] });
+E('frostgel', 'Frost Gel', 'Slime3', ['frost'], 110, 20, 46, [7, 16], { tint: 0xbfe8ff, items: [{ id: 'water_drop', chance: 0.25 }] });
+E('glaciersnail', 'Glacier Snail', 'Mollusc2', ['frost'], 140, 21, 52, [8, 18], { tint: 0xbfe0ff, items: [{ id: 'bar_silver', chance: 0.05 }] });
+E('rimelizard', 'Rime Lizard', 'Reptile2', ['frost'], 122, 22, 54, [8, 18], { tint: 0xd8f0ff, items: [{ id: 'gem_yellow', chance: 0.04 }] });
+E('snowspecter', 'Snow Specter', 'Spirit', ['frost'], 112, 22, 56, [8, 18], { tint: 0xc8e8ff, items: [{ id: 'scroll_ice', chance: 0.05 }] });
+E('yeti', 'Mountain Yeti', 'Beast', ['frost'], 172, 24, 62, [10, 22], { scale: 1.4, tint: 0xf0f8ff, items: [{ id: 'meat', chance: 0.3 }, { id: 'bar_mithril', chance: 0.04 }] });
+// New mini-bosses (Boss pattern from entities/Boss.js, reusing big-scaled 16px monster sheets)
+ENEMY_TABLE.redclaw = {
+  name: 'Old Redclaw', sprite: 'RedOctopus', hp: 330, atk: 15, xp: 210, gold: [70, 120], dmg: 6,
+  scale: 2.2, boss: true, respawn: 80000, zones: ['dock_beach'],
+  drops: [{ id: 'feather_charm', chance: 1 }, { id: 'tide_pearl', chance: 0.4 }],
+  items: [{ id: 'gold_cup', chance: 0.5 }, { id: 'sushi', chance: 0.8 }],
+};
+ENEMY_TABLE.glacierwyrm = {
+  name: 'Glacier Wyrm', sprite: 'DragonYellow', hp: 980, atk: 30, xp: 760, gold: [220, 360], dmg: 13,
+  scale: 2.4, tint: 0x9fd8ff, boss: true, respawn: 100000, zones: ['frost'],
+  drops: [{ id: 'tide_plate', chance: 0.6 }, { id: 'tide_crown', chance: 0.5 }, { id: 'tidebrand', chance: 0.5 }],
+  items: [{ id: 'bar_mithril', chance: 1 }, { id: 'chest_big', chance: 0.5 }, { id: 'scroll_thunder', chance: 0.6 }],
+};
+
+// Extra overworld spawns [type, count, zone]; WorldScene.spawnEnemies reads this list.
+export const EXTRA_OVERWORLD_SPAWNS = [
+  ['fieldmouse', 10, 'meadow'], ['gelgreen', 10, 'meadow'], ['gelblue', 8, 'meadow'], ['gorselizard', 8, 'meadow'], ['burrower', 6, 'meadow'], ['meadowcap', 6, 'meadow'],
+  ['stinger', 8, 'woods'], ['bramblesnake', 8, 'woods'], ['hootling', 6, 'woods'], ['fernlizard', 6, 'woods'], ['lilykappa', 5, 'woods'], ['pondaxolot', 5, 'woods'], ['bamboolet', 6, 'woods'], ['mossbear', 3, 'woods'],
+  ['mudmollusc', 6, 'ruins'], ['reedoctopus', 5, 'ruins'], ['mirefiend', 5, 'ruins'], ['embercyclops', 4, 'ruins'], ['ruinlantern', 4, 'ruins'], ['rexling', 3, 'ruins'],
+];
+// Area spawn additions (merged into data/areas.js AREAS[*].enemies / spawnRects).
+AREAS.dock.enemies.push(['sandadder', 3, 'dock_beach'], ['beachsnail', 3, 'dock_beach'], ['tideoctopus', 3, 'dock_beach'], ['bandit_racoon', 2, 'dock_beach'], ['redclaw', 1, 'beach_boss']);
+AREAS.dock.spawnRects.beach_boss = [50, 15, 4, 6];
+AREAS.crypt.enemies.push(['ashghost', 3, 'w'], ['bloodheart', 3, 'e'], ['gravedigger', 2, 'w'], ['bloodeye', 3, 'hall'], ['cryptadder', 3, 'e'], ['shadehound', 2, 'hall']);
+AREAS.frost.enemies.push(['icejelly', 5, 'field'], ['frostgel', 5, 'field'], ['glaciersnail', 4, 'field'], ['rimelizard', 4, 'field'], ['snowspecter', 4, 'field'], ['yeti', 3, 'field'], ['glacierwyrm', 1, 'wyrm']);
+AREAS.frost.spawnRects.wyrm = [44, 18, 8, 5];
+
+// Item drops (data/items.js ids) from def.items; plus a small generic food/resource roll.
+export function rollItemDrops(scene, ed) {
+  const def = ed.def;
+  const got = [];
+  for (const d of def.items || []) if (ITEMS[d.id] && Math.random() < d.chance) got.push(d.id);
+  if (!got.length && Math.random() < 0.06) got.push(def.boss ? 'medipack' : ['onigiri', 'fish_fresh', 'nut_bag'][Math.floor(Math.random() * 3)]);
+  for (const id of got) {
+    giveItem(scene, id, 1);
+    scene.damageNumber?.(ed.x + 6, ed.y - 16, `+${ITEMS[id].name}`, '#9fe8ff');
+  }
+  return got;
+}
 
 // Roll a def-level gear drop (for enemies not listed in gear.js drop tables).
 export function rollDefDrop(typeId, gearById) {

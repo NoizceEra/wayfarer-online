@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { ZONES, AREAS, PORTALS, WAYSTONES } from '../data/zones.js';
 import { CONFIG } from '../config.js';
+import { DialogBox } from '../ui/DialogBox.js';
 
 const FONT = '"Silkscreen", monospace';
 const T = CONFIG.tile;
@@ -51,6 +52,7 @@ export class OverlayScene extends Phaser.Scene {
     for (let i = 1; i <= 5; i++) this.input.keyboard.on(`keydown-${['ONE', 'TWO', 'THREE', 'FOUR', 'FIVE'][i - 1]}`, () => this.pick(i - 1));
     const confirmKey = () => {
       if (!this.dlg || this.time.now - this.dlg.t0 < 250) return;
+      if (DialogBox.skip(this.dlg)) return;
       if (!this.dlg.options.length || this.dlg.options.length === 1) this.pick(0);
     };
     this.input.keyboard.on('keydown-E', confirmKey);
@@ -121,40 +123,23 @@ export class OverlayScene extends Phaser.Scene {
   }
 
   // ——— dialogue / menus ———
-  dialog({ name, text, options, danger }) {
+  dialog({ name, text, options, danger, face, title }) {
     const w = this.world();
     if (this.mapOpen) this.toggleMap(false);
-    this.dlg = { name, text, options: options || [], danger, t0: this.time.now };
+    DialogBox.stop(this.dlg);
+    this.dlg = { name, text, options: options || [], danger, face, title, t0: this.time.now };
     if (w) w.uiLock = true;
     this.drawDialog();
   }
   drawDialog() {
     const { width: W, height: H } = this.scale;
-    const d = this.dlg;
     this.dlgC.removeAll(true);
-    const pw = Math.min(W - 24, 460);
-    const opts = d.options.length ? d.options : [{ label: 'OK' }];
-    const textObj = this.add.text(-pw / 2 + 14, -4, d.text, { fontFamily: FONT, fontSize: '11px', color: '#f4e8c8', wordWrap: { width: pw - 28 }, lineSpacing: 4 });
-    const th = textObj.height;
-    const ph = 30 + th + 14 + opts.length * 26 + 10;
-    const bg = this.add.rectangle(0, 0, pw, ph, 0x2a1d10, 0.96).setStrokeStyle(2, d.danger ? 0xe74c3c : 0x8d5a2b);
-    const nm = this.add.text(-pw / 2 + 14, -ph / 2 + 10, d.name, { fontFamily: FONT, fontSize: '12px', color: d.danger ? '#ff8a7a' : '#f4c542', fontStyle: 'bold' });
-    textObj.setPosition(-pw / 2 + 14, -ph / 2 + 30);
-    this.dlgC.add([bg, nm, textObj]);
-    opts.forEach((o, i) => {
-      const y = -ph / 2 + 30 + th + 14 + i * 26 + 11;
-      const b = this.add.rectangle(0, y, pw - 24, 22, 0x4a3219, 1).setStrokeStyle(1, 0x8d5a2b).setInteractive({ useHandCursor: true });
-      const t = this.add.text(-pw / 2 + 22, y, `${d.options.length ? `${i + 1}.  ` : ''}${o.label}`, { fontFamily: FONT, fontSize: '11px', color: '#ffe8a0' }).setOrigin(0, 0.5);
-      b.on('pointerover', () => b.setFillStyle(0x6b4a26));
-      b.on('pointerout', () => b.setFillStyle(0x4a3219));
-      b.on('pointerdown', (p, lx, ly, ev) => { ev?.stopPropagation?.(); if (this.time.now - d.t0 > 120) this.pick(i); });
-      this.dlgC.add([b, t]);
-    });
-    this.dlgC.setPosition(W / 2, H - ph / 2 - 100).setVisible(true);
+    DialogBox.draw(this, this.dlgC, this.dlg, W, H, (i) => this.pick(i)); // portrait + typewriter (src/ui/DialogBox.js)
   }
   pick(i) {
     const d = this.dlg;
     if (!d || this.time.now - d.t0 < 120) return;
+    if (DialogBox.skip(d)) return; // first press finishes the typewriter line
     const opts = d.options.length ? d.options : [{ label: 'OK' }];
     const o = opts[i];
     if (!o) return;
@@ -163,6 +148,7 @@ export class OverlayScene extends Phaser.Scene {
   }
   closeDialog() {
     const w = this.world();
+    DialogBox.stop(this.dlg);
     this.dlg = null;
     this.dlgC.setVisible(false).removeAll(true);
     if (w) { w.uiLock = false; w.uiLockUntil = w.time.now + 260; }

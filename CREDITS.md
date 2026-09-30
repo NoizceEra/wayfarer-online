@@ -20,6 +20,22 @@ not Lanternfall — but it starts from the same CC0 anchor and expands it.
 Full source packs live in `../rpg-foundation/asset-staging/` (not copied). Run
 `npm run copy-assets` to re-seed `public/assets/` from that folder (see `tools/copy_assets.mjs`).
 
+## Ninja Adventure folders in use (all CC0 1.0, Pixel-boy & AAA)
+
+Beyond the original anchor set, the content expansion draws on these `public/assets/na/` folders:
+
+| Folder | Used for |
+|---|---|
+| `Actor/Character/*` (about 45 sheets + Facesets) | Data-driven NPC roster (`src/data/npcs.js`): townsfolk, guards, merchants, ninjas, monks; Faceset portraits in the dialogue box |
+| `Actor/Monster/*` (about 40 sheets) | Zone-tier monster roster (`src/data/worldEnemies.js`), ambient butterflies / owls / bats / fish |
+| `Actor/Animal/*` | Town and harbour critters: cats, dogs, pigs, chickens, frogs, parrots, cows (`src/world/ambient.js`) |
+| `Backgrounds/Animated/Flag`, `Water_Ripples` | Plaza / harbour flags and water ripples |
+| `Backgrounds/Vehicles/*` | Bobbing boats and sails at Dock Town |
+| `Items/Food`, `Potion`, `Resource`, `Scroll`, `Treasure`, `Object`, `Tool`, `Projectile`, `Weapons/*/Sprite.png` | Item catalogue with 32px icons (`src/data/items.js`) |
+
+Sheet layouts are checked by `python3 tools/validate_sheets.py`, which also regenerates
+`src/assets/catalog.js` (`--emit-catalog`).
+
 ## Recommended matching expansion packs (CC0, pull when needed)
 
 These were **not** bundled yet — they match the 16×16 Game Boy look and can be

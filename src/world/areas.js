@@ -6,6 +6,7 @@ import { audio } from '../systems/audio.js';
 import { makeBiomeTextures } from './biomeTextures.js';
 import { makeProps } from './propsExtra.js';
 import { BUILDERS } from './areaBuilders.js';
+import { populateArea } from './townfolk.js';
 
 const T = CONFIG.tile;
 const FONT = '"Silkscreen", monospace';
@@ -116,6 +117,7 @@ export class AreaManager {
       tex: (key) => key,
     };
     BUILDERS[def.builder](ctx);
+    populateArea(this, id, ctx); // roster NPCs + ambient life for this map (world/townfolk.js)
     // default layers → tilesprites (builders may also add their own)
     // enemies
     if (def.enemies) {
