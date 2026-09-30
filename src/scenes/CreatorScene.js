@@ -5,6 +5,7 @@ import { CONFIG } from '../config.js';
 import { saveHero, loadHero } from '../core/save.js';
 import { audio } from '../systems/audio.js';
 import { ModularPlayer } from '../entities/ModularPlayer.js';
+import { setupMenuCamera } from '../core/display.js';
 
 // Character Creator — proportional two-panel layout (preview left, selectors right).
 // Scales from ~593px pane up to 1280px widescreen.
@@ -21,18 +22,18 @@ export class CreatorScene extends Phaser.Scene {
   }
 
   create() {
-    const W = this.scale.width;
-    const H = this.scale.height;
+    // Integer-zoomed, centered logical layout (<=960x600) — see core/display.js
+    const { W, H } = setupMenuCamera(this, { minW: 560, minH: 480, maxW: 960, maxH: 600, data: { name: this.pname, mode: this.mode } });
 
     // ── Background ────────────────────────────────────────────────
-    this.cameras.main.setBackgroundColor('#0d1117');
+    this.cameras.main.setBackgroundColor('#0f380f');
 
-    // Subtle dot-grid
+    // Subtle dot-grid (extends past the layout so the centered panel sits on it)
     const gfxBg = this.add.graphics();
-    gfxBg.fillStyle(0x1e2a3a, 0.5);
+    gfxBg.fillStyle(0x1e4a1e, 0.6);
     const GRID = 24;
-    for (let x = GRID; x < W; x += GRID) {
-      for (let y = GRID; y < H; y += GRID) {
+    for (let x = GRID - 24 * 30; x < W + 24 * 30; x += GRID) {
+      for (let y = GRID - 24 * 30; y < H + 24 * 30; y += GRID) {
         gfxBg.fillRect(x - 1, y - 1, 2, 2);
       }
     }

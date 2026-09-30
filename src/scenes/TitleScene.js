@@ -3,6 +3,7 @@ import { loadProfile, saveProfile, loadHero } from '../core/save.js';
 import { net } from '../net/NetworkManager.js';
 import { bus, Events } from '../core/events.js';
 import { audio } from '../systems/audio.js';
+import { setupMenuCamera } from '../core/display.js';
 
 // Title screen — pixel-art Game Boy aesthetic.
 // Fonts: Jacquard12 (display title), Silkscreen (buttons/labels), PixelifySans (body/hints).
@@ -14,8 +15,9 @@ export class TitleScene extends Phaser.Scene {
     audio.attach(this);
     audio.musicFor('title');
 
-    const { width: W, height: H } = this.scale;
     this.cameras.main.setBackgroundColor('#0f380f');
+    // Integer-zoomed, centered logical layout (640x560 max) — see core/display.js
+    const { W, H } = setupMenuCamera(this, { minW: 360, minH: 420, maxW: 640, maxH: 560, data: this.sys.settings.data });
 
     const prof   = loadProfile() || { name: '' };
     const small  = W < 560;
