@@ -63,7 +63,8 @@ export class EquipPanel {
     const dw = wide ? 680 : 380, dh = wide ? 440 : 650;
     const k = Math.min(1, (W - 8) / dw, (H - 8) / dh);
     this.k = k;
-    const c = s.add.container(W / 2, H / 2).setDepth(180).setScale(k);
+    const z = s.uiZoom || 1; // UI-scale camera zoom: keep this auto-fit panel 1:1 on screen
+    const c = s.add.container(W / 2 / z, H / 2 / z).setDepth(180).setScale(k / z);
     this.c = c;
     const ox = -dw / 2, oy = -dh / 2;
     this.geo = { ox, oy, dw, dh, slots: {}, bag: [] };
@@ -271,12 +272,7 @@ export class EquipPanel {
   }
   moveTip(ptr) {
     if (!this.tip.c.visible) return;
-    const W = this.scene.scale.width, H = this.scene.scale.height;
-    const b = this.tip.c.getBounds();
-    let x = ptr.x + 14, y = ptr.y + 10;
-    if (x + b.width > W - 4) x = ptr.x - b.width - 10;
-    if (y + b.height > H - 4) y = H - b.height - 4;
-    this.tip.c.setPosition(Math.max(4, x), Math.max(4, y));
+    this.tip.follow(ptr.x, ptr.y);
   }
 
   // click / double-click / drag
@@ -290,10 +286,10 @@ export class EquipPanel {
       const item = gearById(this.pressed.id);
       this.tip.hide();
       const p = this.hooks.player();
-      this.drag = { ...this.pressed, item, ghost: this.scene.add.image(ptr.x, ptr.y, this.iconKeyOf(item, p)).setScale(2.4 * this.k).setDepth(700).setAlpha(0.9) };
+      this.drag = { ...this.pressed, item, ghost: this.scene.add.image(ptr.x / (this.scene.uiZoom || 1), ptr.y / (this.scene.uiZoom || 1), this.iconKeyOf(item, p)).setScale(2.4 * this.k / (this.scene.uiZoom || 1)).setDepth(700).setAlpha(0.9) };
       this.highlightDrop(item);
     }
-    if (this.drag) this.drag.ghost.setPosition(ptr.x, ptr.y);
+    if (this.drag) this.drag.ghost.setPosition(ptr.x / (this.scene.uiZoom || 1), ptr.y / (this.scene.uiZoom || 1));
   }
   iconKeyOf(item, p) { return `gear.icon.${item.id}${p.dyes[item.id] && item.dyeable !== false ? `.${p.dyes[item.id]}` : ''}`; }
   highlightDrop(item) {

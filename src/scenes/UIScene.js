@@ -8,14 +8,37 @@ import { CONFIG } from '../config.js';
 import { makeHudIcons, HUD_ABILITY_ICON } from '../systems/hudIcons.js';
 import { EquipPanel } from '../ui/EquipPanel.js';
 import { ShopPanel } from '../ui/ShopPanel.js';
+import { social } from '../systems/social/index.js';
+import { installSocialUI } from '../ui/socialUI.js';
+import { JournalPanel } from '../ui/JournalPanel.js';
+import { CraftPanel } from '../ui/CraftPanel.js';
+import { FishingGame } from '../ui/FishingGame.js';
+import { Toaster } from '../ui/Toast.js';
+import { input } from '../core/input.js';
+import { settings, uiZoomFor } from '../core/settings.js';
+import { PauseMenu } from '../ui/PauseMenu.js';
+import { HelpOverlay } from '../ui/HelpOverlay.js';
 
 // HUD: HP/MP/XP bars, hotbar with cooldown sweep (clickable), minimap,
 // quest tracker, chat, party, pause (palette + mute), GB tint + scanlines,
 // damage vignette + low-HP pulse, touch controls (stick + ATK/SKL/E/Q).
+// Hotkeys come from core/input.js; pause menu (settings + rebind) and help
+// overlay live in ui/PauseMenu.js / ui/HelpOverlay.js. UI scale = camera zoom
+// (origin 0,0) so layout uses view() = window size / zoom.
 export class UIScene extends Phaser.Scene {
   constructor() { super('ui'); }
-  init(data) { this.hero = data.hero; this.pname = data.name; this.job = data.job; }
+  init(data) { this.initData = data; this.hero = data.hero; this.pname = data.name; this.job = data.job; }
   world() { return this.scene.get('world'); }
+  // Virtual (UI-scaled) layout size. Everything in this scene is laid out in these units.
+  view() { const z = this.uiZoom || 1; return { w: this.scale.width / z, h: this.scale.height / z, z }; }
+  // Pointer -> scene coords (camera zoom with origin 0,0).
+  pt(p) { const z = this.uiZoom || 1; return { x: p.x / z, y: p.y / z }; }
+  pickUiZoom() { return uiZoomFor(this.scale.width, this.scale.height); }
+  // Restart this scene (resize / UI-scale change) keeping pause page + fog of war.
+  relaunch() {
+    if (!this.sys.isActive()) return;
+    this.scene.restart({ ...this.initData, menuPage: this.menu?.isOpen ? this.menu.page : null, keepFog: true });
+  }
 
   // ── asset loading ────────────────────────────────────────────────────────
   preload() {
@@ -40,7 +63,11 @@ export class UIScene extends Phaser.Scene {
   // nineslice must be backed by a plain filled Rectangle that renders in both
   // pipelines, or the whole panel goes invisible for canvas-fallback users.
   _ns(x, y, w, h, key = 'ui.panel', lw = 4, rw = 4, th = 4, bh2 = 4, ox = 0, oy = 0, depth = 100) {
-    const bg = this.add.rectangle(x, y, w, h, 0x2a1d10, 0.92).setOrigin(ox, oy).setDepth(depth - 1);
+    // The raw wood panel has an orange plate in its 8x8 centre that stretched
+    // into orange blocks over the HUD text; use the dark-centre copy instead.
+    if (key === 'ui.panel' && this.textures.exists('ui.panelHud')) key = 'ui.panelHud';
+    // Backing rect is interactive so clicks on HUD panels never reach the world (no stray swings).
+    const bg = this.add.rectangle(x, y, w, h, 0x2a1d10, 0.92).setOrigin(ox, oy).setDepth(depth - 1).setInteractive();
     const ns = this.add.nineslice(x, y, key, null, w, h, lw, rw, th, bh2)
       .setOrigin(ox, oy).setDepth(depth);
     // Keep the canvas-safe backing rect's visibility in sync with the nineslice.
@@ -59,9 +86,36 @@ export class UIScene extends Phaser.Scene {
     return [bg, ns];
   }
 
-  create() {
-    const { width: W, height: H } = this.scale;
+  // Copy of the wood panel with its orange centre plate replaced by the dark
+  // frame colour: 4px slices then give a clean frame + dark, readable interior.
+  makeHudPanelTexture() {
+    if (this.textures.exists('ui.panelHud') || !this.textures.exists('ui.panel')) return;
+    const src = this.textures.get('ui.panel').getSourceImage();
+    const w = src.width, h = src.height;
+    const t = this.textures.createCanvas('ui.panelHud', w, h);
+    const ctx = t.getContext();
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(src, 0, 0);
+    ctx.fillStyle = '#2a1d10';
+    ctx.fillRect(4, 4, w - 8, h - 8); // whole 8x8 centre slice -> uniform dark interior
+    t.refresh();
+  }
+
+  create(data = {}) {
+    this.uiZoom = this.pickUiZoom();
+    this.cameras.main.setZoom(this.uiZoom).setOrigin(0, 0).setScroll(0, 0);
+    const { w: W, h: H } = this.view();
+    this.makeHudPanelTexture();
+    this.keepFog = !!data.keepFog;
     this.minimapOn = true;
+    this.offs = [];                       // every bus/input/settings subscription -> torn down on shutdown
+    const builtFor = `${this.scale.width}x${this.scale.height}`;
+    const onResize = () => {
+      this.resizeTimer?.remove(false);
+      this.resizeTimer = this.time.delayedCall(150, () => { if (`${this.scale.width}x${this.scale.height}` !== builtFor) this.relaunch(); });
+    };
+    this.scale.on('resize', onResize);
+    this.offs.push(() => this.scale.off('resize', onResize));
     this.lastHp = null;
     this.small = W < 560;
 
@@ -71,10 +125,6 @@ export class UIScene extends Phaser.Scene {
       .setOrigin(0).setDepth(90).setScrollFactor(0);
     this.scan = this.add.graphics().setDepth(91);
     this.drawScan();
-    this.scale.on('resize', () => {
-      this.gbTint.setDisplaySize(this.scale.width, this.scale.height);
-      this.drawScan();
-    });
 
     // ── Damage vignette ─────────────────────────────────────────────────────
     this.vignette = this.add.rectangle(0, 0, W, H, 0xcc0000, 0).setOrigin(0).setDepth(95);
@@ -142,8 +192,8 @@ export class UIScene extends Phaser.Scene {
     const hotY   = H - 8 - cellH / 2;
     const iconScale = this.small ? 2 : 3;
     const slots  = [
-      ...this.job.abilities.map((a) => ({ key: a.key, name: a.name, ab: a })),
-      { key: 'Q', name: 'Potion', ab: null },
+      ...this.job.abilities.map((a) => ({ key: a.key, name: a.name, ab: a, action: `skill${a.key}` })),
+      { key: 'Q', name: 'Potion', ab: null, action: 'potion' },
     ];
     const hotTotalW = slots.length * cellSt;
     slots.forEach((s, i) => {
@@ -162,11 +212,12 @@ export class UIScene extends Phaser.Scene {
         }).setOrigin(1, 1).setDepth(104);
       }
 
-      // key badge (top-left corner)
-      this.add.rectangle(x - cellW / 2 + 3, hotY - cellH / 2 + 3, 13, 13, 0x1a1024, 0.95).setOrigin(0).setDepth(103);
-      this.add.text(x - cellW / 2 + 9.5, hotY - cellH / 2 + 9.5, s.key, {
+      // key badge (top-left corner) — shows the CURRENT binding (rebindable)
+      const badgeBg = this.add.rectangle(x - cellW / 2 + 3, hotY - cellH / 2 + 3, 13, 13, 0x1a1024, 0.95).setOrigin(0).setDepth(103);
+      const badgeT = this.add.text(x - cellW / 2 + 5, hotY - cellH / 2 + 9.5, input.labelFor(s.action), {
         fontFamily: '"Silkscreen", monospace', fontSize: '9px', color: '#ffd84a',
-      }).setOrigin(0.5).setDepth(104);
+      }).setOrigin(0, 0.5).setDepth(104);
+      badgeBg.width = Math.max(13, badgeT.width + 4);
 
       const cdBg = this.add.rectangle(x, hotY, cellW - 2, cellH - 2, 0x000000, 0.70)
         .setDepth(105).setVisible(false);
@@ -182,30 +233,13 @@ export class UIScene extends Phaser.Scene {
         if (s.ab) w.cast(s.ab.key);
         else w.drinkPotion();
       });
-      this.hotbar.push({ bg, s, cdBg, cdT, bw: cellW, bh: cellH });
+      this.hotbar.push({ bg, s, cdBg, cdT, bw: cellW, bh: cellH, badgeBg, badgeT });
     });
 
     // ── Chat / system log (bottom-left) ─────────────────────────────────────
-    this.log = [];
-    const logW      = this.small ? 226 : 310;
-    const logH      = this.small ? 76  : 100;
-    const logPanelY = H - logH - 82;
-    this.logPanel = this._ns(8, logPanelY - 4, logW, logH + 10, 'ui.panelBg', 4, 4, 4, 4, 0, 0, 100);
-    this.logT = this.add.text(16, logPanelY + 1, '', {
-      fontFamily: '"Silkscreen", monospace', fontSize: this.small ? '9px' : '10px',
-      color: '#e6f2c0', wordWrap: { width: logW - 16 }, fixedHeight: logH,
-    }).setDepth(101);
-    this.chatHint = this.add.text(16, logPanelY - 9, 'chat', {
-      fontFamily: '"Silkscreen", monospace', fontSize: '8px', color: '#9bbc0f',
-    }).setDepth(102).setInteractive({ useHandCursor: true });
-    this.logCollapsed = this.small;
-    this.chatHint.on('pointerdown', () => {
-      this.logCollapsed = !this.logCollapsed;
-      const vis = !this.logCollapsed;
-      this.logT.setVisible(vis);
-      this.logPanel.setVisible(vis);
-    });
-    if (this.logCollapsed) { this.logT.setVisible(false); this.logPanel.setVisible(false); }
+    // The MMO chat window (channels, whispers, scrollback) is a DOM overlay:
+    // src/ui/ChatPanel.js, mounted by installSocialUI() below. say() routes
+    // system lines into it.
 
     // ── Minimap (bottom-right): framed, fog-of-war, M toggles small/large ────
     this.mapLarge = false;
@@ -217,79 +251,101 @@ export class UIScene extends Phaser.Scene {
       stroke: '#1a1024', strokeThickness: 3,
     }).setDepth(101);
 
-    // ── Pause menu (Esc) ─────────────────────────────────────────────────────
+    // ── Pause menu (Esc / START / II button) + help overlay (H / F1 / ?) ────
     this.paused = false;
-    this.menu = this.add.container(W / 2, H / 2).setDepth(200).setVisible(false);
-    const mbgW = 280, mbgH = 256;
-    const [mbgFill, mbg] = this._nsPair(0, 0, mbgW, mbgH, 'ui.panelBg');
-    const mt  = this.add.text(0, -mbgH / 2 + 24, '— PAUSED —', {
-      fontFamily: '"Silkscreen", monospace', fontSize: '16px', color: '#ffe8a0', fontStyle: 'bold',
-    }).setOrigin(0.5);
-    this.modeT = this.add.text(0, mbgH / 2 - 26, '', {
-      fontFamily: '"Silkscreen", monospace', fontSize: '9px', color: '#a0c4f0',
-    }).setOrigin(0.5);
-    this.menu.add([mbgFill, mbg, mt, this.modeT]);
-
-    const mkBtn = (dy, label, cb) => {
-      const bw = 210, bh = 28;
-      const bFill = this.add.rectangle(0, dy, bw, bh, 0x9bbc0f).setOrigin(0.5);
-      const b = this.add.nineslice(0, dy, 'ui.btn', null, bw, bh, 4, 4, 2, 2).setOrigin(0.5);
-      const t = this.add.text(0, dy, label, {
-        fontFamily: '"Silkscreen", monospace', fontSize: '12px', color: '#3a1f00',
-      }).setOrigin(0.5);
-      b.setInteractive({ useHandCursor: true });
-      // ui.btn* texture swap drives WebGL look; bFill colour swap covers the
-      // canvas-fallback path where NineSlice never renders at all.
-      b.on('pointerover',  () => { b.setTexture('ui.btnHov'); bFill.setFillStyle(0xb8d820); });
-      b.on('pointerout',   () => { b.setTexture('ui.btn');    bFill.setFillStyle(0x9bbc0f); });
-      b.on('pointerdown',  () => { b.setTexture('ui.btnPrs'); bFill.setFillStyle(0x7a9a0a); audio.play('ui', 0.7); cb(); });
-      b.on('pointerup',    () => { b.setTexture('ui.btn');    bFill.setFillStyle(0x9bbc0f); });
-      this.menu.add([bFill, b, t]);
-      return t;
-    };
-    mkBtn(-52, 'Resume', () => this.togglePause());
-    this.soundT = mkBtn(-18, `Sound: ${audio.enabled ? 'ON' : 'OFF'}`, () => {
-      const on = audio.toggle();
-      this.soundT.setText(`Sound: ${on ? 'ON' : 'OFF'}`);
+    this.menu = new PauseMenu(this, {
+      onOpenChange: (open) => {
+        this.paused = open;
+        if (open) this.help?.close();
+        const w = this.world();
+        if (w) w.physics.world.isPaused = open;
+      },
+      resume: () => this.menu.close(),
+      help: () => this.help.open(),
+      leaveLabel: () => (net.connected ? 'Leave Party (solo)' : 'Leave to Title'),
+      leave: () => {
+        const w = this.world();
+        if (net.connected && w) {
+          net.leave(); this.say('Left party — continuing solo.');
+          this.menu.close(); this.partyT.setText('');
+        } else { net.leave(); audio.stopMusic(); this.menu.close(); this.scene.stop('world'); this.scene.start('title'); }
+      },
+      cyclePalette: () => {
+        const keys = Object.keys(PALETTES);
+        const i = (keys.indexOf(this.hero.palette) + 1) % keys.length;
+        this.hero.palette = keys[i];
+        const p = PALETTES[keys[i]];
+        this.gbTint.setFillStyle(p.bg, keys[i] === 'modern' ? 0 : 0.12);
+        this.say(`${p.name} palette`);
+      },
+      modeText: () => (net.connected ? `PARTY ${net.code}` : 'SOLO — HOST/JOIN FROM TITLE'),
+      zoom: this.world()?.zoomCtl || null,
+      applyUiScale: () => this.relaunch(),
     });
-    mkBtn(16, 'Cycle Game Boy palette', () => {
-      const keys = Object.keys(PALETTES);
-      const i = (keys.indexOf(this.hero.palette) + 1) % keys.length;
-      this.hero.palette = keys[i];
-      const p = PALETTES[keys[i]];
-      this.gbTint.setFillStyle(p.bg, keys[i] === 'modern' ? 0 : 0.12);
-      this.say(`${p.name} palette`);
-    });
-    mkBtn(50, net.connected ? 'Leave Party (solo)' : 'Leave to Title', () => {
-      const w = this.world();
-      if (net.connected && w) {
-        net.leave(); this.say('Left party — continuing solo.');
-        this.togglePause(); this.partyT.setText(''); this.refreshMode();
-      } else { net.leave(); audio.stopMusic(); this.scene.stop('world'); this.scene.start('title'); }
-    });
+    this.help = new HelpOverlay(this);
+    this.input.on('pointermove', (p) => this.menu.pointerMove(p));
+    this.input.on('pointerup', () => this.menu.pointerUp());
 
-    this.input.keyboard.on('keydown-ESC',   () => { if (this.equip?.isOpen || this.shop?.isOpen) { this.equip.toggle(false); this.shop.close(); } else this.togglePause(); });
-    this.input.keyboard.on('keydown-ENTER', () => this.openChat());
-    this.input.keyboard.on('keydown-P',     () => { const on = audio.toggle(); this.say(`Sound ${on ? 'on' : 'muted'} (P)`); });
-
-    bus.on(Events.SYSTEM,    (s) => this.say(s));
-    bus.on(Events.CHAT,      (m) => this.say(`${m.name}: ${m.text}`));
-    bus.on(Events.PLAYER_HP, (p) => this.drawStatus(p));
-    bus.on(Events.PLAYER_XP, (p) => this.drawXp(p));
-    bus.on(Events.QUEST,     (q) => this.setQuest(q));
-    bus.on(Events.ZONE,      (z) => this.zoneT.setText(z.name));
-    bus.on(Events.SYSTEM,    (s) => {
+    // Esc closes the topmost panel first (see core/input.js closers); only then pauses.
+    this.offs.push(
+      input.addCloser({ id: 'help', priority: 900, isOpen: () => this.help.isOpen, close: () => this.help.close() }),
+      input.addCloser({ id: 'pause-sub', priority: 850, isOpen: () => this.menu.isOpen && this.menu.page !== 'main', close: () => this.menu.goto('main') }),
+      input.addCloser({ id: 'shop', priority: 450, isOpen: () => !!this.shop?.isOpen, close: () => this.shop.close() }),
+      input.addCloser({ id: 'equip', priority: 400, isOpen: () => !!this.equip?.isOpen, close: () => this.equip.toggle(false) }),
+      input.addCloser({ id: 'pause', priority: 100, isOpen: () => this.menu.isOpen, close: () => this.menu.close() }),
+      input.on('menu', () => { this.menu.open('main'); return true; }),
+      input.on('help', () => { this.help.toggle(); return true; }),
+      input.on('chat', () => this.openChat()),
+      input.on('mute', () => { const on = audio.toggle(); this.say(`Sound ${on ? 'on' : 'muted'} (${input.labelFor('mute')})`); }),
+      input.onChange(() => this.refreshKeyLabels()),
+      settings.onChange((k) => { if (k === 'showFps') this.fpsT?.setVisible(settings.get('showFps')); }),
+    );
+    this.offs.push(
+      input.addCloser({ id: 'social', priority: 950, isOpen: () => !!this.social?.anyOpen?.(), close: () => social.act('closeAll') }),
+      input.addCloser({ id: 'fishing', priority: 700, isOpen: () => !!this.fishing?.isOpen, close: () => {} }),
+      input.addCloser({ id: 'journal', priority: 470, isOpen: () => !!this.journal?.isOpen, close: () => this.journal.close() }),
+      input.addCloser({ id: 'craft', priority: 460, isOpen: () => !!this.craftPanel?.isOpen, close: () => this.craftPanel.close() }),
+    );
+    const sub = (ev, fn) => this.offs.push(bus.on(ev, fn));
+    sub(Events.SYSTEM,    (s) => this.say(s));
+    sub(Events.PLAYER_HP, (p) => this.drawStatus(p));
+    sub(Events.PLAYER_XP, (p) => this.drawXp(p));
+    sub(Events.QUEST,     (q) => this.setQuest(q));
+    sub(Events.ZONE,      (z) => this.zoneT.setText(z.name));
+    sub(Events.SYSTEM,    (s) => {
       if (s === 'toggle-minimap') { this.mapLarge = !this.mapLarge; this.layoutMinimap(); }
     });
-    const offGear = bus.on(Events.GEAR, (m) => {
+    sub(Events.GEAR, (m) => {
       if      (m.open === 'inventory') { this.shop?.close(); this.equip.toggle(); }
       else if (m.open === 'shop')      { this.equip.toggle(false); this.shop.show(m.shop || 'maren'); }
       else if (m.changed)              { this.equip.refresh(); this.shop.refresh(); }
     });
-    this.events.once('shutdown', () => { offGear(); this.equip?.destroy(); this.shop?.destroy(); });
+    this.events.once('shutdown', () => {
+      this.offs.forEach((off) => { try { off(); } catch { /* ignore */ } });
+      this.offs = [];
+      this.resizeTimer?.remove(false);
+      this.equip?.destroy(); this.shop?.destroy(); this.journal?.destroy(); this.craftPanel?.destroy(); this.fishing?.destroy(); this.toast?.destroy();
+    });
+
+    // ── HUD menu + help buttons (touch has no Esc/H) ─────────────────────────
+    const hb = (x, label, cb) => {
+      const r = this.add.rectangle(x, 8, 22, 20, 0x2a1d10, 0.92).setOrigin(0).setStrokeStyle(2, 0x8d5a2b).setDepth(120).setInteractive({ useHandCursor: true });
+      const t = this.add.text(x + 11, 18, label, F(10, '#ffe8a0', { fontStyle: 'bold' })).setOrigin(0.5).setDepth(121);
+      r.on('pointerover', () => r.setStrokeStyle(2, 0xffe07a));
+      r.on('pointerout', () => r.setStrokeStyle(2, 0x8d5a2b));
+      r.on('pointerdown', () => { audio.play('ui', 0.6); cb(); });
+      return [r, t];
+    };
+    const hbX = W - 8 - this.questW - 30;
+    this.menuBtn = hb(hbX, 'II', () => (this.menu.isOpen ? this.menu.close() : this.menu.open('main')));
+    this.helpBtn = hb(hbX - 26, '?', () => this.help.toggle());
+    this.fpsT = this.add.text(hbX - 32, 12, '', F(9, '#9bf06b', { stroke: '#1a1024', strokeThickness: 3 })).setOrigin(1, 0).setDepth(121).setVisible(settings.get('showFps'));
+    this.offs.push(bus.on(Events.TOAST, (t) => this.toast?.push(t)));
 
     this.buildTouch();
     this.buildPanels();
+    // Social UI: chat window, party frames, players/friends, emote wheel (src/ui/socialUI.js)
+    this.social = installSocialUI(this, { name: this.pname, job: this.job.id, framesY: this.small ? 136 : 134 });
     // WorldScene emits the initial QUEST/HP/XP before this overlay exists —
     // pull current values so the tracker never starts empty.
     const w0 = this.world();
@@ -299,22 +355,32 @@ export class UIScene extends Phaser.Scene {
       this.setQuest(w0.questText());
       this.zoneT.setText(w0.zoneId ? (ZONES.find((z) => z.id === w0.zoneId)?.name || '') : '');
     }
+    if (data.menuPage) this.menu.open(data.menuPage); // relaunch while paused
+    { const ov = this.scene.get('overlay'); if (ov?.sys.isActive() && ov.mapBtn) ov.relayout(); } // UI scale moved the minimap / map button
+  }
+
+  refreshKeyLabels() {
+    for (const h of this.hotbar || []) {
+      if (!h.badgeT?.active) continue;
+      h.badgeT.setText(input.labelFor(h.s.action));
+      h.badgeBg.width = Math.max(13, h.badgeT.width + 4);
+    }
+    this.mapLbl?.setText(input.labelFor('minimap'));
   }
 
   drawScan() {
     this.scan.clear();
-    const { width: W, height: H } = this.scale;
+    const { w: W, h: H } = this.view();
     for (let y = 0; y < H; y += 4) this.scan.fillStyle(0x000000, 0.035).fillRect(0, y, W, 1);
   }
 
   say(s) {
     if (s === 'toggle-minimap') return;
-    this.log.push(s); if (this.log.length > 6) this.log.shift();
-    this.logT.setText(this.log.join('\n'));
+    social.system(s); // -> chat window, System channel
   }
 
   drawStatus(p) {
-    if (this.lastHp !== null && p.hp < this.lastHp) {
+    if (this.lastHp !== null && p.hp < this.lastHp && !settings.get('reduceMotion')) {
       this.vignette.setAlpha(0.45);
       this.tweens.add({ targets: this.vignette, alpha: 0, duration: 350 });
     }
@@ -341,36 +407,24 @@ export class UIScene extends Phaser.Scene {
   }
   drawXp(p) { this.xpBar.setDisplaySize(this.hpBarW * Math.min(1, p.xp / p.xpNext), this.barH.xp); }
 
-  openChat() {
-    const v = window.prompt(net.connected ? 'Party chat:' : 'Say (solo log):', '');
-    if (!v) return;
-    net.sendChat(this.pname, v.slice(0, 120));
-    if (!net.connected) this.say(`${this.pname}: ${v.slice(0, 120)}`);
-  }
+  openChat() { social.act('openChat'); } // Enter -> chat input (closes on Enter/Esc)
 
-  refreshMode() {
-    this.modeT?.setText(net.connected ? `PARTY ${net.code}` : 'SOLO — HOST/JOIN FROM TITLE');
-  }
+  refreshMode() { if (this.menu?.isOpen) this.menu.build(); }
 
-  togglePause() {
-    this.paused = !this.paused;
-    if (this.paused) this.refreshMode();
-    this.menu.setVisible(this.paused);
-    const w = this.world();
-    if (w) w.physics.world.isPaused = this.paused;
-  }
+  togglePause() { this.menu.toggle(); } // back-compat
 
   buildTouch() {
-    const { width: W, height: H } = this.scale;
+    const { w: W, h: H } = this.view();
     this.touchUI = this.add.container(0, 0).setDepth(150);
     const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
     if (!isTouch) return;
     this.input.addPointer(2); // stick + action button held at the same time
-    // Joystick (bottom-left, dynamic origin)
-    const base = this.add.circle(90, H - 110, 46, 0xffffff, 0.12);
-    const knob = this.add.circle(90, H - 110, 20, 0xffffff, 0.3);
+    // Joystick (bottom-left, dynamic origin); kept above the hotbar row
+    const sx0 = 90, sy0 = H - 140;
+    const base = this.add.circle(sx0, sy0, 46, 0xffffff, 0.12);
+    const knob = this.add.circle(sx0, sy0, 20, 0xffffff, 0.3);
     this.touchUI.add([base, knob]);
-    let stickId = null, ox = 90, oy = H - 110;
+    let stickId = null, ox = sx0, oy = sy0;
     const setKnob = (x, y) => {
       const dx = x - ox, dy = y - oy;
       const d = Math.hypot(dx, dy), max = 40;
@@ -380,30 +434,40 @@ export class UIScene extends Phaser.Scene {
       if (w) { w.touchInput.x = (dx * c) / max; w.touchInput.y = (dy * c) / max; }
     };
     const clearKnob = () => {
-      stickId = null; knob.setPosition(ox, oy);
+      stickId = null; ox = sx0; oy = sy0; knob.setPosition(ox, oy);
       const w = this.world();
       if (w) { w.touchInput.x = 0; w.touchInput.y = 0; }
     };
-    // Joystick (bottom-left, dynamic origin). NOTE: hitArea is in the
-    // GameObject's LOCAL frame (arc is centered at 46,46 of its 92×92 frame),
-    // not world coords — a world-space circle here silently eats all touches.
+    // NOTE: hitArea is in the GameObject's LOCAL frame (arc is centered at
+    // 46,46 of its 92x92 frame), not world coords — a world-space circle here
+    // silently eats all touches. Pointer coords go through pt() (UI scale).
     base.setInteractive(new Phaser.Geom.Circle(46, 46, 70), Phaser.Geom.Circle.Contains);
-    base.on('pointerdown', (p) => { stickId = p.id; ox = p.x; oy = p.y; base.setPosition(ox, oy); setKnob(p.x, p.y); });
-    this.input.on('pointermove', (p) => { if (p.id === stickId && p.isDown) setKnob(p.x, p.y); });
-    this.input.on('pointerup',   (p) => { if (p.id === stickId) { base.setPosition(90, H - 110); clearKnob(); } });
-    // Action buttons (bottom-right, 44px+ targets)
-    const R = this.small ? 30 : 26;
-    const mkBtn = (x, y, label, cb) => {
-      const c = this.add.circle(x, y, R, 0x000000, 0.5).setInteractive({ useHandCursor: true });
-      const t = this.add.text(x, y, label, { fontSize: this.small ? '13px' : '12px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5);
-      c.on('pointerdown', () => { audio.play('ui', 0.5); cb(); });
+    base.on('pointerdown', (p) => { const q = this.pt(p); stickId = p.id; ox = q.x; oy = q.y; base.setPosition(ox, oy); setKnob(q.x, q.y); });
+    this.input.on('pointermove', (p) => { if (p.id === stickId && p.isDown) { const q = this.pt(p); setKnob(q.x, q.y); } });
+    this.input.on('pointerup',   (p) => { if (p.id === stickId) { base.setPosition(sx0, sy0); clearKnob(); } });
+    this.input.on('gameout',     () => { if (stickId !== null) { base.setPosition(sx0, sy0); clearKnob(); } });
+    // Action buttons (bottom-right, stacked ABOVE the minimap so they never
+    // cover it; skills 1-4/potion = tap the hotbar, 5/6 = tap the class bar,
+    // CHAR/SKILL/MAP/II/? are HUD buttons).
+    const R = this.small ? 28 : 26;
+    const mmTop = H - (this.small ? 84 : 112) - 20;
+    const mkBtn = (x, y, label, cb, r = R) => {
+      const c = this.add.circle(x, y, r, 0x000000, 0.5).setStrokeStyle(2, 0xffffff, 0.25).setInteractive({ useHandCursor: true });
+      const t = this.add.text(x, y, label, { fontFamily: '"Silkscreen", monospace', fontSize: this.small ? '12px' : '11px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5);
+      c.on('pointerdown', () => { audio.play('ui', 0.5); c.setFillStyle(0xffffff, 0.35); cb(); });
+      c.on('pointerup', () => c.setFillStyle(0x000000, 0.5));
+      c.on('pointerout', () => c.setFillStyle(0x000000, 0.5));
       this.touchUI.add([c, t]);
+      return c;
     };
-    mkBtn(W - 60,  H - 110, 'ATK', () => this.world()?.attack());
-    mkBtn(W - 122, H - 80,  'SKL', () => this.world()?.cast('2'));
-    mkBtn(W - 60,  H - 176, 'E',   () => this.world()?.interact());
-    mkBtn(W - 122, H - 146, 'Q',   () => this.world()?.drinkPotion());
-    mkBtn(W - 184, H - 110, 'BAG', () => bus.emit(Events.GEAR, { open: 'inventory' }));
+    this.touchBtns = {
+      attack: mkBtn(W - 50, mmTop - R - 10, 'ATK', () => this.world()?.attack(), R + 6),
+      interact: mkBtn(W - 50, mmTop - 3 * R - 28, 'E', () => this.world()?.interact()),
+      potion: mkBtn(W - 50 - 2 * R - 18, mmTop - R + 2, 'Q', () => this.world()?.drinkPotion()),
+      bag: mkBtn(W - 50 - 2 * R - 18, mmTop - 3 * R - 12, 'BAG', () => bus.emit(Events.GEAR, { open: 'inventory' })),
+    };
+    mkBtn(W - 184, H - 176, 'LOG', () => bus.emit(Events.JOURNAL, { open: 'toggle' }));
+    mkBtn(W - 246, H - 110, 'CFT', () => bus.emit(Events.CRAFT, { open: 'toggle' }));
   }
 
   // ── equipment + shop panels (src/ui/EquipPanel.js, ShopPanel.js) ───────────
@@ -421,10 +485,52 @@ export class UIScene extends Phaser.Scene {
     };
     this.equip = new EquipPanel(this, hooks);
     this.shop = new ShopPanel(this, hooks);
-    this.scale.on('resize', () => { this.equip.resize(); this.shop.refresh(); });
+    // Content panels: Journal (L), Crafting (U), fishing mini-game, toasts.
+    const wh = { world: () => this.world() };
+    this.journal = new JournalPanel(this, wh);
+    this.craftPanel = new CraftPanel(this, wh);
+    this.fishing = new FishingGame(this);
+    this.toast = new Toaster(this);
+    const blocked = () => this.fishing?.isOpen || this.paused;
+    input.registerAction({ id: 'journal', label: 'Quest journal', group: 'Panels', keys: ['KeyL'], gameplay: true });
+    input.registerAction({ id: 'craft', label: 'Crafting', group: 'Panels', keys: ['KeyU'], gameplay: true });
+    this.offs.push(
+      input.on('journal', () => { if (!blocked()) { this.craftPanel.close(); bus.emit(Events.JOURNAL, { open: 'toggle' }); } return true; }),
+      input.on('craft', () => { if (!blocked()) { this.journal.close(); bus.emit(Events.CRAFT, { open: 'toggle' }); } return true; }),
+    );
+    this.scale.on('resize', () => { this.equip.resize(); this.shop.refresh(); this.journal.resize(); this.craftPanel.resize(); });
+    this.buildContentButtons();
   }
 
-  update() {
+  // On phones the full-width Journal/Craft panels would sit under CharacterScene's
+  // HUD buttons (separate scene above this one): lift the UI scene while they are open.
+  syncRaise() {
+    if (!this.small) return;
+    const on = !!(this.journal?.isOpen || this.craftPanel?.isOpen);
+    if (on === this._raised) return;
+    this._raised = on;
+    if (on) this.scene.bringToTop();
+    else { if (this.scene.get('character')) this.scene.bringToTop('character'); this.scene.bringToTop('overlay'); }
+  }
+
+  // Small HUD buttons next to CHAR / SKILL (keyboard L / U also work)
+  buildContentButtons() {
+    const y = this.small ? 144 : 124;
+    const mk = (x, txt, cb) => {
+      const fill = this.add.rectangle(x, y, 62, 20, 0x9bbc0f).setStrokeStyle(1, 0x1a1a22).setDepth(120).setInteractive({ useHandCursor: true });
+      const t = this.add.text(x, y, txt, { fontFamily: '"Silkscreen", monospace', fontSize: '9px', color: '#3a1f00' }).setOrigin(0.5).setDepth(121);
+      fill.on('pointerover', () => fill.setFillStyle(0xb8d820)); fill.on('pointerout', () => fill.setFillStyle(0x9bbc0f));
+      fill.on('pointerdown', () => { audio.play('ui', 0.6); cb(); });
+      return [fill, t];
+    };
+    mk(8 + 31 + 132, 'LOG L', () => { this.craftPanel.close(); bus.emit(Events.JOURNAL, { open: 'toggle' }); });
+    mk(8 + 31 + 198, 'CRAFT U', () => { this.journal.close(); bus.emit(Events.CRAFT, { open: 'toggle' }); });
+  }
+
+  update(time, delta) {
+    const dtS = (delta || 16) / 1000;
+    this.fishing?.update(dtS);
+    this.craftPanel?.update();
     // Hotbar cooldown sweep
     const w   = this.world();
     const now = w?.time.now ?? 0;
@@ -442,13 +548,17 @@ export class UIScene extends Phaser.Scene {
         slot.cdT.setText(remain > 1 ? remain.toFixed(0) : remain.toFixed(1));
       }
     }
-    // Low-HP pulse
+    // Low-HP pulse (steady tint with Reduce motion)
     if (this.lastHp !== null && w?.player) {
       const frac = w.player.hp / w.player.maxHp;
-      if (frac < 0.3 && !w.player.dead) this.vignette.setAlpha(0.15 + 0.1 * Math.sin(this.time.now / 200));
+      if (frac < 0.3 && !w.player.dead) this.vignette.setAlpha(settings.get('reduceMotion') ? 0.15 : 0.15 + 0.1 * Math.sin(this.time.now / 200));
       else if (this.vignette.alpha < 0.2) this.vignette.setAlpha(Math.max(0, this.vignette.alpha - 0.02));
     }
     this.updateMinimap(w);
+    if (this.fpsT?.visible && Math.floor(this.time.now / 500) !== this.fpsTick) {
+      this.fpsTick = Math.floor(this.time.now / 500);
+      this.fpsT.setText(`${Math.round(this.game.loop.actualFps)} FPS`);
+    }
   }
 
   // ── minimap ────────────────────────────────────────────────────────────────
@@ -466,27 +576,32 @@ export class UIScene extends Phaser.Scene {
       }
       t.refresh(); t.setFilter(0);
     }
-    if (this.textures.exists('hud.mapFog')) this.textures.remove('hud.mapFog');
-    this.fogTex = this.textures.createCanvas('hud.mapFog', MAP_T, MAP_T);
-    this.fogCtx = this.fogTex.getContext();
-    this.fogCtx.fillStyle = '#0d1018'; this.fogCtx.fillRect(0, 0, MAP_T, MAP_T);
-    this.fogTex.refresh(); this.fogTex.setFilter(0);
+    // keepFog: a resize / UI-scale relaunch keeps the explored area
+    if (this.keepFog && this.textures.exists('hud.mapFog')) {
+      this.fogTex = this.textures.get('hud.mapFog');
+      this.fogCtx = this.fogTex.getContext();
+    } else {
+      if (this.textures.exists('hud.mapFog')) this.textures.remove('hud.mapFog');
+      this.fogTex = this.textures.createCanvas('hud.mapFog', MAP_T, MAP_T);
+      this.fogCtx = this.fogTex.getContext();
+      this.fogCtx.fillStyle = '#0d1018'; this.fogCtx.fillRect(0, 0, MAP_T, MAP_T);
+      this.fogTex.refresh(); this.fogTex.setFilter(0);
+    }
     this.fogLast = null;
 
     this.mapFrame = this.add.graphics().setDepth(100);
     this.mapImg = this.add.image(0, 0, 'hud.mapTerrain').setOrigin(0).setDepth(101);
     this.fogImg = this.add.image(0, 0, 'hud.mapFog').setOrigin(0).setDepth(102);
     this.mapG = this.add.graphics().setDepth(103);
-    this.mapLbl = this.add.text(0, 0, 'M', { fontFamily: '"Silkscreen", monospace', fontSize: '8px', color: '#ffd84a',
+    this.mapLbl = this.add.text(0, 0, input.labelFor('minimap'), { fontFamily: '"Silkscreen", monospace', fontSize: '8px', color: '#ffd84a',
       stroke: '#1a1024', strokeThickness: 3 }).setOrigin(1, 0).setDepth(104);
     this.mapHit = this.add.zone(0, 0, 10, 10).setOrigin(0).setInteractive({ useHandCursor: true }).setDepth(105);
     this.mapHit.on('pointerdown', () => { this.mapLarge = !this.mapLarge; this.layoutMinimap(); });
-    this.scale.on('resize', () => this.layoutMinimap());
     this.layoutMinimap();
   }
 
   layoutMinimap() {
-    const { width: W, height: H } = this.scale;
+    const { w: W, h: H } = this.view();
     const ms = this.mapLarge ? (this.small ? 150 : 200) : (this.small ? 84 : 112);
     const x = W - ms - 14, y = H - ms - 14;
     this.mapRect = { x, y, ms };
@@ -521,7 +636,16 @@ export class UIScene extends Phaser.Scene {
     // zone outlines (only where explored is fine: fog covers them)
     const dot = (px, py, r, fill) => { g.fillStyle(0x1a1024, 1).fillCircle(px, py, r + 1); g.fillStyle(fill, 1).fillCircle(px, py, r); };
     for (const n of w.npcs || []) dot(x + (n.x / T) * k, y + (n.y / T) * k, 1.6, 0xffd84a);
-    w.sync?.remotes?.forEach((r) => dot(x + (r.x / T) * k, y + (r.y / T) * k, 2, 0x5ad0ff));
+    // quest markers: gold = quest available, green = turn-in, cyan = talk target
+    if (!w.areas?.current) for (const m of w.quests?.markerList() || []) {
+      if (m.area) continue;
+      const mx = x + (m.x / T) * k, my = y + (m.y / T) * k, col = m.kind === 'talk' ? 0x7fdcff : m.kind === '?' ? 0x9be88a : 0xffd84a;
+      g.fillStyle(0x1a1024, 1).fillTriangle(mx, my - 5, mx - 4, my + 2, mx + 4, my + 2);
+      g.fillStyle(col, 1).fillTriangle(mx, my - 3.6, mx - 2.6, my + 1, mx + 2.6, my + 1);
+    }
+    // other players: party green (bigger), friends pink, guild gold, else blue; grey = peer inside an interior/dungeon
+    const REL = { party: 0x7dff9a, friend: 0xff9ad5, guild: 0xffd84a, other: 0x5ad0ff };
+    w.sync?.remotes?.forEach((r, id) => { const m = r.mapPos ? r.mapPos() : r; if (!m) return; const rel = social.relation(id); dot(x + (m.x / T) * k, y + (m.y / T) * k, rel === 'party' ? 2.6 : 2, m.grey ? 0x7a7a88 : REL[rel]); });
     const blink = 0.5 + 0.5 * Math.sin(this.time.now / 250);
     const px = x + tx * k, py = y + ty * k;
     g.fillStyle(0xffffff, 0.25 + 0.3 * blink).fillCircle(px, py, 4.5);

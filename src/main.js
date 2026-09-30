@@ -6,6 +6,7 @@ import { WorldScene } from './scenes/WorldScene.js';
 import { UIScene } from './scenes/UIScene.js';
 import { CharacterScene } from './scenes/CharacterScene.js';
 import { OverlayScene } from './scenes/OverlayScene.js';
+import { input } from './core/input.js';
 
 // Mobile hardening: no pinch-zoom gestures, no long-press menu, no dblclick zoom.
 document.addEventListener('gesturestart', (e) => e.preventDefault());
@@ -44,3 +45,5 @@ const game = new Phaser.Game({
 
 // Debug/testing handle (also used by automated smoke tests).
 window.__wayfarer = game;
+// Central keyboard/gamepad input (core/input.js): one window listener, canvas focus, rebindable actions.
+input.install(game);

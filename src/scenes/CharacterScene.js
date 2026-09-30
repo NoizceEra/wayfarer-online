@@ -2,6 +2,8 @@ import Phaser from 'phaser';
 import { bus, Events } from '../core/events.js';
 import { audio } from '../systems/audio.js';
 import { ADVANCED } from '../data/jobs.js';
+import { input } from '../core/input.js';
+import { settings, uiZoomFor } from '../core/settings.js';
 import {
   STAT_IDS, STAT_INFO, MAX_LEVEL, MAX_STAT, SKILL_MAX, CLASS_CHANGE_LEVEL,
   computeDerived, statCost, skillDmgMul, skillCdMul,
@@ -19,6 +21,9 @@ export class CharacterScene extends Phaser.Scene {
   constructor() { super('character'); }
   world() { return this.scene.get('world'); }
   player() { return this.world()?.player || null; }
+  // UI scale (Settings) = camera zoom with origin 0,0; lay out in view() units.
+  applyZoom() { this.uiZoom = uiZoomFor(this.scale.width, this.scale.height); this.cameras.main.setZoom(this.uiZoom).setOrigin(0, 0).setScroll(0, 0); }
+  view() { const z = this.uiZoom || 1; return { w: this.scale.width / z, h: this.scale.height / z }; }
 
   create() {
     this.open = false; this.tab = 'char';
@@ -32,10 +37,18 @@ export class CharacterScene extends Phaser.Scene {
       bus.on(Events.PROGRESS, () => this.onProgress()),
       bus.on(Events.PLAYER_XP, () => { if (this.open) this.render(); }),
     ];
-    const onResize = () => this.layout();
+    this.applyZoom();
+    const onResize = () => { this.applyZoom(); this.layout(); };
     this.scale.on('resize', onResize);
-    this.input.keyboard.on('keydown-C', () => this.toggle('char'));
-    this.input.keyboard.on('keydown-K', () => this.toggle('skills'));
+    // hotkeys via core/input.js (rebindable); Esc closes modal -> panel before pausing
+    offs.push(
+      input.on('character', () => this.toggle('char')),
+      input.on('skills', () => this.toggle('skills')),
+      input.addCloser({ id: 'class-modal', priority: 600, isOpen: () => !!this.modal, close: () => this.closeModal() }),
+      input.addCloser({ id: 'character', priority: 500, isOpen: () => this.open, close: () => this.setOpen(false) }),
+      input.onChange(() => { this.buildHud(); this.buildAdvBar(); }),
+      settings.onChange((k) => { if (k === 'uiScale') onResize(); }),
+    );
     const w = this.world();
     const stop = () => this.scene.stop();
     w?.events.once('shutdown', stop);
@@ -48,7 +61,7 @@ export class CharacterScene extends Phaser.Scene {
 
   // ── layout: HUD buttons, advanced bar, panel anchor ─────────────────────────
   layout() {
-    const { width: W, height: H } = this.scale;
+    const { w: W, h: H } = this.view();
     this.small = W < 560;
     this.panel.setPosition(W / 2, H / 2);
     this.buildHud();
@@ -78,8 +91,8 @@ export class CharacterScene extends Phaser.Scene {
     const y = this.small ? 144 : 124;
     const p = this.player();
     const mk = (x, label, cb, opts) => { const o = this.btn(null, x, y, 62, 20, label, cb, { size: 9, ...opts }); this.hudObjs.push(...o); o.forEach((e) => e.setDepth(120)); return o; };
-    mk(8 + 31, 'CHAR C', () => this.toggle('char'));
-    mk(8 + 31 + 66, 'SKILL K', () => this.toggle('skills'));
+    mk(8 + 31, `CHAR ${input.labelFor('character')}`, () => this.toggle('char'));
+    mk(8 + 31 + 66, `SKILL ${input.labelFor('skills')}`, () => this.toggle('skills'));
     const badge = (x, n) => {
       const c = this.add.circle(x, y - 10, 8, 0xd63c2f).setStrokeStyle(1, 0xffffff).setDepth(121);
       const t = this.add.text(x, y - 10, String(n), T(9, '#ffffff')).setOrigin(0.5).setDepth(122);
@@ -107,7 +120,7 @@ export class CharacterScene extends Phaser.Scene {
     const p = this.player();
     const adv = p?.advClass();
     if (!adv) return;
-    const { width: W, height: H } = this.scale;
+    const { w: W, h: H } = this.view();
     const S = this.small ? 40 : 44, gap = 8;
     const y = H - (this.small ? 104 : 108);
     adv.abilities.forEach((ab, i) => {
@@ -115,7 +128,7 @@ export class CharacterScene extends Phaser.Scene {
       const bg = this.add.rectangle(x, y, S, S, 0x2a1d10, 0.92).setStrokeStyle(2, 0x9bbc0f).setDepth(120);
       const items = [bg];
       if (this.textures.exists(ab.icon)) items.push(this.add.image(x, y, ab.icon).setScale((S - 10) / 24).setDepth(121));
-      items.push(this.add.text(x, y - S / 2 + 2, ab.key, T(8, '#9bbc0f')).setOrigin(0.5, 0).setDepth(122));
+      items.push(this.add.text(x, y - S / 2 + 2, input.labelFor(`skill${ab.key}`), T(8, '#9bbc0f')).setOrigin(0.5, 0).setDepth(122));
       const lv = p.skillLv(ab.id);
       const lvT = this.add.text(x + S / 2 - 3, y + S / 2 - 3, lv ? `L${lv}` : '--', T(7, lv ? '#ffe8a0' : '#ff9d8a')).setOrigin(1, 1).setDepth(122);
       const cdBg = this.add.rectangle(x, y, S - 2, S - 2, 0x000000, 0.7).setDepth(123).setVisible(false);
@@ -150,13 +163,13 @@ export class CharacterScene extends Phaser.Scene {
   }
 
   onLevelUp(m) {
-    const { width: W, height: H } = this.scale;
+    const { w: W, h: H } = this.view();
     for (const o of this.toastObjs) o.destroy();
     this.toastObjs = [];
     const y = Math.round(H * 0.3);
     const big = this.add.text(W / 2, y, `LEVEL UP!  Lv ${m.level}`, T(this.small ? 18 : 24, '#ffe07a', { fontStyle: 'bold', stroke: '#3a1f00', strokeThickness: 4 })).setOrigin(0.5).setDepth(220);
     const sub = this.add.text(W / 2, y + (this.small ? 22 : 28),
-      `${m.statPoints} stat pts  ·  ${m.skillPoints} skill pts  ·  press C / K`,
+      `${m.statPoints} stat pts  ·  ${m.skillPoints} skill pts  ·  press ${input.labelFor('character')} / ${input.labelFor('skills')}`,
       T(this.small ? 8 : 10, '#e6f2c0', { stroke: '#1a1a22', strokeThickness: 3, align: 'center', wordWrap: { width: W - 24 } })).setOrigin(0.5, 0).setDepth(220);
     this.toastObjs = [big, sub];
     if (m.needsClass) {
@@ -219,7 +232,7 @@ export class CharacterScene extends Phaser.Scene {
   render() {
     const p = this.player();
     if (!p) return;
-    const { width: W, height: H } = this.scale;
+    const { w: W, h: H } = this.view();
     this.clearCells();
     const pw = Math.min(W - 16, this.small ? 344 : 460);
     const ph = Math.min(H - 24, this.small ? 470 : 480);
@@ -351,7 +364,7 @@ export class CharacterScene extends Phaser.Scene {
     const p = this.player();
     if (!p || !p.canChooseClass() || this.modal) return;
     this.setOpen(false);
-    const { width: W, height: H } = this.scale;
+    const { w: W, h: H } = this.view();
     const opts = p.job.advanced.map((id) => ADVANCED[id]);
     const objs = [];
     const add = (o) => { o.setDepth(210); objs.push(o); return o; };
@@ -416,7 +429,7 @@ export class CharacterScene extends Phaser.Scene {
   }
 
   toast(title, sub) {
-    const { width: W, height: H } = this.scale;
+    const { w: W, h: H } = this.view();
     const a = this.add.text(W / 2, Math.round(H * 0.3), title, T(this.small ? 16 : 22, '#ffe07a', { fontStyle: 'bold', stroke: '#3a1f00', strokeThickness: 4 })).setOrigin(0.5).setDepth(220);
     const b = this.add.text(W / 2, Math.round(H * 0.3) + 26, sub, T(9, '#e6f2c0', { stroke: '#1a1a22', strokeThickness: 3 })).setOrigin(0.5, 0).setDepth(220);
     this.tweens.add({ targets: [a, b], alpha: 0, y: '-=16', delay: 2600, duration: 700, onComplete: () => { a.destroy(); b.destroy(); } });

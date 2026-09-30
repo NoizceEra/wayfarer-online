@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { settings } from '../core/settings.js';
 
 // Hybrid sound: procedural WebAudio blips (always available, used by
 // Title/Creator) + real CC0 ogg files via Phaser Sound once a scene with
@@ -44,14 +45,18 @@ class AudioBus {
     this.ctx = null; this.enabled = true;
     this.scene = null; this.musicKey = null; this.musicObj = null;
     this.stepIdx = 0; this.lastStep = 0;
+    // master/music/sfx volume sliders (pause menu > Settings)
+    settings.onChange((k) => { if ((k === 'master' || k === 'music') && this.musicObj) { try { this.musicObj.setVolume(0.35 * this.musicVol()); } catch { /* ignore */ } } });
   }
+  sfxVol() { return settings.get('master') * settings.get('sfx'); }
+  musicVol() { return settings.get('master') * settings.get('music'); }
   attach(scene) { this.scene = scene; }
   canPlay(key) { return this.enabled && this.scene && this.scene.cache.audio.exists(key) && this.scene.sound; }
   play(logical, vol = 1) {
     const keys = OGG[logical];
     if (!keys) return;
     const key = keys[Math.floor(Math.random() * keys.length)];
-    if (this.canPlay(key)) { try { this.scene.sound.play(key, { volume: 0.5 * vol }); return; } catch { /* fall through */ } }
+    if (this.canPlay(key)) { try { this.scene.sound.play(key, { volume: 0.5 * vol * this.sfxVol() }); return; } catch { /* fall through */ } }
     this.blipFor(logical);
   }
   musicFor(zoneId) {
@@ -60,7 +65,7 @@ class AudioBus {
     if (!this.canPlay(key)) return;
     try {
       this.musicObj?.stop();
-      this.musicObj = this.scene.sound.add(key, { volume: 0.35, loop: true });
+      this.musicObj = this.scene.sound.add(key, { volume: 0.35 * this.musicVol(), loop: true });
       this.musicObj.play();
       this.musicKey = key;
     } catch { /* ignore */ }
@@ -76,7 +81,7 @@ class AudioBus {
     if (now - this.lastStep < 320) return;
     this.lastStep = now;
     this.stepIdx = 1 - this.stepIdx;
-    if (this.canPlay('sfx_step_0')) { try { this.scene.sound.play(this.stepIdx ? 'sfx_step_0' : 'sfx_step_1', { volume: 0.18 }); return; } catch {} }
+    if (this.canPlay('sfx_step_0')) { try { this.scene.sound.play(this.stepIdx ? 'sfx_step_0' : 'sfx_step_1', { volume: 0.18 * this.sfxVol() }); return; } catch {} }
   }
   ensure() {
     if (!this.ctx) { try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch { /* no audio */ } }
@@ -87,7 +92,7 @@ class AudioBus {
     this.ensure(); if (!this.ctx) return;
     const o = this.ctx.createOscillator(), g = this.ctx.createGain();
     o.type = type; o.frequency.value = freq;
-    g.gain.value = vol;
+    g.gain.value = Math.max(0.0002, vol * this.sfxVol());
     o.connect(g); g.connect(this.ctx.destination);
     o.start(); g.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + dur);
     o.stop(this.ctx.currentTime + dur);

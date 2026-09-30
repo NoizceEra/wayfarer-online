@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
 import { ZONES, AREAS, PORTALS, WAYSTONES } from '../data/zones.js';
 import { CONFIG } from '../config.js';
+import { DialogBox } from '../ui/DialogBox.js';
+import { input } from '../core/input.js';
 
 const FONT = '"Silkscreen", monospace';
 const T = CONFIG.tile;
@@ -34,7 +36,7 @@ export class OverlayScene extends Phaser.Scene {
     this.promptT = this.add.text(W / 2, H - 92, '', { fontFamily: FONT, fontSize: '11px', color: '#fff8e0', backgroundColor: '#000000aa', padding: { x: 8, y: 4 } }).setOrigin(0.5).setDepth(300).setVisible(false);
 
     // world map button (works on touch too)
-    this.mapBtn = this.add.text(W - 12, W < 560 ? 76 : H - 104, 'MAP [N]', { fontFamily: FONT, fontSize: '9px', color: '#ffe8a0', backgroundColor: '#2a1d10dd', padding: { x: 6, y: 4 } })
+    this.mapBtn = this.add.text(W - 12, W < 560 ? 76 : H - 104, `MAP [${input.labelFor('worldMap')}]`, { fontFamily: FONT, fontSize: '9px', color: '#ffe8a0', backgroundColor: '#2a1d10dd', padding: { x: 6, y: 4 } })
       .setOrigin(1, W < 560 ? 0 : 1).setDepth(300).setInteractive({ useHandCursor: true });
     this.mapBtn.on('pointerdown', () => this.toggleMap());
 
@@ -45,17 +47,27 @@ export class OverlayScene extends Phaser.Scene {
     this.dlgC = this.add.container(0, 0).setDepth(600).setVisible(false);
     this.mapC = this.add.container(0, 0).setDepth(700).setVisible(false);
 
-    this.input.keyboard.on('keydown-N', () => this.toggleMap());
-    this.input.keyboard.on('keydown-X', () => { if (this.mapOpen) this.toggleMap(false); else if (this.dlg) this.closeDialog(true); });
-    this.input.keyboard.on('keydown-ESC', () => { if (this.mapOpen) this.toggleMap(false); });
-    for (let i = 1; i <= 5; i++) this.input.keyboard.on(`keydown-${['ONE', 'TWO', 'THREE', 'FOUR', 'FIVE'][i - 1]}`, () => this.pick(i - 1));
+    // Hotkeys via core/input.js. While a dialog is open, digit/E/Space presses
+    // are consumed here (priority 50) so they pick options instead of casting.
+    const on = (id, fn, priority = 0) => input.on(id, fn, { scene: this, priority });
+    on('worldMap', () => this.toggleMap());
+    on('close', () => { if (this.mapOpen) this.toggleMap(false); else if (this.dlg) this.closeDialog(true); });
+    for (let i = 1; i <= 5; i++) on(`skill${i}`, () => { if (!this.dlg) return false; this.pick(i - 1); return true; }, 50);
     const confirmKey = () => {
-      if (!this.dlg || this.time.now - this.dlg.t0 < 250) return;
+      if (!this.dlg) return false;
+      if (this.time.now - this.dlg.t0 < 250) return true;
+      if (DialogBox.skip(this.dlg)) return true;
       if (!this.dlg.options.length || this.dlg.options.length === 1) this.pick(0);
+      return true;
     };
-    this.input.keyboard.on('keydown-E', confirmKey);
-    this.input.keyboard.on('keydown-SPACE', confirmKey);
-    this.scale.on('resize', () => this.relayout());
+    on('interact', confirmKey, 50);
+    on('confirm', confirmKey, 50);
+    on('attack', () => !!this.dlg || this.mapOpen, 50); // no swings behind an open dialog / map
+    input.addCloser({ id: 'worldmap', priority: 700, isOpen: () => this.mapOpen, close: () => this.toggleMap(false), scene: this });
+    input.addCloser({ id: 'dialog', priority: 650, isOpen: () => !!this.dlg, close: () => this.closeDialog(true), scene: this });
+    const onResize = () => this.relayout();
+    this.scale.on('resize', onResize);
+    this.events.once('shutdown', () => this.scale.off('resize', onResize));
   }
 
   relayout() {
@@ -66,7 +78,9 @@ export class OverlayScene extends Phaser.Scene {
     this.bannerT.setPosition(W / 2, H * 0.24); this.bannerS.setPosition(W / 2, H * 0.24 + 26);
     this.warnT.setPosition(W / 2, 70);
     this.promptT.setPosition(W / 2, H - 92);
-    this.mapBtn.setPosition(W - 12, W < 560 ? 76 : H - 104).setOrigin(1, W < 560 ? 0 : 1);
+    const uz = this.scene.get('ui')?.uiZoom || 1;
+    this.mapBtn.setText(`MAP [${input.labelFor('worldMap')}]`);
+    this.mapBtn.setPosition(W - 12, W < 560 ? 76 * uz : H - 104 * uz).setOrigin(1, W < 560 ? 0 : 1);
     this.bossT.setPosition(W / 2, W < 560 ? 124 : 60);
     if (this.dlg) this.drawDialog();
     if (this.mapOpen) this.drawMap();
@@ -75,6 +89,7 @@ export class OverlayScene extends Phaser.Scene {
   // ——— transitions ———
   fade(go, { label, loading, quick, done } = {}) {
     const w = this.world();
+    w?.fx?.irisClose(quick ? 220 : 340); // iris closes on the hero while the screen fades
     this.fadeRect.setVisible(true).setAlpha(0);
     this.tweens.add({
       targets: this.fadeRect, alpha: 1, duration: quick ? 200 : 320,
@@ -90,6 +105,7 @@ export class OverlayScene extends Phaser.Scene {
         }
         this.time.delayedCall(hold, () => {
           this.fadeText.setVisible(false); this.fadeBarBg.setVisible(false); this.fadeBar.setVisible(false);
+          w?.fx?.irisOpen(quick ? 240 : 360);
           this.tweens.add({
             targets: this.fadeRect, alpha: 0, duration: quick ? 220 : 340,
             onComplete: () => { this.fadeRect.setVisible(false); done?.(); },
@@ -121,40 +137,23 @@ export class OverlayScene extends Phaser.Scene {
   }
 
   // ——— dialogue / menus ———
-  dialog({ name, text, options, danger }) {
+  dialog({ name, text, options, danger, face, title }) {
     const w = this.world();
     if (this.mapOpen) this.toggleMap(false);
-    this.dlg = { name, text, options: options || [], danger, t0: this.time.now };
+    DialogBox.stop(this.dlg);
+    this.dlg = { name, text, options: options || [], danger, face, title, t0: this.time.now };
     if (w) w.uiLock = true;
     this.drawDialog();
   }
   drawDialog() {
     const { width: W, height: H } = this.scale;
-    const d = this.dlg;
     this.dlgC.removeAll(true);
-    const pw = Math.min(W - 24, 460);
-    const opts = d.options.length ? d.options : [{ label: 'OK' }];
-    const textObj = this.add.text(-pw / 2 + 14, -4, d.text, { fontFamily: FONT, fontSize: '11px', color: '#f4e8c8', wordWrap: { width: pw - 28 }, lineSpacing: 4 });
-    const th = textObj.height;
-    const ph = 30 + th + 14 + opts.length * 26 + 10;
-    const bg = this.add.rectangle(0, 0, pw, ph, 0x2a1d10, 0.96).setStrokeStyle(2, d.danger ? 0xe74c3c : 0x8d5a2b);
-    const nm = this.add.text(-pw / 2 + 14, -ph / 2 + 10, d.name, { fontFamily: FONT, fontSize: '12px', color: d.danger ? '#ff8a7a' : '#f4c542', fontStyle: 'bold' });
-    textObj.setPosition(-pw / 2 + 14, -ph / 2 + 30);
-    this.dlgC.add([bg, nm, textObj]);
-    opts.forEach((o, i) => {
-      const y = -ph / 2 + 30 + th + 14 + i * 26 + 11;
-      const b = this.add.rectangle(0, y, pw - 24, 22, 0x4a3219, 1).setStrokeStyle(1, 0x8d5a2b).setInteractive({ useHandCursor: true });
-      const t = this.add.text(-pw / 2 + 22, y, `${d.options.length ? `${i + 1}.  ` : ''}${o.label}`, { fontFamily: FONT, fontSize: '11px', color: '#ffe8a0' }).setOrigin(0, 0.5);
-      b.on('pointerover', () => b.setFillStyle(0x6b4a26));
-      b.on('pointerout', () => b.setFillStyle(0x4a3219));
-      b.on('pointerdown', (p, lx, ly, ev) => { ev?.stopPropagation?.(); if (this.time.now - d.t0 > 120) this.pick(i); });
-      this.dlgC.add([b, t]);
-    });
-    this.dlgC.setPosition(W / 2, H - ph / 2 - 100).setVisible(true);
+    DialogBox.draw(this, this.dlgC, this.dlg, W, H, (i) => this.pick(i)); // portrait + typewriter (src/ui/DialogBox.js)
   }
   pick(i) {
     const d = this.dlg;
     if (!d || this.time.now - d.t0 < 120) return;
+    if (DialogBox.skip(d)) return; // first press finishes the typewriter line
     const opts = d.options.length ? d.options : [{ label: 'OK' }];
     const o = opts[i];
     if (!o) return;
@@ -163,6 +162,7 @@ export class OverlayScene extends Phaser.Scene {
   }
   closeDialog() {
     const w = this.world();
+    DialogBox.stop(this.dlg);
     this.dlg = null;
     this.dlgC.setVisible(false).removeAll(true);
     if (w) { w.uiLock = false; w.uiLockUntil = w.time.now + 260; }
@@ -254,7 +254,7 @@ export class OverlayScene extends Phaser.Scene {
     }
     ly += 4;
     if (wide) { row('Red = above your level', '#ff9a7a'); row('Gold = on level', '#ffe8a0'); row('Grey = outlevelled', '#9aa0a8'); row('Waystone (cyan): fast travel', '#5ad1ff'); }
-    const hint = this.add.text(cx, cy + ph / 2 - 12, 'N / X to close', { fontFamily: FONT, fontSize: '8px', color: '#9b8a70' }).setOrigin(0.5);
+    const hint = this.add.text(cx, cy + ph / 2 - 12, `${input.labelFor('worldMap')} / ${input.labelFor('close')} / ESC to close`, { fontFamily: FONT, fontSize: '8px', color: '#9b8a70' }).setOrigin(0.5);
     items.push(hint);
     this.mapC.add(items);
   }
@@ -284,13 +284,14 @@ export class OverlayScene extends Phaser.Scene {
     const ui = this.scene.get('ui');
     if (!a || (ui && ui.minimapOn === false)) return;
     const small = W < 560;
-    const ms = small ? 64 : 84;
-    const px0 = W - ms - 16, py0 = H - ms - 16, pw = ms + 16;
+    const uz = ui?.uiZoom || 1; // cover the UI-scaled HUD minimap
+    const ms = (small ? 64 : 84) * uz;
+    const px0 = W - ms - 16 * uz, py0 = H - ms - 16 * uz, pw = ms + 16 * uz;
     g.fillStyle(0x2a1d10, 1).fillRect(px0, py0, pw, pw);
     g.lineStyle(2, 0x8d5a2b, 1).strokeRect(px0 + 1, py0 + 1, pw - 2, pw - 2);
     const inner = ms;
     const sc = inner / Math.max(a.size.w, a.size.h);
-    const ox = px0 + 8 + (inner - a.size.w * sc) / 2, oy = py0 + 8 + (inner - a.size.h * sc) / 2;
+    const ox = px0 + 8 * uz + (inner - a.size.w * sc) / 2, oy = py0 + 8 * uz + (inner - a.size.h * sc) / 2;
     if (a.kind === 'interior') {
       g.fillStyle(a.minimap.wall, 1).fillRect(ox, oy, a.size.w * sc, 2 * sc);
       g.fillStyle(a.minimap.floor, 1).fillRect(ox, oy + 2 * sc, a.size.w * sc, (a.size.h - 2) * sc);
@@ -303,7 +304,15 @@ export class OverlayScene extends Phaser.Scene {
     // exit / npcs / enemies / player
     for (const i of w.areas.interacts) {
       if (i.area !== a.id) continue;
+      if (i.node) { g.fillStyle(0x58d068, 0.8).fillRect(tx(i.x) - 0.6, ty(i.y) - 0.6, 1.2, 1.2); continue; }
       g.fillStyle(i.ref ? 0xf1c40f : 0x5ad1ff, 1).fillCircle(tx(i.x), ty(i.y), 1.4);
+    }
+    // quest markers ('!' available, '?' turn-in, cyan = talk target)
+    for (const m of w.quests?.markerList() || []) {
+      if (m.area !== a.id) continue;
+      const col = m.kind === 'talk' ? 0x7fdcff : m.kind === '?' ? 0x9be88a : 0xffd84a;
+      g.fillStyle(0x1a1024, 1).fillCircle(tx(m.x), ty(m.y), 3);
+      g.fillStyle(col, 1).fillCircle(tx(m.x), ty(m.y), 2.2);
     }
     for (const t of w.areas.triggers) if (t.area === a.id) g.fillStyle(0x2ecc71, 1).fillRect(tx(t.x) - 1.5, ty(t.y) - 1.5, 3, 3);
     g.fillStyle(0xe74c3c, 1);
