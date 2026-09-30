@@ -22,7 +22,8 @@ const dpr = Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : 2); // perf: c
 // ?renderer=canvas forces the 2D fallback (weak GPUs, broken GL, headless tests)
 const forceCanvas = new URLSearchParams(window.location.search).get('renderer') === 'canvas';
 
-const game = new Phaser.Game({  type: forceCanvas ? Phaser.CANVAS : Phaser.AUTO,
+const game = new Phaser.Game({
+  type: forceCanvas ? Phaser.CANVAS : Phaser.AUTO,
   parent: 'game',
   width: window.innerWidth,
   height: window.innerHeight,
@@ -34,7 +35,9 @@ const game = new Phaser.Game({  type: forceCanvas ? Phaser.CANVAS : Phaser.AUTO,
   render: { antialias: false, roundPixels: true },
   physics: { default: 'arcade', arcade: { gravity: { y: 0 }, debug: false, fps: 60 } },
   scene: [BootScene, TitleScene, CreatorScene, WorldScene, UIScene],
-  scale: { mode: Phaser.Scale.RESIZE, autoCenter: Phaser.Scale.CENTER_BOTH },
+  backgroundColor: '#0f380f',
+  // RESIZE: canvas always fills the window; scenes pick integer zooms (core/display.js)
+  scale: { mode: Phaser.Scale.RESIZE, width: window.innerWidth, height: window.innerHeight, autoCenter: Phaser.Scale.NO_CENTER },
 });
 
 // Debug/testing handle (also used by automated smoke tests).

@@ -10,6 +10,7 @@ import { WorldSync } from '../net/WorldSync.js';
 import { net } from '../net/NetworkManager.js';
 import { DayNight } from '../systems/daynight.js';
 import { audio } from '../systems/audio.js';
+import { installWorldZoom } from '../core/display.js';
 import { loadProgress, saveProgress } from '../core/save.js';
 import { gearById, rollGearDrop, statLine } from '../data/gear.js';
 import { SHOP_STOCK } from '../data/gear.js';
@@ -55,7 +56,7 @@ export class WorldScene extends Phaser.Scene {
     this.saveAcc = 0;
     this.physics.add.collider(this.player, solids);
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
-    this.cameras.main.setZoom(CONFIG.isMobile ? 2.25 : 3); // wider view on phones
+    installWorldZoom(this); // integer zoom (auto-fit, or - / = / 0 keys); UIScene stays unzoomed
     this.cameras.main.setBounds(0, 0, W, H);
 
     // NPCs: Pip (quests), Maren (shop/potions), Old Tob (lore) — real sprites
