@@ -1,3 +1,4 @@
+import { input } from '../core/input.js';
 import Phaser from 'phaser';
 import { CONFIG } from '../config.js';
 import { NPCS, GENERIC_HINTS } from '../data/npcs.js';
@@ -130,8 +131,10 @@ function installItemKeys(scene) {
     if (msg) { audio.play('potion'); bus.emit(Events.SYSTEM, msg); bus.emit(Events.PLAYER_HP, scene.hpPayload()); }
     else bus.emit(Events.SYSTEM, id ? (kind === 'scroll' ? 'The scroll fizzles here. (Homecoming only works outdoors.)' : 'You are already full.') : (kind === 'scroll' ? 'No scrolls in your pack.' : 'No food in your pack. Try Hopper, Lotte or the fishmonger.'));
   };
-  kb.on('keydown-H', () => go('food'));
-  kb.on('keydown-Y', () => go('scroll'));
+  input.registerAction({ id: 'eat', label: 'Eat food / potion', group: 'Combat', keys: ['KeyF'], gameplay: true });
+  input.registerAction({ id: 'scroll', label: 'Read scroll', group: 'Combat', keys: ['KeyY'], gameplay: true });
+  input.on('eat', () => { go('food'); return true; }, { scene });
+  input.on('scroll', () => { go('scroll'); return true; }, { scene });
 }
 
 void Phaser;

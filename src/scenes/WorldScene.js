@@ -11,6 +11,8 @@ import { net } from '../net/NetworkManager.js';
 import { DayNight } from '../systems/daynight.js';
 import { audio } from '../systems/audio.js';
 import { installWorldZoom } from '../core/display.js';
+import { input } from '../core/input.js';
+import { applyShakeSetting } from '../core/settings.js';
 import { loadProgress, saveProgress, normalizeExtras } from '../core/save.js';
 import { gearById, rollGearDrop, statLine, RARITY, sellPrice } from '../data/gear.js';
 import { BAG_SIZE } from '../core/save.js';
@@ -81,7 +83,8 @@ export class WorldScene extends Phaser.Scene {
     this.saveAcc = 0;
     this.physics.add.collider(this.player, solids);
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
-    installWorldZoom(this); // integer zoom (auto-fit, or - / = / 0 keys); UIScene stays unzoomed
+    this.zoomCtl = installWorldZoom(this); // integer zoom (auto-fit, or - / = / 0 keys); UIScene stays unzoomed
+    applyShakeSetting(this.cameras.main); // Settings: screen shake / reduce motion
     this.cameras.main.setBounds(0, 0, W, H);
 
     // NPCs: Pip (quests), Maren (shop/potions), Old Tob (lore) — real sprites
@@ -136,18 +139,20 @@ export class WorldScene extends Phaser.Scene {
       this.damageEnemy(ed, s.getData('dmg') || 10, s.getData('owner') === 'remote', { crit: s.getData('crit'), status: s.getData('status'), knock: 110 });
     });
 
-    this.keys = this.input.keyboard.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT,J,E,Q,M,ENTER,ONE,TWO,THREE,FOUR,I');
-    Object.entries({ ONE: '1', TWO: '2', THREE: '3', FOUR: '4' }).forEach(([k, n]) => {
-      this.input.keyboard.on(`keydown-${n}`, () => this.cast(n));
+    // Hotkeys: central input manager (core/input.js) — rebindable, layout-safe,
+    // gamepad-aware, auto-unsubscribed on shutdown. Movement is read in update().
+    const on = (id, fn) => input.on(id, fn, { scene: this });
+    for (let i = 1; i <= 6; i++) on(`skill${i}`, () => this.cast(String(i))); // 5/6 = advanced-class skills
+    on('attack', () => this.attack());
+    on('potion', () => this.drinkPotion());
+    on('interact', () => this.interact());
+    on('bag', () => { if (!this.chatOpen) bus.emit(Events.GEAR, { open: 'inventory' }); });
+    on('minimap', () => bus.emit(Events.SYSTEM, 'toggle-minimap'));
+    this.input.on('pointerdown', (p) => {
+      if (p.button !== 0 || this.chatOpen || this.uiLock || this.uiModal || input.modal) return;
+      if (this.pointerOnHud(p)) return; // clicks on HUD panels/buttons never swing
+      this.attack(p.worldX, p.worldY);
     });
-    ['FIVE', 'SIX'].forEach((k, i) => this.input.keyboard.on(`keydown-${k}`, () => this.cast(String(i + 5)))); // advanced-class skills
-    this.input.keyboard.on('keydown-J', () => this.attack());
-    this.input.keyboard.on('keydown-Q', () => this.drinkPotion());
-    this.input.keyboard.on('keydown-E', () => this.interact());
-    this.input.keyboard.on('keydown-I', () => { if (!this.chatOpen) bus.emit(Events.GEAR, { open: 'inventory' }); });
-    this.input.keyboard.on('keydown-B', () => { if (!this.chatOpen) bus.emit(Events.GEAR, { open: 'inventory' }); });
-    this.input.keyboard.on('keydown-M', () => bus.emit(Events.SYSTEM, 'toggle-minimap'));
-    this.input.on('pointerdown', (p) => { if (p.button === 0 && !this.chatOpen && !this.uiLock && !this.uiModal) this.attack(p.worldX, p.worldY); });
 
     // Loot pickups (gear drops + bonus gold)
     this.drops = this.physics.add.group();
@@ -175,6 +180,15 @@ export class WorldScene extends Phaser.Scene {
     initPrompt(this); showRoomCode(this);
     this.scene.launch('character'); // RPG panels (C / K) + level-up toasts, see CharacterScene.js
     this.scene.launch('overlay');
+  }
+
+  // True when a pointer is over any interactive HUD object in the UI scenes.
+  pointerOnHud(p) {
+    for (const k of ['overlay', 'character', 'ui']) {
+      const sc = this.scene.get(k);
+      if (sc?.sys.isActive() && sc.input?.enabled && sc.input.hitTestPointer(p).length) return true;
+    }
+    return false;
   }
 
   hpPayload() { return { hp: Math.ceil(this.player.hp), maxHp: this.player.effMaxHp(), mp: Math.ceil(this.player.mp), maxMp: this.player.effMaxMp(), potions: this.player.potions, gold: this.player.gold, level: this.player.level, atk: Math.round(this.player.effAtk()), def: this.player.effDef() }; }
@@ -548,12 +562,8 @@ export class WorldScene extends Phaser.Scene {
     this.daynight.update(dt);
     this.combat.regen(dt, time, delta); // MP always, HP too once out of combat
     // movement (keyboard + touch stick)
-    const k = this.keys;
-    let vx = 0, vy = 0;
-    if (k.A.isDown || k.LEFT.isDown) vx -= 1;
-    if (k.D.isDown || k.RIGHT.isDown) vx += 1;
-    if (k.W.isDown || k.UP.isDown) vy -= 1;
-    if (k.S.isDown || k.DOWN.isDown) vy += 1;
+    const mv = input.axis(); // keys (rebindable) + gamepad stick/d-pad
+    let vx = mv.x, vy = mv.y;
     vx += this.touchInput.x; vy += this.touchInput.y;
     if (!this.player.dead && !this.uiLock && !this.transitioning) {
       const len = Math.hypot(vx, vy);

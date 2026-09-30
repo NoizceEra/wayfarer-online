@@ -3,6 +3,7 @@ import { Enemy } from '../entities/Enemy.js';
 import { bus, Events } from '../core/events.js';
 import { audio } from './audio.js';
 import { net } from '../net/NetworkManager.js';
+import { input } from '../core/input.js';
 import { StatusSet } from './status.js';
 import { STATUS, RANKS, heroDmgMul, mobDmgMul, heroMissChance, xpMul } from '../data/combatMath.js';
 import { gearById, rollGearDrop, RARITY } from '../data/gear.js';
@@ -65,9 +66,11 @@ export class Combat {
     const kb = scene.input.keyboard;
     const typing = () => { const el = typeof document !== 'undefined' ? document.activeElement : null; return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable); };
     kb.addCapture('TAB');
-    kb.on('keydown-SPACE', () => { if (!typing()) this.dodge(); });
-    kb.on('keydown-SHIFT', () => { if (!typing()) this.dodge(); });
-    kb.on('keydown-TAB', () => { if (!typing()) this.cycleTarget(); });
+    input.registerAction({ id: 'dodge', label: 'Dodge roll', group: 'Combat', keys: ['ShiftLeft', 'ShiftRight'], gameplay: true });
+    input.registerAction({ id: 'target', label: 'Cycle target', group: 'Combat', keys: ['Tab'], gameplay: true });
+    kb.on('keydown-SPACE', () => { if (!typing()) this.dodge(); }); // Space also rolls (dialogs use it to confirm first)
+    input.on('dodge', () => { this.dodge(); return true; }, { scene });
+    input.on('target', () => { this.cycleTarget(); return true; }, { scene });
     scene.input.on('pointerdown', (ptr) => { if (ptr.button === 0 && !scene.chatOpen && !scene.uiLock && !scene.uiModal) this.pickTarget(ptr.worldX, ptr.worldY); });
 
     this.offParty = bus.on(Events.PARTY_KILL, (k) => this.onPartyKill(k));

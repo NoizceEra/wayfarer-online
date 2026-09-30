@@ -1,4 +1,5 @@
-import { social, installFallbackKeys } from '../systems/social/index.js';
+import { social } from '../systems/social/index.js';
+import { input } from '../core/input.js';
 import { ChatPanel } from './ChatPanel.js';
 import { SocialPanels } from './SocialPanels.js';
 import { EmoteWheel } from './EmoteWheel.js';
@@ -20,11 +21,19 @@ export function installSocialUI(uiScene, { name, job, framesY = 134 } = {}) {
     if (wheel.open) { wheel.setOpen(false); closed = true; }
     social._closedSomething = closed;
   });
-  installFallbackKeys();
+  // hotkeys via the central input manager (rebindable, listed in the help overlay)
+  input.registerAction({ id: 'party', label: 'Party panel', group: 'Social', keys: ['KeyP'], gameplay: true });
+  input.registerAction({ id: 'friends', label: 'Players / friends', group: 'Social', keys: ['KeyO'], gameplay: true });
+  input.registerAction({ id: 'emotes', label: 'Emote wheel', group: 'Social', keys: ['KeyG'], gameplay: true });
+  const offKeys = [
+    input.on('party', () => { social.act('openParty'); return true; }, { scene: uiScene }),
+    input.on('friends', () => { social.act('openFriends'); return true; }, { scene: uiScene }),
+    input.on('emotes', () => { social.act('openEmotes'); return true; }, { scene: uiScene }),
+  ];
   const api = {
     chat, panels, wheel, frames,
     anyOpen: () => chat.open || panels.anyOpen || wheel.open,
-    destroy() { offA(); offB(); chat.destroy(); panels.destroy(); wheel.destroy(); frames.destroy(); },
+    destroy() { offKeys.forEach((o) => o()); offA(); offB(); chat.destroy(); panels.destroy(); wheel.destroy(); frames.destroy(); },
   };
   uiScene.events.once('shutdown', () => api.destroy());
   return api;

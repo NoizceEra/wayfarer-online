@@ -81,7 +81,8 @@ export class ShopPanel {
     const wide = W / H > 1.0;
     const dw = wide ? 560 : 380, dh = wide ? 440 : 600;
     const k = Math.min(1, (W - 8) / dw, (H - 8) / dh);
-    const c = s.add.container(W / 2, H / 2).setDepth(185).setScale(k);
+    const z = s.uiZoom || 1; // UI-scale camera zoom: keep this auto-fit panel 1:1 on screen
+    const c = s.add.container(W / 2 / z, H / 2 / z).setDepth(185).setScale(k / z);
     this.c = c;
     const ox = -dw / 2, oy = -dh / 2;
     const buying = this.tab === 'buy' || this.tab === 'back';
