@@ -41,6 +41,8 @@ export class RemotePlayer extends Phaser.GameObjects.Container {
   update() {
     const dx = this.target.x - this.x, dy = this.target.y - this.y;
     const d = Math.hypot(dx, dy);
+    // peers that changed space (interior/map warp) jump instead of gliding across the world
+    if (d > 400) { this.x = this.target.x; this.y = this.target.y; return; }
     const moving = d > 3;
     const key = `${this.texKey}.${moving ? 'walk' : 'idle'}.${this.facing}`;
     if (this.scene.anims.exists(key)) this.sprite.play(key, true);

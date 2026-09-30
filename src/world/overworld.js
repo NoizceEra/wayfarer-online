@@ -16,9 +16,12 @@ export function zoneAt(tx, ty, ZONES) {
   return ZONES[1];
 }
 
-export function buildOverworld(scene, ZONES) {
+export function buildOverworld(scene, ZONES, extras = {}) {
   makeTreeTextures(scene);
   const t = CONFIG.tile;
+  // Clearings (gates, signposts, waystone) keep scatter props off their footprint.
+  const clearings = extras.clearings || [];
+  const cleared = (x, y) => clearings.some((c) => Math.hypot(c.x - x, c.y - y) < c.r);
   const W = CONFIG.worldCols * t, H = CONFIG.worldRows * t;
   const town = ZONES[0].rect;
   const spawn = { x: (town.x + town.w / 2) * t, y: (town.y + town.h / 2) * t };
@@ -69,6 +72,7 @@ export function buildOverworld(scene, ZONES) {
   // Fixed plaza houses stand wide apart; NPC row + torches sit south in the open.
   placeHouse(S.x - 60, S.y - 32, { w: 52, h: 26, roof: 0xb03a2e, wall: 0xdcc391 });
   placeHouse(S.x + 60, S.y - 32, { w: 44, h: 24, roof: 0x2e86c1, wall: 0xe0cfa4, chimney: false });
+  placeHouse(S.x, S.y - 124, { w: 56, h: 28, roof: 0xd68910, wall: 0xdcc391 }); // Sleepy Lantern Inn (enterable, see overworldFeatures.js)
   // Landmark: the inn, just east of Maren's stall.
   windows.push(P.inn(S.x + 172, S.y - 24));
   blockers.push({ x: S.x + 172, y: S.y - 24, r: 110 });
@@ -146,7 +150,7 @@ export function buildOverworld(scene, ZONES) {
         const edge = Math.min(x - town.x * t, (town.x + town.w) * t - x, y - town.y * t, (town.y + town.h) * t - y);
         const ok = !housePositions.some((p) => Math.hypot(p.x - x, p.y - y) < HOUSE_MIN_DIST)
           && !blockers.some((b) => Math.hypot(b.x - x, b.y - y) < b.r)
-          && fixedDist(x, y) > 130 && ground.roadDist(x, y) > 44 && edge > 52;
+          && !cleared(x, y) && fixedDist(x, y) > 130 && ground.roadDist(x, y) > 44 && edge > 52;
         if (ok) {
           const w = 34 + (v % 4) * 8, h = 22 + (v % 3) * 3;
           const roof = [0xb03a2e, 0x2e86c1, 0x7d3c98, 0x1e8449, 0xca6f1e, 0x566573][v % 6];
@@ -159,6 +163,7 @@ export function buildOverworld(scene, ZONES) {
       continue;
     }
     const r = rnd();
+    if (cleared(x, y)) { if (zone.id === 'ruins' && r >= 0.40 && r < 0.46) rnd(); continue; } // keeps the RNG stream identical
     if (zone.id === 'woods' ? r < 0.24 : r < 0.06) {
       // Meadow keeps only ~1 in 3 of its trees (few trees); woods stay dense.
       if (zone.id !== 'meadow' || v % 3 === 0) P.tree(x, y, treeKind(zone.id, v), zone.id === 'woods' && r < 0.08);
@@ -188,6 +193,7 @@ export function buildOverworld(scene, ZONES) {
   // ruins pass further down (which uses its own seed so the main layout
   // never shifts). Function declaration so it hoists above the 900-loop.
   function buildPillar(x, y, h, v) {
+    if (cleared(x, y)) return;
     const c = scene.add.container(x, y).setDepth(y);
     ground.D.shadow(x + 3, y + 1, 18, 7, 0.22);
     if (useRuins) {
@@ -357,5 +363,5 @@ export function buildOverworld(scene, ZONES) {
   ground.finish();
 
   scene.physics.world.setBounds(32, 32, W - 64, H - 64);
-  return { spawn, solids, W, H, windows, glows };
+  return { spawn, solids, W, H, windows, glows, houses: housePositions.slice(0, 3) };
 }

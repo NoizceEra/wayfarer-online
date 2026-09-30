@@ -8,6 +8,8 @@ export const DIRS = ['down', 'up', 'left', 'right'];
 export const CHARACTERS = [
   'Knight', 'ManGreen', 'SorcererOrange', 'NinjaDark',
   'OldMan', 'Noble', 'GladiatorBlue', 'Villager', 'Woman', 'Monk',
+  // expansion NPCs (inn, docks, Frostpeak, town ambient)
+  'Sultan', 'OldWoman', 'OldMan2', 'Inspector', 'Hunter', 'Eskimo', 'Child', 'Villager3', 'Villager4', 'Master',
 ];
 const FACE_OVERRIDE = { ManGreen: 'Faceset1.png' };
 
@@ -20,6 +22,9 @@ const MONSTER_SHEETS = {
   Spirit: 'Spirit/SpriteSheet.png',
   Skull: 'Skull/SpriteSheet.png',
   Eye: 'Eye/Eye.png',
+  // expansion enemies (see data/worldEnemies.js)
+  YellowsBat: 'YellowsBat/SpriteSheet.png', SkullBlue: 'SkullBlue/SpriteSheet.png', Owl2: 'Owl2/Owl2.png',
+  Grey_Trex: 'Grey_Trex/SpriteSheet.png', Flam2: 'Flam2/SpriteSheet.png', Larva2: 'Larva2/Larva2.png',
 };
 
 // [key, path, frameW, frameH, fps, loop]
@@ -68,7 +73,7 @@ const FLORA = [
 ];
 
 const AUDIO = {
-  music: ['mus_title', 'mus_village', 'mus_forest', 'mus_ruins', 'mus_tension', 'mus_gameover', 'mus_victory'],
+  music: ['mus_title', 'mus_village', 'mus_forest', 'mus_ruins', 'mus_tension', 'mus_gameover', 'mus_victory', 'mus_crypt', 'mus_boss', 'mus_village_alt'],
   ambient: ['amb_wind'],
   jingles: ['jng_levelup1', 'jng_levelup2', 'jng_success3'],
   sfx: [
@@ -79,6 +84,7 @@ const AUDIO = {
     'sfx_ui_move', 'sfx_ui_click', 'sfx_ui_error',
     'sfx_player_hurt', 'sfx_monster_hurt', 'sfx_monster_die', 'sfx_slime',
     'sfx_alert', 'sfx_npc_blip',
+    'sfx_door_open', 'sfx_boss_roar', 'sfx_impact_heavy', 'sfx_chest_unlock', 'sfx_powerup',
   ],
 };
 
@@ -119,18 +125,21 @@ function makeAnim(scene, cfg) {
 
 export function createAnims(scene) {
   const A = scene.anims;
-  const bodies = ['Knight', 'ManGreen', 'SorcererOrange', 'NinjaDark', 'OldMan', 'Noble', 'GladiatorBlue', 'Villager', 'Woman', 'Monk'];
+  const bodies = CHARACTERS;
   for (const name of bodies) {
     const key = `char.${name}`;
     if (!scene.textures.exists(key)) continue;
+    const tex = scene.textures.get(key);
     DIRS.forEach((dir, col) => {
+      // Short sheets (Child/OldWoman are 4x2) only have the frames that exist.
+      const walk = [col, col + 4, col + 8, col + 12].filter((f) => tex.has(f));
       makeAnim(scene, {
         key: `${key}.walk.${dir}`, texture: key,
-        frames: A.generateFrameNumbers(key, { frames: [col, col + 4, col + 8, col + 12] }),
+        frames: A.generateFrameNumbers(key, { frames: walk }),
         frameRate: 8, repeat: -1,
       });
       makeAnim(scene, { key: `${key}.idle.${dir}`, texture: key, frames: [{ key, frame: col }], frameRate: 1 });
-      makeAnim(scene, { key: `${key}.attack.${dir}`, texture: key, frames: [{ key, frame: 16 + col }], frameRate: 1 });
+      if (tex.has(16 + col)) makeAnim(scene, { key: `${key}.attack.${dir}`, texture: key, frames: [{ key, frame: 16 + col }], frameRate: 1 });
     });
   }
   for (const name of Object.keys(MONSTER_SHEETS)) {

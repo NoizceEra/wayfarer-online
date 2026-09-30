@@ -17,6 +17,10 @@ import { SHOP_STOCK } from '../data/gear.js';
 import { initPrompt, updatePrompt, showRoomCode } from '../systems/worldFeel.js';
 import { castFx } from '../systems/skillFx.js';
 import { skillDmgMul } from '../data/stats.js';
+import { Boss } from '../entities/Boss.js';
+import { AreaManager } from '../world/areas.js';
+import { buildOverworldFeatures, overworldClearings } from '../world/overworldFeatures.js';
+import { rollDefDrop } from '../data/worldEnemies.js';
 
 // Open world: town (safe) + meadow + woods + ruins in ONE 128×128 map.
 // Solo = full simulation. Host = authoritative + broadcasts. Guest = applies
@@ -28,9 +32,11 @@ export class WorldScene extends Phaser.Scene {
   create() {
     audio.attach(this);
     const t = CONFIG.tile;
-    const { spawn, solids, W, H } = buildOverworld(this, ZONES);
+    const tz = ZONES[0].rect;
+    const { spawn, solids, W, H, houses } = buildOverworld(this, ZONES, { clearings: overworldClearings({ x: (tz.x + tz.w / 2) * t, y: (tz.y + tz.h / 2) * t }) });
     this.spawn = spawn;
     this.touchInput = { x: 0, y: 0 }; // written by UIScene touch controls
+    this.uiLock = false; this.uiLockUntil = 0; this.transitioning = false; // set by OverlayScene / AreaManager
 
     this.player = new ModularPlayer(this, spawn.x, spawn.y, this.heroData);
     // Restore solo/guest-local progress (level, gold, pos, quest)
@@ -83,15 +89,18 @@ export class WorldScene extends Phaser.Scene {
     this.enemies = this.physics.add.group();
     this.spawnEnemies(solids);
     this.physics.add.collider(this.enemies, solids);
+    // Interiors, expansion maps, portals, signs, waystones, ambient NPCs (world/areas.js)
+    this.areas = new AreaManager(this, { solids, W, H, spawn });
+    buildOverworldFeatures(this, this.areas, { spawn, houses, solids });
     this.physics.add.overlap(this.player, this.enemies, (p, e) => {
       const ed = e instanceof Enemy ? e : null;
       if (!ed) return;
       if (ed.windingUp) return; // telegraphing: no damage until it actually lunges
       // Safe zones (town) are truly safe: no contact damage
-      const pt = CONFIG.tile;
-      if (zoneAt(Math.floor(this.player.x / pt), Math.floor(this.player.y / pt), ZONES).safe) return;
+      if (this.zoneHere(this.player.x, this.player.y).safe) return;
+      if ((ed.areaId || null) !== (this.areas.current?.id || null)) return;
       if (this.player.tryDodge()) return; // FLEE-based dodge
-      const raw = ed.def.atk * 0.15 + 1;
+      const raw = ed.def.dmg ?? (ed.def.atk * 0.15 + 1);
       const n = Math.max(1, Math.round(raw - this.player.effDef() * 0.5));
       if (this.player.hurt(n)) {
         bus.emit(Events.PLAYER_HP, this.hpPayload());
@@ -120,7 +129,7 @@ export class WorldScene extends Phaser.Scene {
     this.input.keyboard.on('keydown-E', () => this.interact());
     this.input.keyboard.on('keydown-I', () => bus.emit(Events.GEAR, { open: 'inventory' }));
     this.input.keyboard.on('keydown-M', () => bus.emit(Events.SYSTEM, 'toggle-minimap'));
-    this.input.on('pointerdown', (p) => { if (p.button === 0 && !this.chatOpen) this.attack(p.worldX, p.worldY); });
+    this.input.on('pointerdown', (p) => { if (p.button === 0 && !this.chatOpen && !this.uiLock) this.attack(p.worldX, p.worldY); });
 
     // Loot pickups (gear drops + bonus gold)
     this.drops = this.physics.add.group();
@@ -140,15 +149,18 @@ export class WorldScene extends Phaser.Scene {
     bus.emit(Events.QUEST, this.questText());
     bus.emit(Events.PLAYER_HP, this.hpPayload());
     bus.emit(Events.PLAYER_XP, this.xpPayload());
-    this.events.once('shutdown', () => { this.saveNow(); this.sync.destroy(); });
+    this.events.once('shutdown', () => { this.saveNow(); this.sync.destroy(); this.scene.stop('overlay'); });
     this.scene.launch('ui', { hero: this.heroData, name: this.pname, job: this.player.job });
     initPrompt(this); showRoomCode(this);
     this.scene.launch('character'); // RPG panels (C / K) + level-up toasts, see CharacterScene.js
+    this.scene.launch('overlay');
   }
 
   hpPayload() { return { hp: Math.ceil(this.player.hp), maxHp: this.player.effMaxHp(), mp: Math.ceil(this.player.mp), maxMp: this.player.effMaxMp(), potions: this.player.potions, gold: this.player.gold, level: this.player.level, atk: Math.round(this.player.effAtk()), def: this.player.effDef() }; }
   xpPayload() { return { xp: this.player.xp, xpNext: this.player.xpNext, level: this.player.level }; }
   questText() {
+    const sideLine = this.areas?.questLine();
+    if (sideLine) return sideLine;
     const q = QUESTS[this.questState.idx];
     if (!q) return 'All errands done! The ruins are yours, Wayfarer.';
     const got = this.questState.kills[q.need.enemy] || 0;
@@ -170,10 +182,26 @@ export class WorldScene extends Phaser.Scene {
         const tx = z.rect.x + 1 + Math.floor(rnd() * (z.rect.w - 2));
         const ty = z.rect.y + 1 + Math.floor(rnd() * (z.rect.h - 2));
         if (zoneAt(tx, ty, ZONES).id !== zoneId) continue; // keep enemies out of town/woods enclaves of their parent rect
-        const e = new Enemy(this, tx * t + 8, ty * t + 8, type);
-        this.enemies.add(e);
+        this.makeEnemy(tx * t + 8, ty * t + 8, type, null);
       }
     }
+  }
+
+  // Factory shared by the overworld spawner, area spawns and respawns (bosses get their own class).
+  makeEnemy(x, y, typeId, areaId = null) {
+    const def = ENEMY_TABLE[typeId];
+    const e = def && def.boss ? new Boss(this, x, y, typeId) : new Enemy(this, x, y, typeId);
+    e.areaId = areaId;
+    this.enemies.add(e);
+    return e;
+  }
+
+  // Which zone (overworld rect or area/sub-zone) contains this world position.
+  zoneHere(x, y) {
+    const a = this.areas?.zoneHere(x, y);
+    if (a) return a;
+    const t = CONFIG.tile;
+    return zoneAt(Math.floor(x / t), Math.floor(y / t), ZONES);
   }
 
   saveNow() {
@@ -181,7 +209,7 @@ export class WorldScene extends Phaser.Scene {
       job: this.player.job.id, level: this.player.level, xp: this.player.xp, xpNext: this.player.xpNext,
       gold: this.player.gold, potions: this.player.potions,
       maxHp: this.player.maxHp, maxMp: this.player.maxMp, atk: this.player.atk,
-      x: Math.round(this.player.x), y: Math.round(this.player.y), quest: this.questState,
+      x: Math.round(this.areas?.savePos()?.x ?? this.player.x), y: Math.round(this.areas?.savePos()?.y ?? this.player.y), quest: this.questState,
       inventory: [...this.player.inventory], equipped: { ...this.player.equipped },
       prog: this.player.prog,
     });
@@ -269,7 +297,7 @@ export class WorldScene extends Phaser.Scene {
       this.spawnFx(ed.x, ed.y - 6, 'fx.smoke', 1.2);
       const coin = this.add.image(ed.x, ed.y, 'fx.coin').setDepth(2600).setScale(2);
       this.tweens.add({ targets: coin, y: ed.y - 14, duration: 250, yoyo: true, onComplete: () => coin.destroy() });
-      const dropId = rollGearDrop(ed.typeId);
+      const dropId = rollGearDrop(ed.typeId) || rollDefDrop(ed.typeId, gearById);
       if (dropId) this.spawnDrop(ed.x, ed.y - 4, dropId);
       const gold = ed.def.gold[0] + Math.floor(Math.random() * (ed.def.gold[1] - ed.def.gold[0]));
       this.player.gold += gold;
@@ -281,6 +309,8 @@ export class WorldScene extends Phaser.Scene {
         this.spawnFx(this.player.x, this.player.y - 10, 'fx.boost', 1.4);
         bus.emit(Events.SYSTEM, `${this.pname} reached Lv ${this.player.level}!`);
       }
+      ed.onSlain?.(this);
+      this.areas?.onKill(ed);
       this.player.questKills[ed.typeId] = (this.player.questKills[ed.typeId] || 0) + 1;
       this.questState.kills[ed.typeId] = (this.questState.kills[ed.typeId] || 0) + 1;
       const q = QUESTS[this.questState.idx];
@@ -296,14 +326,14 @@ export class WorldScene extends Phaser.Scene {
       bus.emit(Events.QUEST, this.questText());
       this.saveNow();
       // respawn after 12s (host or solo)
-      const { x, y, typeId } = { x: ed.home.x, y: ed.home.y, typeId: ed.typeId };
+      const { x, y, typeId, areaId } = { x: ed.home.x, y: ed.home.y, typeId: ed.typeId, areaId: ed.areaId || null };
       ed.destroy();
-      this.time.delayedCall(12000, () => { if (this.scene.isActive()) this.enemies.add(new Enemy(this, x, y, typeId)); });
+      this.time.delayedCall(ed.def.respawn || 12000, () => { if (this.scene.isActive()) this.makeEnemy(x, y, typeId, areaId); });
     }
   }
 
   attack(tx, ty) {
-    if (this.player.dead) return;
+    if (this.player.dead || this.uiLock || this.transitioning || this.time.now < this.uiLockUntil) return;
     const cd = this.player.cooldowns.slash || 0;
     if (this.time.now < cd) return;
     this.player.cooldowns.slash = this.time.now + this.player.attackDelay();
@@ -333,7 +363,7 @@ export class WorldScene extends Phaser.Scene {
 
   cast(slot) {
     const ab = this.player.abilityForKey(slot);
-    if (!ab || this.player.dead) return;
+    if (!ab || this.player.dead || this.uiLock || this.transitioning) return;
     const lv = this.player.skillLv(ab.id); // skill level 1-5 scales dmg/effect (+15%/lv) and cooldown (-6%/lv)
     if (lv < 1) { bus.emit(Events.SYSTEM, `Learn ${ab.name} in Skills (K) first.`); audio.play('error', 0.7); return; }
     const dm = skillDmgMul(lv);
@@ -371,10 +401,12 @@ export class WorldScene extends Phaser.Scene {
       const a = this.facingAngle();
       this.spawnFx(this.player.x, this.player.y - 8, 'fx.dust', 1.4);
       if (ab.id === 'blink') {
-        this.player.setPosition(
-          Phaser.Math.Clamp(this.player.x + Math.cos(a) * 64, 40, 2048 - 40),
-          Phaser.Math.Clamp(this.player.y + Math.sin(a) * 64, 40, 2048 - 40),
-        );
+        const bb = this.areas.bounds(); // stay inside the current space; never blink into a wall
+        let bd = 64;
+        const tx = () => Phaser.Math.Clamp(this.player.x + Math.cos(a) * bd, bb.x0, bb.x1);
+        const ty = () => Phaser.Math.Clamp(this.player.y + Math.sin(a) * bd, bb.y0, bb.y1);
+        while (bd > 0 && this.areas.blockedAt(tx(), ty())) bd -= 8;
+        this.player.setPosition(tx(), ty());
         this.spawnFx(this.player.x, this.player.y - 8, 'fx.spark', 1.2);
       } else {
         this.player.body.setVelocity(Math.cos(a) * 420, Math.sin(a) * 420);
@@ -439,6 +471,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   interact() {
+    if (this.areas?.interact()) return; // doors, signs, waystones, area/ambient NPCs
     let best = null, bd = CONFIG.interactRadius;
     for (const n of this.npcs) {
       const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, n.x, n.y);
@@ -465,6 +498,7 @@ export class WorldScene extends Phaser.Scene {
     this.time.delayedCall(1200, () => {
       this.player.hp = this.player.effMaxHp(); this.player.mp = this.player.effMaxMp();
       this.player.dead = false;
+      this.areas?.leaveInstant();
       this.player.setPosition(this.spawn.x, this.spawn.y);
       this.spawnFx(this.spawn.x, this.spawn.y - 8, 'fx.boost', 1.2);
       bus.emit(Events.PLAYER_HP, this.hpPayload());
@@ -521,7 +555,7 @@ export class WorldScene extends Phaser.Scene {
     if (k.W.isDown || k.UP.isDown) vy -= 1;
     if (k.S.isDown || k.DOWN.isDown) vy += 1;
     vx += this.touchInput.x; vy += this.touchInput.y;
-    if (!this.player.dead) {
+    if (!this.player.dead && !this.uiLock && !this.transitioning) {
       const len = Math.hypot(vx, vy);
       const mag = Math.min(1, len);
       const nx = len > 0.15 ? vx / (len || 1) : 0, ny = len > 0.15 ? vy / (len || 1) : 0;
@@ -534,18 +568,20 @@ export class WorldScene extends Phaser.Scene {
       if (moving) audio.footstep(time);
     } else this.player.body.setVelocity(0, 0);
     this.player.setDepth(this.player.y); // y-sort against trees/props/NPCs
+    this.areas.update(time, delta);
 
     // zone tracking
     const t = CONFIG.tile;
-    const z = zoneAt(Math.floor(this.player.x / t), Math.floor(this.player.y / t), ZONES);
+    const z = this.zoneHere(this.player.x, this.player.y);
     if (z.id !== this.zoneId) {
       this.zoneId = z.id;
       audio.musicFor(z.id);
       bus.emit(Events.ZONE, z);
       bus.emit(Events.SYSTEM, `${z.safe ? '— ' : ''}${z.name}: ${z.desc}`);
-      if (!z.safe && this.player.level < z.level - 1) {
+      if (!z.safe && this.player.level < z.level - 1 && !this.areas.current) {
         audio.play('alert', 0.8);
         bus.emit(Events.SYSTEM, `Careful: ${z.name} is Lv ${z.level}+!`);
+        this.scene.get('overlay')?.warn?.(`DANGER: ${z.name} is Lv ${z.lv ? z.lv[0] : z.level}+  (you are Lv ${this.player.level})`);
       }
     }
 
@@ -555,7 +591,10 @@ export class WorldScene extends Phaser.Scene {
       if (!(e instanceof Enemy)) return true;
       const slowed = this.time.now < (e.getData('slowUntil') || 0);
       const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, e.x, e.y);
-      const safe = zoneAt(Math.floor(e.x / t), Math.floor(e.y / t), ZONES).safe;
+      // enemies only simulate while the player is in their space (overworld / interior / map)
+      if ((e.areaId || null) !== (this.areas.current?.id || null)) { e.body.setVelocity(0, 0); return true; }
+      if (e.aiUpdate) { e.aiUpdate(this, delta); e.setDepth(e.y); return true; }
+      const safe = this.zoneHere(e.x, e.y).safe;
       let evx = 0, evy = 0;
       if (this.player.dead || safe || d > 130) {
         const hx = e.home.x - e.x, hy = e.home.y - e.y;
