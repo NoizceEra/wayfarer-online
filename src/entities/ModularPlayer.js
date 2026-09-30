@@ -1,24 +1,53 @@
 import Phaser from 'phaser';
 import { CONFIG } from '../config.js';
 import { JOBS } from '../data/jobs.js';
-import { HAIR_COLORS, TOPS } from '../data/customization.js';
+import { HAIR_COLORS, TOPS, SKINS } from '../data/customization.js';
 import { gearById } from '../data/gear.js';
+import { bodyVariant, hairTexture, scarfTexture, BARE_HEAD } from '../systems/heroArt.js';
 
-// Modular hero: real CC0 16×16 body sprite (char.*) + customization overlays:
-// hair swatch, outfit tabard tint, accessory, real in-hand weapon sprite,
-// plus the gear system: equipable head/chest/weapon/trinket items with
-// runtime-authored 16×16 worn overlays (see systems/gearArt.js).
+// Modular hero: a real CC0 16x16 Ninja Adventure body, palette-swapped at
+// runtime for skin / outfit / hair (systems/heroArt.js), so the hero has the
+// same pixel quality and scale as the NPCs. On top sit a pixel hair overlay,
+// accessory, head gear, and the in-hand weapon posed per facing.
 //
-// Overlay layering order (bottom → top):
-//   shadow, sprite, tabardOutline, tabard, trim, hairOutline, hair, hairShine,
-//   headGear, accOutline, acc, weapon
-// Each colored overlay (hair, tabard, acc) has a 1px dark outline rect behind
-// it and a 1px highlight strip on top for chunky-pixel shading consistency.
-const BODY_TEX   = { knight: 'Knight', mangreen: 'ManGreen', sorcererorange: 'SorcererOrange', ninjadark: 'NinjaDark' };
+// Layering is facing-aware (see layout()):
+//   down/left/right: shadow, [cape], body, hair, headGear, acc, weapon
+//   up:              shadow, [weapon, cape behind], body, hair, headGear, acc
+const BODY_TEX   = { knight: 'Villager', mangreen: 'ManGreen', sorcererorange: 'SorcererOrange', ninjadark: 'NinjaDark' };
 const WEAPON_TEX = { sword: 'weapon.sword', bigSword: 'weapon.bigSword', bow: 'weapon.bow', wand: 'weapon.wand', sai: 'weapon.sai', ninjaku: 'weapon.ninjaku' };
 const BASE_KIND  = { sword: 'melee', bigSword: 'melee', bow: 'bow', wand: 'wand', sai: 'melee', ninjaku: 'melee' };
+const DIR_ANGLE  = { right: 0, down: 90, left: 180, up: 270 };
+const WEAPON_FX  = { // arc look per weapon texture: radius, sweep (deg), width, colour
+  'weapon.sword':    { r: 17, sweep: 120, w: 3, color: 0xfff1b0 },
+  'weapon.bigSword': { r: 21, sweep: 150, w: 5, color: 0xe6f2ff },
+  'weapon.sai':      { r: 13, sweep: 60,  w: 2, color: 0xffd9a0 },
+  'weapon.ninjaku':  { r: 16, sweep: 200, w: 2, color: 0xd9ffd0 },
+};
 
-const DARK_OUTLINE = 0x1a1a22;
+// Held-weapon pose per facing. Sprites are vertical (hilt at top), so the
+// carry pose rotates them tip-up at the hand; bows are turned sideways.
+function weaponPose(tex, dir) {
+  if (tex === 'weapon.bow') {
+    return {
+      down:  { x: 6,  y: -4, a: 0,   behind: false },
+      up:    { x: 0,  y: -6, a: 0,   behind: true },
+      left:  { x: -7, y: -5, a: -90, behind: false },
+      right: { x: 7,  y: -5, a: 90,  behind: false },
+    }[dir];
+  }
+  return {
+    down:  { x: 7,  y: -3, a: 196, behind: false },
+    up:    { x: -7, y: -5, a: 164, behind: true },
+    left:  { x: -6, y: -4, a: 158, behind: false },
+    right: { x: 6,  y: -4, a: 202, behind: false },
+  }[dir];
+}
+const ACC_POS = {
+  scarf:  { down: [0, -8], up: [0, -8], left: [0, -8], right: [0, -8] },
+  cape:   { down: [0, -8], up: [0, -8], left: [2, -8], right: [-2, -8] },
+  shades: { down: [0, -8], up: [0, -8], left: [-3, -8], right: [3, -8] },
+  flower: { down: [5, -14], up: [-5, -14], left: [-3, -14], right: [3, -14] },
+};
 
 export class ModularPlayer extends Phaser.GameObjects.Container {
   constructor(scene, x, y, hero) {
@@ -40,7 +69,7 @@ export class ModularPlayer extends Phaser.GameObjects.Container {
     this.cooldowns = {};
     this.questKills = {};
     // Gear: equip slots + inventory (item ids). Chest starts equipped so the
-    // tabard always has meaning; everything else is found/bought.
+    // outfit colour always has meaning; everything else is found/bought.
     this.inventory = [];
     this.equipped = { head: null, chest: 'worn_tunic', weapon: null, trinket: null };
 
@@ -48,98 +77,107 @@ export class ModularPlayer extends Phaser.GameObjects.Container {
     this.body.setSize(12, 12);
     this.body.setOffset(-6, -2);
 
-    this.shadow   = scene.add.image(0, 3, 'char.shadow').setScale(1.4, 1);
-    this.sprite   = scene.add.sprite(0, -8, 'char.Knight', 0);
-
-    // — Tabard (chest outfit tint) with 1px dark outline behind it —
-    // Alpha 0.8 so the chosen outfit colour actually reads (was 0.45 → grey wash).
-    this.tabardOutline = scene.add.rectangle(0, -6, 12, 9, DARK_OUTLINE, 0.5);
-    this.tabard        = scene.add.rectangle(0, -6, 10, 7, 0x5da24a, 0.8);
-
-    // — Trim highlight (shown when non-default chest gear is equipped) —
-    this.trim = scene.add.rectangle(0, -3, 10, 2, 0xffffff, 0.85).setVisible(false);
-
-    // — Hair with dark outline behind + 1px highlight strip on top —
-    this.hairOutline = scene.add.rectangle(0, -15, 14, 6, DARK_OUTLINE, 1.0);
-    this.hair        = scene.add.rectangle(0, -15, 12, 4, 0x5a3a1e);
-    this.hairShine   = scene.add.rectangle(-1, -16, 7, 1, 0xffffff, 0.30);
-
-    // — Head gear overlay (generated pixel-art hat/helm texture) —
+    this.shadow = scene.add.image(0, 3, 'char.shadow').setScale(1.4, 1);
+    this.rig    = scene.add.container(0, 0); // everything that bobs
+    this.sprite = scene.add.sprite(0, -8, 'char.Villager', 0);
+    this.hair   = scene.add.image(0, -8, 'char.shadow').setVisible(false);
     this.headGear = scene.add.image(0, -8, 'gear.head.straw_hat').setVisible(false);
+    this.acc    = scene.add.image(0, -8, 'acc.scarf').setVisible(false);
+    this.weapon = scene.add.image(6, -4, 'weapon.sword').setOrigin(0.5, 0.25);
+    this.add([this.shadow, this.rig]);
 
-    // — Accessory sprite (real 16×16 pixel-art PNG per accessory type) —
-    // accOutline kept hidden; each PNG has its own baked outline.
-    this.accOutline = scene.add.rectangle(0, -3, 16, 5, DARK_OUTLINE, 0).setVisible(false);
-    this.acc        = scene.add.image(0, -12, 'acc.scarf').setVisible(false);
-
-    // — Weapon (held at hand height so it reads equipped, not floating) —
-    // x=6: the sword texture carries transparent left padding, so the anchor
-    // must overlap the body edge for the pixels to touch.
-    this.weapon = scene.add.image(6, -4, 'weapon.sword').setScale(1);
-    this.weapon.setOrigin(0.1, 0.9);
-
-    this.add([
-      this.shadow, this.sprite,
-      this.tabardOutline, this.tabard, this.trim,
-      this.hairOutline, this.hair, this.hairShine,
-      this.headGear,
-      this.accOutline, this.acc,
-      this.weapon,
-    ]);
     this.applyHero(hero);
     this.setDepth(10);
+    this.startBob();
   }
 
-  bodyKey() { return `char.${BODY_TEX[this.hero.body] || 'Knight'}`; }
+  bodyName() { return BODY_TEX[this.hero.body] || 'Villager'; }
+  bodyKey()  { return `char.${this.bodyName()}`; }
+
+  // Active recoloured sheet key for the current hero + gear.
+  variantKey() {
+    const skin  = SKINS.find((s) => s.id === this.hero.skin) || SKINS[1];
+    const top   = TOPS.find((s) => s.id === this.hero.top) || TOPS[0];
+    const hc    = HAIR_COLORS.find((s) => s.id === this.hero.hairColor) || HAIR_COLORS[1];
+    const chest = this.equipped?.chest && gearById(this.equipped.chest);
+    const tint  = chest && chest.id !== 'worn_tunic' && chest.tint != null ? chest.tint : top.tint;
+    return bodyVariant(this.scene, this.bodyName(), skin.tint, tint, hc.tint);
+  }
 
   applyHero(hero) {
     this.hero = hero;
-    const hc  = HAIR_COLORS.find((s) => s.id === hero.hairColor) || HAIR_COLORS[1];
-    const top = TOPS.find((s) => s.id === hero.top) || TOPS[0];
-    const key = this.bodyKey();
-    if (this.scene.textures.exists(key)) this.sprite.setTexture(key, 0);
-    this.playAnim();
-
-    // — Tabard —
-    this.tabard.fillColor = top.tint;
-    // Keep outline slightly smaller alpha when tabard is translucent
-    this.tabardOutline.setVisible(true);
-
-    // — Hair —
-    this.hair.fillColor = hc.tint;
-    const hairVis = hero.hair !== 'none';
-    const widths  = { none: 0, crop: 11, bob: 13, mop: 14, tail: 9, bun: 7 };
-    const hairW   = widths[hero.hair] ?? 12;
-    const hairH   = hero.hair === 'tail' ? 7 : 4;
-    const hairY   = hero.hair === 'bun' ? -17 : -15;
-    this.hair.setSize(hairW, hairH).setY(hairY).setVisible(hairVis);
-    this.hairOutline.setSize(hairW + 2, hairH + 2).setY(hairY).setVisible(hairVis);
-    this.hairShine.setSize(Math.max(3, hairW - 4), 1).setY(hairY - 1).setVisible(hairVis);
-
-    // — Accessory (real pixel-art sprite) —
-    const accVis = hero.accessory !== 'none';
-    this.acc.setVisible(accVis);
-    this.accOutline.setVisible(false); // outline baked into PNG
-    if (hero.accessory === 'cape') {
-      // Cape reuses the outfit tint; PNG is white-based so setTint() colorizes it
-      this.acc.setTexture('acc.cape').setPosition(-4, -8).setTint(top.tint);
-    } else if (hero.accessory === 'scarf') {
-      this.acc.setTexture('acc.scarf').setPosition(0, -12).clearTint();
-    } else if (hero.accessory === 'shades') {
-      this.acc.setTexture('acc.shades').setPosition(0, -11).clearTint();
-    } else if (hero.accessory === 'flower') {
-      this.acc.setTexture('acc.flower').setPosition(4, -17).clearTint();
-    }
-    this.acc.setFlipX(this.facing === 'left');
-
-    // — Weapon —
-    const wtex = WEAPON_TEX[hero.weapon] || 'weapon.sword';
-    if (this.scene.textures.exists(wtex)) this.weapon.setTexture(wtex);
-    this.weapon.setVisible(hero.weapon !== 'none');
-    this.weapon.setFlipX(this.facing === 'left');
-    this.weapon.setPosition(this.facing === 'left' ? -6 : 6, -4);
-
+    this.refreshLook();
     this.applyGearVisuals();
+  }
+
+  refreshLook() {
+    const hero = this.hero;
+    this.vkey = this.variantKey();
+    if (this.scene.textures.exists(this.vkey)) this.sprite.setTexture(this.vkey, 0);
+    this.playAnim();
+    this.refreshHair();
+    this.refreshAcc();
+    this.refreshWeapon();
+    this.layout();
+  }
+
+  refreshHair() {
+    const hero = this.hero;
+    const hc = HAIR_COLORS.find((s) => s.id === hero.hairColor) || HAIR_COLORS[1];
+    const head = this.equipped.head && gearById(this.equipped.head);
+    const on = BARE_HEAD[this.bodyName()] && hero.hair && hero.hair !== 'none' && !head?.hidesHair;
+    this.hairOn = !!on;
+    if (on) this.hair.setTexture(hairTexture(this.scene, hero.hair, this.facing, hc.tint));
+    this.hair.setVisible(!!on);
+  }
+
+  refreshAcc() {
+    const a = this.hero.accessory;
+    const top = TOPS.find((s) => s.id === this.hero.top) || TOPS[0];
+    this.acc.setVisible(a && a !== 'none');
+    if (!a || a === 'none') return;
+    this.acc.setTexture(a === 'scarf' ? scarfTexture(this.scene, this.facing) : `acc.${a}`);
+    if (a === 'cape') this.acc.setTint(top.tint); else this.acc.clearTint();
+    const [ax, ay] = ACC_POS[a][this.facing];
+    this.acc.setPosition(ax, ay);
+    this.acc.setFlipX(this.facing === 'left' && a !== 'shades');
+    // shades hide from behind; flower only on the face side
+    if (a === 'shades' && this.facing === 'up') this.acc.setVisible(false);
+  }
+
+  weaponTex() {
+    const w = this.equipped.weapon && gearById(this.equipped.weapon);
+    return (w?.tex) || WEAPON_TEX[this.hero.weapon] || 'weapon.sword';
+  }
+
+  refreshWeapon() {
+    const w = this.equipped.weapon && gearById(this.equipped.weapon);
+    const tex = this.weaponTex();
+    if (this.scene.textures.exists(tex)) this.weapon.setTexture(tex);
+    if (w?.tint) this.weapon.setTint(w.tint); else this.weapon.clearTint();
+    this.weapon.setVisible(this.hero.weapon !== 'none' || !!w);
+    this.poseWeapon();
+  }
+
+  poseWeapon() {
+    const p = weaponPose(this.weaponTex(), this.facing);
+    this.weapon.setPosition(p.x, p.y).setAngle(p.a);
+    this.weaponRest = p;
+  }
+
+  // Facing-aware draw order.
+  layout() {
+    const p = this.weaponRest || weaponPose(this.weaponTex(), this.facing);
+    const up = this.facing === 'up';
+    const capeBehind = this.hero.accessory === 'cape' && !up;
+    const back = [];
+    if (p.behind) back.push(this.weapon);
+    if (capeBehind) back.push(this.acc);
+    const front = [this.hair, this.headGear];
+    if (!capeBehind) front.push(this.acc);
+    if (!p.behind) front.push(this.weapon);
+    this.rig.removeAll(false);
+    this.rig.add([...back, this.sprite, ...front]);
   }
 
   // — gear —
@@ -185,72 +223,147 @@ export class ModularPlayer extends Phaser.GameObjects.Container {
     return true;
   }
   applyGearVisuals() {
-    // head overlay
     const head = this.equipped.head && gearById(this.equipped.head);
     const hkey = head?.overlay && `gear.head.${head.overlay}`;
     if (hkey && this.scene.textures.exists(hkey)) {
       this.headGear.setTexture(hkey).setVisible(this.facing !== 'up');
       this.headGear.setFlipX(this.facing === 'left');
     } else this.headGear.setVisible(false);
-    if (head?.hidesHair) {
-      this.hair.setVisible(false);
-      this.hairOutline.setVisible(false);
-      this.hairShine.setVisible(false);
-    } else {
-      const hairVis = this.hero.hair !== 'none';
-      this.hair.setVisible(hairVis);
-      this.hairOutline.setVisible(hairVis);
-      this.hairShine.setVisible(hairVis);
-    }
-    // chest: item tint drives the tabard, trim line shows it off
-    const chest = this.equipped.chest && gearById(this.equipped.chest);
-    const top   = TOPS.find((s) => s.id === this.hero.top) || TOPS[0];
-    const tint  = chest?.tint ?? top.tint;
-    this.tabard.fillColor = tint;
-    if (chest && chest.id !== 'worn_tunic') {
-      this.trim.setVisible(true);
-      this.trim.fillColor = Phaser.Display.Color.IntegerToColor(tint).brighten(40).color;
-    } else this.trim.setVisible(false);
-    // weapon: gear overrides base sprite with tier tint
-    const w    = this.equipped.weapon && gearById(this.equipped.weapon);
-    const wtex = (w?.tex) || WEAPON_TEX[this.hero.weapon] || 'weapon.sword';
-    if (this.scene.textures.exists(wtex)) this.weapon.setTexture(wtex);
-    if (w?.tint) this.weapon.setTint(w.tint);
-    else this.weapon.clearTint();
+    // chest tint recolours the outfit palette; hair/weapon follow gear too
+    this.refreshLook();
   }
 
   setFacing(dir) {
     const changed = dir !== this.facing;
     this.facing = dir;
-    this.weapon.setFlipX(dir === 'left');
-    this.weapon.setPosition(dir === 'left' ? -6 : 6, -4);
-    this.acc.setFlipX(dir === 'left');
+    if (!changed) return;
     const head = this.equipped.head && gearById(this.equipped.head);
-    if (head?.overlay) this.headGear.setVisible(dir !== 'up');
-    if (changed) this.playAnim();
+    if (head?.overlay) { this.headGear.setVisible(dir !== 'up'); this.headGear.setFlipX(dir === 'left'); }
+    this.refreshHair();
+    this.refreshAcc();
+    this.poseWeapon();
+    this.layout();
+    this.playAnim();
   }
 
   setMoving(moving) {
     if (moving === this.moving) return;
     this.moving = moving;
     this.playAnim();
+    this.startBob();
+    if (this.dustEvt) { this.dustEvt.remove(false); this.dustEvt = null; }
+    if (moving) {
+      this.dustEvt = this.scene.time.addEvent({ delay: 210, loop: true, callback: () => this.puff() });
+    }
   }
 
   playAnim() {
-    const key = `${this.bodyKey()}.${this.moving ? 'walk' : 'idle'}.${this.facing}`;
+    const k = this.vkey || this.bodyKey();
+    const key = `${k}.${this.moving ? 'walk' : 'idle'}.${this.facing}`;
     if (this.scene.anims.exists(key)) this.sprite.play(key, true);
   }
 
+  // Idle breathing bob / walking hop on the rig (shadow stays planted).
+  startBob() {
+    if (this.bobTween) { this.bobTween.remove(); this.bobTween = null; }
+    this.rig.y = 0;
+    this.bobTween = this.scene.tweens.add({
+      targets: this.rig, y: this.moving ? -1 : -1,
+      duration: this.moving ? 130 : 620, yoyo: true, repeat: -1, ease: 'sine.inout',
+    });
+  }
+
+  // Small dust puff at the feet while walking.
+  puff() {
+    const s = this.scene;
+    if (this.noDust || !s || !s.anims.exists('fx.dust') || !this.active) return;
+    const sc = Math.abs(this.scaleX) || 1;
+    const back = { right: -1, left: 1, down: 0, up: 0 }[this.facing];
+    const sp = s.add.sprite(this.x + back * 4 * sc, this.y + 2 * sc, 'fx.dust', 0)
+      .setScale(0.45 * sc).setAlpha(0.75).setDepth((this.depth || 10) - 0.5);
+    if (this.facing === 'up') sp.setDepth(this.depth + 0.5);
+    sp.setTint(0xe8e0b8);
+    sp.play('fx.dust');
+    sp.once('animationcomplete', () => sp.destroy());
+  }
+
   attackPose() {
-    const key = `${this.bodyKey()}.attack.${this.facing}`;
+    const dir = this.facing;
+    const key = `${this.vkey || this.bodyKey()}.attack.${dir}`;
     if (this.scene.anims.exists(key)) this.sprite.play(key, true);
-    this.scene.time.delayedCall(140, () => this.playAnim());
-    this.scene.tweens.add({ targets: this.weapon, angle: this.facing === 'left' ? -70 : 70, duration: 90, yoyo: true, onComplete: () => this.weapon.setAngle(0) });
+    this.scene.time.delayedCall(150, () => this.playAnim());
+    const tex = this.weaponTex();
+    const kind = this.weaponKind();
+    const rest = this.weaponRest || weaponPose(tex, dir);
+    const sgn = dir === 'left' || dir === 'up' ? -1 : 1;
+    this.scene.tweens.killTweensOf(this.weapon);
+    const w = this.weapon;
+    const fwd = { right: [3, 0], left: [-3, 0], down: [0, 3], up: [0, -3] }[dir];
+    if (kind === 'bow') {
+      this.scene.tweens.add({ targets: w, x: rest.x - fwd[0], y: rest.y - fwd[1], duration: 70, yoyo: true, onComplete: () => this.poseWeapon() });
+    } else if (kind === 'wand') {
+      this.scene.tweens.add({ targets: w, angle: rest.a + sgn * 50, x: rest.x + fwd[0], y: rest.y + fwd[1], duration: 80, yoyo: true, onComplete: () => this.poseWeapon() });
+    } else {
+      w.setAngle(rest.a - sgn * 70);
+      this.scene.tweens.add({
+        targets: w, angle: rest.a + sgn * 70, x: rest.x + fwd[0], y: rest.y + fwd[1], duration: 95, ease: 'quad.out',
+        onComplete: () => this.scene.tweens.add({ targets: w, angle: rest.a, x: rest.x, y: rest.y, duration: 110, onComplete: () => this.poseWeapon() }),
+      });
+    }
+    this.weaponFx(tex, kind, dir);
+  }
+
+  // Slash / thrust / shot visuals that match the equipped weapon.
+  weaponFx(tex, kind, dir) {
+    const s = this.scene;
+    const sc = Math.abs(this.scaleX) || 1;
+    const gw = this.equipped.weapon && gearById(this.equipped.weapon);
+    const base = WEAPON_FX[tex] || WEAPON_FX['weapon.sword'];
+    const color = gw?.tint && gw.tint !== 0xffffff ? gw.tint : base.color;
+    const ang = Phaser.Math.DegToRad(DIR_ANGLE[dir]);
+    const ox = this.x, oy = this.y - 7 * sc;
+    if (kind === 'bow' || kind === 'wand') {
+      const tip = 11 * sc;
+      const fx = s.add.circle(ox + Math.cos(ang) * tip, oy + Math.sin(ang) * tip, 3 * sc, kind === 'wand' ? (gw?.tint || 0xffb36b) : 0xfff1b0, 0.95)
+        .setDepth((this.depth || 10) + 1);
+      s.tweens.add({ targets: fx, scale: 2.6, alpha: 0, duration: 170, onComplete: () => fx.destroy() });
+      return;
+    }
+    const g = s.add.graphics({ x: ox, y: oy }).setDepth((this.depth || 10) + 1);
+    const half = Phaser.Math.DegToRad(base.sweep / 2);
+    const r = base.r * sc;
+    if (tex === 'weapon.sai') {
+      // quick double thrust lines
+      for (const off of [-2, 2]) {
+        g.lineStyle(base.w * sc, color, 0.95);
+        const px = -Math.sin(ang) * off * sc, py = Math.cos(ang) * off * sc;
+        g.lineBetween(px + Math.cos(ang) * 6 * sc, py + Math.sin(ang) * 6 * sc, px + Math.cos(ang) * r, py + Math.sin(ang) * r);
+      }
+      s.tweens.add({ targets: g, alpha: 0, duration: 140, onComplete: () => g.destroy() });
+      return;
+    }
+    // crescent made of 3 stacked strokes: soft glow, body, bright core
+    [[base.w * 2.6, 0.22, color], [base.w * 1.4, 0.55, color], [Math.max(1, base.w * 0.6), 0.95, 0xffffff]].forEach(([w, a, c]) => {
+      g.lineStyle(w * sc, c, a);
+      g.beginPath();
+      g.arc(0, 0, r, ang - half, ang + half, false);
+      g.strokePath();
+    });
+    g.setRotation(-0.35);
+    s.tweens.add({
+      targets: g, rotation: 0.35, alpha: 0, scale: 1.12, duration: tex === 'weapon.ninjaku' ? 190 : 150, ease: 'quad.out',
+      onComplete: () => g.destroy(),
+    });
   }
 
   flash() {
     this.sprite.setTintFill(0xffffff);
     this.scene.time.delayedCall(90, () => this.sprite.clearTint());
+  }
+
+  destroy(fromScene) {
+    if (this.dustEvt) this.dustEvt.remove(false);
+    super.destroy(fromScene);
   }
 
   heal(n) { this.hp = Math.min(this.maxHp, this.hp + n); }
