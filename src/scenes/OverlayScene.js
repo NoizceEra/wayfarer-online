@@ -89,6 +89,7 @@ export class OverlayScene extends Phaser.Scene {
   // ——— transitions ———
   fade(go, { label, loading, quick, done } = {}) {
     const w = this.world();
+    w?.fx?.irisClose(quick ? 220 : 340); // iris closes on the hero while the screen fades
     this.fadeRect.setVisible(true).setAlpha(0);
     this.tweens.add({
       targets: this.fadeRect, alpha: 1, duration: quick ? 200 : 320,
@@ -104,6 +105,7 @@ export class OverlayScene extends Phaser.Scene {
         }
         this.time.delayedCall(hold, () => {
           this.fadeText.setVisible(false); this.fadeBarBg.setVisible(false); this.fadeBar.setVisible(false);
+          w?.fx?.irisOpen(quick ? 240 : 360);
           this.tweens.add({
             targets: this.fadeRect, alpha: 0, duration: quick ? 220 : 340,
             onComplete: () => { this.fadeRect.setVisible(false); done?.(); },

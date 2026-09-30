@@ -45,7 +45,7 @@ export function makeProps(scene, solids, ground) {
     g.fillStyle(0x4a2f18, 1).fillRect(-hw + 4, -h + 5, 10, 10).fillRect(hw - 15, -h + 5, 10, 10);
     g.fillStyle(0x9fd0e8, 1).fillRect(-hw + 5, -h + 6, 8, 8).fillRect(hw - 14, -h + 6, 8, 8);
     g.fillStyle(0x4a2f18, 1).fillRect(-hw + 8, -h + 6, 1, 8).fillRect(hw - 11, -h + 6, 1, 8);
-    c.add(win); win.setAlpha(0.0);
+    c.add(win); win.setAlpha(0.0); win.setData('chim', !!chimney); // fx: chimney smoke + window lights
     solid(x, y - (h + 6) / 2, w, h + 6);
     return win;
   }
@@ -120,7 +120,7 @@ export function makeProps(scene, solids, ground) {
       }
     }
     const win = scene.add.rectangle(-hw + 15, -16, 6, 5, 0xf7dc6f, 0);
-    c.add(win);
+    c.add(win); win.setData('inn', true); // fx: inn chimneys/steam + window lights
     solid(x + 2, y - (h + 6) / 2, w + 4, h + 6);
     solid(x - hw - 6, y - 12, 22, 24);
     return win;
@@ -236,6 +236,7 @@ export function makeProps(scene, solids, ground) {
   // ---- trees: oak / pine / birch / willow ----
   function tree(x, y, kind, big) {
     const [c, g] = newC(x, y);
+    c.setData('tree', kind || 'oak'); // fx: wind sway + time-of-day shadow
     if (scene.textures.exists('char.shadow')) c.addAt(scene.add.image(0, 4, 'char.shadow').setScale(big ? 2.2 : 1.6, big ? 1.4 : 1.1).setAlpha(0.9), 0);
     else ground.D.shadow(x, y + 4, 24, 8, 0.2);
     const s = big ? 1.35 : 1;
