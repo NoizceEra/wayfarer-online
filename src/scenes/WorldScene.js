@@ -201,6 +201,7 @@ export class WorldScene extends Phaser.Scene {
     const e = def && def.boss ? new Boss(this, x, y, typeId) : new Enemy(this, x, y, typeId);
     e.areaId = areaId;
     this.enemies.add(e);
+    this.sync?.registerEnemy(e); // net: stable id for co-op enemy sync
     return e;
   }
 
@@ -313,7 +314,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   damageEnemy(ed, dmg, fromRemote = false) {
-    if (net.connected && !net.isHost && !fromRemote) return; // guests wait for host
+    if (this.sync?.interceptHit(ed, dmg, fromRemote)) return; // co-op: non-authority hits go to the area authority
     dmg = Math.max(1, Math.round(dmg));
     const died = ed.hurt(dmg);
     audio.play('hit', 0.8);
@@ -535,13 +536,6 @@ export class WorldScene extends Phaser.Scene {
     });
   }
 
-  applyHostSnapshot(list) {
-    // Guest: reconcile enemy positions/hp from host
-    if (!Array.isArray(list)) return;
-    const kids = this.enemies.getChildren();
-    list.forEach((s, i) => { const e = kids[i]; if (e instanceof Enemy) { e.setPosition(s.x, s.y); if (typeof s.hp === 'number') { e.hp = s.hp; } } });
-  }
-
   // Nameplates: fade with distance to the hero and nudge upward so labels of
   // nearby NPCs / remote players never overprint each other.
   updateNameplates() {
@@ -624,6 +618,7 @@ export class WorldScene extends Phaser.Scene {
       const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, e.x, e.y);
       // enemies only simulate while the player is in their space (overworld / interior / map)
       if ((e.areaId || null) !== (this.areas.current?.id || null)) { e.body.setVelocity(0, 0); return true; }
+      if (this.sync?.driveEnemy(e, time, delta)) return true; // co-op: replicas interpolate, authority chases remotes too
       if (e.aiUpdate) { e.aiUpdate(this, delta); e.setDepth(e.y); return true; }
       const safe = this.zoneHere(e.x, e.y).safe;
       let evx = 0, evy = 0;
@@ -654,8 +649,5 @@ export class WorldScene extends Phaser.Scene {
     // net
     this.sync.update(dt);
     this.updateNameplates();
-    if (net.connected && net.isHost && Math.floor(time / 300) !== Math.floor((time - delta) / 300)) {
-      net.sendSnapshot(this.enemies.getChildren().filter((e) => e instanceof Enemy).slice(0, 40).map((e) => ({ x: Math.round(e.x), y: Math.round(e.y), hp: Math.round(e.hp) })));
-    }
   }
 }

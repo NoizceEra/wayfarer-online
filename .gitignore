@@ -7,3 +7,4 @@ dist/
 .vercel
 .omc/
 tools/_gen/
+server/data/

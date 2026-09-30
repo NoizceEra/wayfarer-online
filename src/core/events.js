@@ -24,6 +24,8 @@ export const Events = {
   SOCIAL_EMOTE: 'social-emote',   // {from, name, id} an emote to play (local or remote)
   SOCIAL_ROSTER: 'social-roster', // online player list changed
   SOCIAL_UI: 'social-ui',         // {panel:'chat'|'party'|'friends'|'emotes', open:boolean}
+  NET_STATUS: 'net-status',       // {status: offline|connecting|online|reconnecting, ping, players, room}
+  NET_RECONNECTED: 'net-reconnected', // {resumed: bool} seat resumed (true) or fresh rejoin (false)
 };
 
 export class Bus {

@@ -506,9 +506,9 @@ export class UIScene extends Phaser.Scene {
     // zone outlines (only where explored is fine: fog covers them)
     const dot = (px, py, r, fill) => { g.fillStyle(0x1a1024, 1).fillCircle(px, py, r + 1); g.fillStyle(fill, 1).fillCircle(px, py, r); };
     for (const n of w.npcs || []) dot(x + (n.x / T) * k, y + (n.y / T) * k, 1.6, 0xffd84a);
-    // other players: party green (bigger), friends pink, guild gold, else blue
+    // other players: party green (bigger), friends pink, guild gold, else blue; grey = peer inside an interior/dungeon
     const REL = { party: 0x7dff9a, friend: 0xff9ad5, guild: 0xffd84a, other: 0x5ad0ff };
-    w.sync?.remotes?.forEach((r, id) => { const rel = social.relation(id); dot(x + (r.x / T) * k, y + (r.y / T) * k, rel === 'party' ? 2.6 : 2, REL[rel]); });
+    w.sync?.remotes?.forEach((r, id) => { const m = r.mapPos ? r.mapPos() : r; if (!m) return; const rel = social.relation(id); dot(x + (m.x / T) * k, y + (m.y / T) * k, rel === 'party' ? 2.6 : 2, m.grey ? 0x7a7a88 : REL[rel]); });
     const blink = 0.5 + 0.5 * Math.sin(this.time.now / 250);
     const px = x + tx * k, py = y + ty * k;
     g.fillStyle(0xffffff, 0.25 + 0.3 * blink).fillCircle(px, py, 4.5);

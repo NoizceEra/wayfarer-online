@@ -18,7 +18,7 @@ import { setupMenuCamera } from '../core/display.js';
 //    now in-canvas and keyboard driven.
 //  * Each button is ONE interactive rectangle (no stacked decorative objects
 //    above it), with hover / pressed / keyboard-focus states.
-const FOCUS_ORDER = ['name', 'play', 'host', 'join', 'creator'];
+const FOCUS_ORDER = ['name', 'play', 'online', 'host', 'join', 'creator'];
 
 export class TitleScene extends Phaser.Scene {
   constructor() { super('title'); }
@@ -81,7 +81,7 @@ export class TitleScene extends Phaser.Scene {
     // dark glass panel behind the menu column so olive text stays readable on the sky
     const panelTop = titleY - 34, panelBot = H - 12;
     add(this.add.rectangle(W / 2, (panelTop + panelBot) / 2, Math.min(W - 16, Math.max(bw + 64, 560)), panelBot - panelTop, 0x051208, 0.68).setStrokeStyle(2, 0x3e7a2a, 0.9));
-    const spacing = Math.max(bh + 12, Math.min(Math.round(H * 0.115) + 8, Math.floor((bottom - b1Y - bh / 2) / 3)));
+    const spacing = Math.max(bh + 10, Math.min(Math.round(H * 0.115) + 8, Math.floor((bottom - b1Y - bh / 2) / 4)));
     const capSize = small ? '11px' : '12px';
     this.cx = W / 2;
 
@@ -115,6 +115,7 @@ export class TitleScene extends Phaser.Scene {
     // ─── Buttons + captions ───
     const specs = [
       { id: 'play', label: loadHero() ? '> Continue Journey' : '> New Journey', cap: '' },
+      { id: 'online', label: '@ Play Online', cap: 'Public world: meet other wayfarers' },
       { id: 'host', label: '+ Host Co-op', cap: 'Host: get a room code to share' },
       { id: 'join', label: '~ Join Co-op', cap: "Join: enter a friend's code" },
       { id: 'creator', label: '* Character Creator', cap: '' },
@@ -241,6 +242,7 @@ export class TitleScene extends Phaser.Scene {
     if (id === 'play') return this.goCreator('solo');
     if (id === 'creator') return this.goCreator(net.connected ? (net.isHost ? 'host' : 'guest') : 'solo');
     if (id === 'host') return this.doHost();
+    if (id === 'online') return this.doOnline();
     if (id === 'join') {
       if (this.editing === 'code') return this.doJoin();
       this.editing = 'code'; this.say(''); this.refresh();
@@ -265,6 +267,21 @@ export class TitleScene extends Phaser.Scene {
     } catch (e) {
       this.busy = false;
       this.say(`Host failed: ${e.message} (server up? try Solo)`); audio.error();
+    }
+  }
+
+  async doOnline() {
+    const name = this.cleanName();
+    saveProfile({ name });
+    this.busy = true; this.say('Connecting to the public world...');
+    try {
+      const hero = loadHero() || { name, job: 'wayfarer' };
+      const shard = await net.joinPublic(name, hero);
+      this.busy = false;
+      this.scene.start('creator', { name, mode: 'online', shard });
+    } catch (e) {
+      this.busy = false;
+      this.say(`Online failed: ${e.message} (server up? try Solo)`); audio.error();
     }
   }
 

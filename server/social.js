@@ -271,3 +271,9 @@ export function socialLeave(room, client) {
   room.social.rate.delete(client.sessionId);
   room.broadcast('presence-gone', { id: client.sessionId });
 }
+
+// ── adapter for the WayfarerRoom hook names (server/index.js: setSocialModule) ──
+// install(room) runs after the built-in handlers; onJoin/onLeave get the player record.
+export function install(room) { installSocial(room); }
+export function onJoin(room, client, p) { socialJoin(room, client, { name: p?.name, hero: p?.hero, level: p?.level, job: p?.job }); }
+export function onLeave(room, client) { socialLeave(room, client); }
