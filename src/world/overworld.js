@@ -170,8 +170,7 @@ export function buildOverworld(scene, ZONES, extras = {}) {
     } else if (r < 0.32) {
       flora(zone.id, x, y, v);
     } else if (r < 0.36 && scene.textures.exists('env.plant')) {
-      if (zone.id === 'meadow') scene.add.sprite(x, y, 'env.plant', 0).play('env.plant.sway').setDepth(1);
-      else flora(zone.id, x, y, v + 1);
+      flora(zone.id, x, y, v + 1); // procedural flora (the outlined Ninja Adventure plant sprite clashed with the ground)
     } else if (r < 0.40) {
       // Rocks — procedural boulders; slate in the ruins, mossy elsewhere.
       const rc = scene.add.container(x, y).setDepth(y);

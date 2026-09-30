@@ -97,8 +97,11 @@ const AUDIO = {
   ],
 };
 
+export const AI_ICONS = ['amulet', 'axe', 'boots', 'bow', 'cap', 'cape', 'chainmace', 'cloak_feather', 'crossbow', 'crown', 'crystal', 'dagger', 'firewand', 'fishing_rod', 'gauntlets', 'glasses', 'greatsword', 'greaves', 'hairflower', 'hat_wizard', 'helm', 'helm_horned', 'helm_winged', 'herb', 'hood_ranger', 'longbow', 'mask', 'plate', 'potion_hp', 'potion_mp', 'pouch', 'ring', 'robe', 'robe_white', 'sai', 'scimitar', 'shield', 'spear', 'staff_crystal', 'staff_wood', 'sword', 'throwing_knives', 'tome', 'tunic', 'vest_thief', 'wand_fire', 'warhammer', 'wings'];
+
 export function preload(scene) {
   const L = scene.load;
+  for (const n of AI_ICONS) L.image(`icon.ai.${n}`, `assets/custom/icons_ai/${n}.png`);
   for (const name of CHARACTERS) {
     L.spritesheet(`char.${name}`, `${NA}/Actor/Character/${name}/SpriteSheet.png`, { frameWidth: 16, frameHeight: 16 });
     L.image(`face.${name}`, `${NA}/Actor/Character/${name}/${FACE_OVERRIDE[name] || 'Faceset.png'}`);

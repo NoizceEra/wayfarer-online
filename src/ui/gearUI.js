@@ -20,7 +20,8 @@ export function box(scene, x, y, w, h, fill = 0x10140f, alpha = 0.96, border = 0
 }
 
 export function addIcon(scene, cont, item, dyeId, x, y, scale = 2) {
-  const im = scene.add.image(x, y, iconKey(scene, item, dyeId)).setScale(scale);
+  const im = scene.add.image(x, y, iconKey(scene, item, dyeId));
+  im.setScale((scale * 16) / im.width); // procedural icons are 16px, AI icons 32px
   cont.add(im);
   return im;
 }

@@ -3,6 +3,7 @@ import { loadProfile, saveProfile, loadHero } from '../core/save.js';
 import { net } from '../net/NetworkManager.js';
 import { bus, Events } from '../core/events.js';
 import { audio } from '../systems/audio.js';
+import { addTitleBackdrop } from '../systems/titleBackdrop.js';
 import { setupMenuCamera } from '../core/display.js';
 
 // Title screen — pixel-art Game Boy aesthetic.
@@ -63,6 +64,7 @@ export class TitleScene extends Phaser.Scene {
     this.root = this.add.container(0, 0);
     this.items = {};
     const add = (o) => { this.root.add(o); return o; };
+    addTitleBackdrop(this, this.root, this.menuSize);
 
     const { W, H } = this.menuSize; // logical centered layout (camera zoom handled by setupMenuCamera)
     const small = W < 560;
@@ -76,6 +78,9 @@ export class TitleScene extends Phaser.Scene {
     const fieldY = Math.round(H * (short ? 0.325 : 0.38));
     const b1Y = Math.round(H * (short ? 0.44 : 0.50));
     const bottom = H - 34; // keep clear of help text / toast
+    // dark glass panel behind the menu column so olive text stays readable on the sky
+    const panelTop = titleY - 34, panelBot = H - 12;
+    add(this.add.rectangle(W / 2, (panelTop + panelBot) / 2, Math.min(W - 16, Math.max(bw + 64, 560)), panelBot - panelTop, 0x051208, 0.68).setStrokeStyle(2, 0x3e7a2a, 0.9));
     const spacing = Math.max(bh + 12, Math.min(Math.round(H * 0.115) + 8, Math.floor((bottom - b1Y - bh / 2) / 3)));
     const capSize = small ? '11px' : '12px';
     this.cx = W / 2;
