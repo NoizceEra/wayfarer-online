@@ -75,11 +75,19 @@ export class Tip {
     const bw = w + pad * 2, bh = y + pad - 2;
     const bg = box(sc, 0, 0, bw, bh, 0x0c100a, 0.97, 0xc8a840, 2);
     this.c.addAt(bg, 0); this.kids.push(bg);
-    const W = sc.scale.width, H = sc.scale.height;
+    this.bw = bw; this.bh = bh;
+    this.c.setVisible(true);
+    this.follow(sx, sy);
+  }
+  // Place next to a SCREEN-space pointer; the host scene may be camera-zoomed
+  // (UI scale), so position/scale are converted to keep the tip 1:1 on screen.
+  follow(sx, sy) {
+    const sc = this.scene, z = sc.uiZoom || 1;
+    const W = sc.scale.width, H = sc.scale.height, bw = this.bw || 0, bh = this.bh || 0;
     let x = sx + 14, yy = sy + 10;
     if (x + bw > W - 4) x = sx - bw - 10;
     if (yy + bh > H - 4) yy = H - bh - 4;
-    this.c.setPosition(Math.max(4, x), Math.max(4, yy)).setVisible(true);
+    this.c.setPosition(Math.max(4, x) / z, Math.max(4, yy) / z).setScale(1 / z);
   }
   clear() { this.kids.forEach((k) => k.destroy()); this.kids = []; }
   hide() { this.c.setVisible(false); this.clear(); }

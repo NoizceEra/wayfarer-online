@@ -51,7 +51,8 @@ export class ShopPanel {
     const wide = W / H > 1.0;
     const dw = wide ? 560 : 380, dh = wide ? 440 : 600;
     const k = Math.min(1, (W - 8) / dw, (H - 8) / dh);
-    const c = s.add.container(W / 2, H / 2).setDepth(185).setScale(k);
+    const z = s.uiZoom || 1; // UI-scale camera zoom: keep this auto-fit panel 1:1 on screen
+    const c = s.add.container(W / 2 / z, H / 2 / z).setDepth(185).setScale(k / z);
     this.c = c;
     const ox = -dw / 2, oy = -dh / 2;
     c.add(box(s, ox, oy, dw, dh, 0x10140f, 0.985, 0xc8a840, 3));
@@ -109,7 +110,7 @@ export class ShopPanel {
         audio.play('ui', 0.4); this.build();
       });
       hit.on('pointerover', (ptr) => { if (item.id !== '__potion') this.tip.show(itemLines(item, p.dyes[item.id], p, p.equipped[item.slot]), ptr.x, ptr.y); });
-      hit.on('pointermove', (ptr) => { if (this.tip.c.visible) { const W2 = s.scale.width, b = this.tip.c.getBounds(); this.tip.c.setPosition(Math.max(4, ptr.x + 14 + b.width > W2 - 4 ? ptr.x - b.width - 10 : ptr.x + 14), Math.max(4, Math.min(ptr.y + 10, s.scale.height - b.height - 4))); } });
+      hit.on('pointermove', (ptr) => { if (this.tip.c.visible) this.tip.follow(ptr.x, ptr.y); });
       hit.on('pointerout', () => this.tip.hide());
     });
     // pager

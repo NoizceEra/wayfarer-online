@@ -1,5 +1,7 @@
 // Display helpers: integer camera zoom for the world, centered/scaled layout
 // for menu scenes. All zooms are integers so pixel art never smears.
+import { input } from './input.js';
+
 const KEY = 'wayfarer.zoom'; // 'fit' | '1'..'6'
 export const MIN_ZOOM = 1;
 export const MAX_ZOOM = 6;
@@ -22,7 +24,7 @@ export function fitZoom(w, h) {
 }
 
 // Installs world-camera zoom handling on a scene: applies the saved/fit zoom,
-// re-applies on window resize, and binds - / = / 0 keys.
+// re-applies on window resize, and handles the zoomIn/zoomOut/zoomReset actions.
 export function installWorldZoom(scene) {
   const cam = () => scene.cameras.main;
   let pref = readPref();
@@ -36,21 +38,15 @@ export function installWorldZoom(scene) {
     const cur = cam().zoom;
     set(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, Math.round(cur) + d)));
   };
-  const onKey = (e) => {
-    if (/^(INPUT|TEXTAREA)$/.test(e.target?.tagName || '')) return;
-    const k = e.key;
-    if (k === '-' || k === '_') step(-1);
-    else if (k === '=' || k === '+') step(1);
-    else if (k === '0') set('fit');
-  };
   apply();
   scene.scale.on('resize', apply);
-  scene.input.keyboard.on('keydown', onKey);
-  scene.events.once('shutdown', () => {
-    scene.scale.off('resize', apply);
-    scene.input.keyboard?.off('keydown', onKey);
-  });
-  return { apply, set };
+  // - / = / 0 (and numpad) via the central input manager (rebindable)
+  input.on('zoomOut', () => step(-1), { scene });
+  input.on('zoomIn', () => step(1), { scene });
+  input.on('zoomReset', () => set('fit'), { scene });
+  scene.events.once('shutdown', () => scene.scale.off('resize', apply));
+  const get = () => pref;
+  return { apply, set, step, get };
 }
 
 // Menu-scene layout: choose an integer zoom so the logical layout (at most

@@ -26,6 +26,13 @@ export class Bus {
     this.map.get(ev).add(fn);
     return () => this.map.get(ev)?.delete(fn);
   }
+  // Subscribe for a Phaser scene's lifetime: auto-unsubscribed on shutdown, so
+  // a restarted scene never leaves handlers pointing at destroyed objects.
+  onScene(scene, ev, fn) {
+    const off = this.on(ev, fn);
+    scene.events.once('shutdown', off);
+    return off;
+  }
   emit(ev, payload) { this.map.get(ev)?.forEach((fn) => { try { fn(payload); } catch (e) { console.error(e); } }); }
 }
 
