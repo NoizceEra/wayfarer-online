@@ -13,6 +13,7 @@ import { audio } from '../systems/audio.js';
 import { loadProgress, saveProgress } from '../core/save.js';
 import { gearById, rollGearDrop, statLine } from '../data/gear.js';
 import { SHOP_STOCK } from '../data/gear.js';
+import { initPrompt, updatePrompt, showRoomCode } from '../systems/worldFeel.js';
 
 // Open world: town (safe) + meadow + woods + ruins in ONE 128×128 map.
 // Solo = full simulation. Host = authoritative + broadcasts. Guest = applies
@@ -85,6 +86,7 @@ export class WorldScene extends Phaser.Scene {
     this.physics.add.overlap(this.player, this.enemies, (p, e) => {
       const ed = e instanceof Enemy ? e : null;
       if (!ed) return;
+      if (ed.windingUp) return; // telegraphing: no damage until it actually lunges
       // Safe zones (town) are truly safe: no contact damage
       const pt = CONFIG.tile;
       if (zoneAt(Math.floor(this.player.x / pt), Math.floor(this.player.y / pt), ZONES).safe) return;
@@ -138,6 +140,7 @@ export class WorldScene extends Phaser.Scene {
     bus.emit(Events.PLAYER_XP, this.xpPayload());
     this.events.once('shutdown', () => { this.saveNow(); this.sync.destroy(); });
     this.scene.launch('ui', { hero: this.heroData, name: this.pname, job: this.player.job });
+    initPrompt(this); showRoomCode(this);
   }
 
   hpPayload() { return { hp: Math.ceil(this.player.hp), maxHp: this.player.effMaxHp(), mp: Math.ceil(this.player.mp), maxMp: this.player.effMaxMp(), potions: this.player.potions, gold: this.player.gold, level: this.player.level, atk: this.player.effAtk(), def: this.player.effDef() }; }
@@ -527,12 +530,16 @@ export class WorldScene extends Phaser.Scene {
         const sp = CONFIG.enemySpeed * nightBoost * (slowed ? 0.25 : 1);
         evx = Math.cos(a) * sp; evy = Math.sin(a) * sp;
       }
+      // telegraphed attack (wind-up / lunge) + idle wobble; busy enemies skip steering
+      if (e.updateFeel(time, d, this.player, !this.player.dead && !safe && !slowed)) { e.setDepth(e.y); return true; }
       // knockback decays: only steer when slow-moving
       const cvx = e.body.velocity.x, cvy = e.body.velocity.y;
       if (Math.hypot(cvx, cvy) < 100) { e.body.setVelocity(evx, evy); e.setFacingByVelocity(evx, evy); }
       e.setDepth(e.y); // y-sort
       return true;
     });
+
+    updatePrompt(this, dt);
 
     // autosave progress every 10s
     this.saveAcc += dt;
