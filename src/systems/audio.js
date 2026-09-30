@@ -40,6 +40,8 @@ const MUSIC_FOR_ZONE = {
   crypt: 'mus_crypt', frost: 'mus_tension', frost_camp: 'mus_tension',
 };
 
+const AUDIO_DIR = { mus: 'music', amb: 'ambient', jng: 'jingles', sfx: 'sfx' };
+
 class AudioBus {
   constructor() {
     this.ctx = null; this.enabled = true;
@@ -52,17 +54,48 @@ class AudioBus {
   musicVol() { return settings.get('master') * settings.get('music'); }
   attach(scene) { this.scene = scene; }
   canPlay(key) { return this.enabled && this.scene && this.scene.cache.audio.exists(key) && this.scene.sound; }
+  // Lazy audio: music/jingles/ambient are NOT preloaded (10MB). Fetch on first use via the
+  // attached scene's loader, then call cb. Dedupes in-flight requests; never throws.
+  fetch(key, cb) {
+    const s = this.host || this.scene; // host = Boot scene (persistent loader)
+    if (!s || !s.load || !s.cache) return false;
+    if (s.cache.audio.exists(key)) { cb?.(); return true; }
+    const folder = AUDIO_DIR[key.slice(0, 3)];
+    if (!folder) return false;
+    const w = (this._pending ||= new Map());
+    const prev = w.get(key);
+    if (prev && prev.scene === s) { if (cb) prev.push(cb); return true; }
+    const list = prev || []; // scene changed mid-load (old loader was torn down): re-request, keep callbacks
+    if (cb) list.push(cb);
+    list.scene = s;
+    w.set(key, list);
+    const done = () => { const cbs = w.get(key) || []; if (w.get(key)?.scene !== s) return; w.delete(key); cbs.forEach((f) => { try { f(); } catch (e) { console.error(e); } }); };
+    try {
+      s.load.audio(key, `assets/audio/${folder}/${key}.ogg`);
+      s.load.once(`filecomplete-audio-${key}`, done);
+      s.load.once(`loaderror`, () => { if (w.has(key) && !s.cache.audio.exists(key)) w.delete(key); });
+      if (!s.load.isLoading()) s.load.start();
+    } catch { w.delete(key); return false; }
+    return true;
+  }
   play(logical, vol = 1) {
     const keys = OGG[logical];
     if (!keys) return;
     const key = keys[Math.floor(Math.random() * keys.length)];
+    if (this.scene && !this.scene.cache.audio.exists(key)) this.fetch(key); // warm for next time; blip now
     if (this.canPlay(key)) { try { this.scene.sound.play(key, { volume: 0.5 * vol * this.sfxVol() }); return; } catch { /* fall through */ } }
     this.blipFor(logical);
+  }
+  // Start downloading a zone's track without switching to it (used under area-transition loading cards).
+  warm(zoneId) {
+    const key = MUSIC_FOR_ZONE[zoneId] || (String(zoneId).startsWith('mus_') ? zoneId : null);
+    if (key && this.enabled && this.scene && !this.scene.cache.audio.exists(key)) this.fetch(key);
   }
   musicFor(zoneId) {
     const key = MUSIC_FOR_ZONE[zoneId] || (String(zoneId).startsWith('mus_') ? zoneId : 'mus_forest');
     if (key === this.musicKey || !this.enabled) return;
-    if (!this.canPlay(key)) return;
+    this.wantMusic = key;
+    if (!this.canPlay(key)) { this.fetch(key, () => { if (this.wantMusic === key && this.musicKey !== key) this.musicFor(key); }); return; }
     try {
       this.musicObj?.stop();
       this.musicObj = this.scene.sound.add(key, { volume: 0.35 * this.musicVol(), loop: true });
@@ -70,7 +103,7 @@ class AudioBus {
       this.musicKey = key;
     } catch { /* ignore */ }
   }
-  stopMusic() { try { this.musicObj?.stop(); } catch {} this.musicObj = null; this.musicKey = null; }
+  stopMusic() { this.wantMusic = null; try { this.musicObj?.stop(); } catch {} this.musicObj = null; this.musicKey = null; }
   toggle() {
     this.enabled = !this.enabled;
     if (!this.enabled) this.stopMusic();

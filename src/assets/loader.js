@@ -107,9 +107,7 @@ const FLORA = [
 ];
 
 const AUDIO = {
-  music: ['mus_title', 'mus_village', 'mus_forest', 'mus_ruins', 'mus_tension', 'mus_gameover', 'mus_victory', 'mus_crypt', 'mus_boss', 'mus_village_alt'],
-  ambient: ['amb_wind'],
-  jingles: ['jng_levelup1', 'jng_levelup2', 'jng_success3'],
+  // music / ambient / jingles are fetched on demand by systems/audio.js (audio.fetch) — 10MB saved at boot
   sfx: [
     'sfx_swing_1', 'sfx_swing_2', 'sfx_hit_1', 'sfx_arrow_shot', 'sfx_whoosh_dash',
     'sfx_cast_1', 'sfx_cast_2', 'sfx_fireball', 'sfx_explosion',
@@ -124,7 +122,8 @@ const AUDIO = {
 
 export const AI_ICONS = ['amulet', 'axe', 'boots', 'bow', 'cap', 'cape', 'chainmace', 'cloak_feather', 'crossbow', 'crown', 'crystal', 'dagger', 'firewand', 'fishing_rod', 'gauntlets', 'glasses', 'greatsword', 'greaves', 'hairflower', 'hat_wizard', 'helm', 'helm_horned', 'helm_winged', 'herb', 'hood_ranger', 'longbow', 'mask', 'plate', 'potion_hp', 'potion_mp', 'pouch', 'ring', 'robe', 'robe_white', 'sai', 'scimitar', 'shield', 'spear', 'staff_crystal', 'staff_wood', 'sword', 'throwing_knives', 'tome', 'tunic', 'vest_thief', 'wand_fire', 'warhammer', 'wings'];
 
-export function preload(scene) {
+// Everything the world needs (sprites, faces, items, FX, SFX). Queued AFTER the title is interactive (see BootScene).
+export function preloadWorld(scene) {
   const L = scene.load;
   for (const n of AI_ICONS) L.image(`icon.ai.${n}`, `assets/custom/icons_ai/${n}.png`);
   for (const name of CHARACTERS) {

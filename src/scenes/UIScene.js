@@ -18,6 +18,7 @@ import { input } from '../core/input.js';
 import { settings, uiZoomFor } from '../core/settings.js';
 import { PauseMenu } from '../ui/PauseMenu.js';
 import { HelpOverlay } from '../ui/HelpOverlay.js';
+import { fullscreenSupported, isFullscreen, toggleFullscreen } from '../core/mobile.js';
 
 // HUD: HP/MP/XP bars, hotbar with cooldown sweep (clickable), minimap,
 // quest tracker, chat, party, pause (palette + mute), GB tint + scanlines,
@@ -196,8 +197,12 @@ export class UIScene extends Phaser.Scene {
       { key: 'Q', name: 'Potion', ab: null, action: 'potion' },
     ];
     const hotTotalW = slots.length * cellSt;
+    // narrow / portrait screens: slide the hotbar left so it never sits under the bottom-right minimap
+    const mmLeft = W - (this.small ? 84 : 112) - 14 - 8;
+    let hotX0 = W / 2 - hotTotalW / 2;
+    if (hotX0 + hotTotalW > mmLeft) hotX0 = Math.max(6, mmLeft - hotTotalW);
     slots.forEach((s, i) => {
-      const x = W / 2 - hotTotalW / 2 + i * cellSt + cellSt / 2;
+      const x = hotX0 + i * cellSt + cellSt / 2;
       const bg = this._ns(x, hotY, cellW, cellH, 'ui.cell', 3, 3, 3, 3, 0.5, 0.5, 100);
       bg.setInteractive({ useHandCursor: true });
 
@@ -339,7 +344,14 @@ export class UIScene extends Phaser.Scene {
     const hbX = W - 8 - this.questW - 30;
     this.menuBtn = hb(hbX, 'II', () => (this.menu.isOpen ? this.menu.close() : this.menu.open('main')));
     this.helpBtn = hb(hbX - 26, '?', () => this.help.toggle());
-    this.fpsT = this.add.text(hbX - 32, 12, '', F(9, '#9bf06b', { stroke: '#1a1024', strokeThickness: 3 })).setOrigin(1, 0).setDepth(121).setVisible(settings.get('showFps'));
+    // touch: fullscreen toggle next to the menu / help buttons (hidden where the API is missing, e.g. iPhone Safari, or already installed)
+    if (('ontouchstart' in window || navigator.maxTouchPoints > 0) && fullscreenSupported() && !document.documentElement.classList.contains('wf-standalone')) {
+      this.fsBtn = hb(hbX - 52, isFullscreen() ? '><' : '[]', () => {});
+      // fullscreen needs a *user activation*: on touch that is granted at touchend (pointerup), not touchstart
+      this.fsBtn[0].removeAllListeners('pointerdown');
+      this.fsBtn[0].on('pointerup', () => { audio.play('ui', 0.6); toggleFullscreen(); setTimeout(() => this.fsBtn?.[1]?.setText(isFullscreen() ? '><' : '[]'), 400); });
+    }
+    this.fpsT = this.add.text(hbX - (this.fsBtn ? 58 : 32), 12, '', F(9, '#9bf06b', { stroke: '#1a1024', strokeThickness: 3 })).setOrigin(1, 0).setDepth(121).setVisible(settings.get('showFps'));
     this.offs.push(bus.on(Events.TOAST, (t) => this.toast?.push(t)));
 
     this.buildTouch();
@@ -418,7 +430,7 @@ export class UIScene extends Phaser.Scene {
     this.touchUI = this.add.container(0, 0).setDepth(150);
     const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
     if (!isTouch) return;
-    this.input.addPointer(2); // stick + action button held at the same time
+    this.input.addPointer(4); // stick + several action buttons held at the same time (5 touch pointers)
     // Joystick (bottom-left, dynamic origin); kept above the hotbar row
     const sx0 = 90, sy0 = H - 140;
     const base = this.add.circle(sx0, sy0, 46, 0xffffff, 0.12);
@@ -466,8 +478,10 @@ export class UIScene extends Phaser.Scene {
       potion: mkBtn(W - 50 - 2 * R - 18, mmTop - R + 2, 'Q', () => this.world()?.drinkPotion()),
       bag: mkBtn(W - 50 - 2 * R - 18, mmTop - 3 * R - 12, 'BAG', () => bus.emit(Events.GEAR, { open: 'inventory' })),
     };
-    mkBtn(W - 184, H - 176, 'LOG', () => bus.emit(Events.JOURNAL, { open: 'toggle' }));
-    mkBtn(W - 246, H - 110, 'CFT', () => bus.emit(Events.CRAFT, { open: 'toggle' }));
+    // LOG / CRAFT: a second column left of BAG / Q (same rows) so nothing overlaps at 844x390, 390x844, 768x1024
+    const qx = W - 50 - 2 * R - 18, colX = qx - 2 * R - 14;
+    mkBtn(colX, mmTop - 3 * R - 12, 'LOG', () => bus.emit(Events.JOURNAL, { open: 'toggle' }));
+    mkBtn(colX, mmTop - R + 2, 'CFT', () => bus.emit(Events.CRAFT, { open: 'toggle' }));
   }
 
   // ── equipment + shop panels (src/ui/EquipPanel.js, ShopPanel.js) ───────────

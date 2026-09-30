@@ -208,6 +208,7 @@ export class AreaManager {
     const [sx, sy] = def.spawn || [def.size.w / 2, def.size.h - 2.5];
     const ret = this.returnPos[areaId];
     const big = def.kind !== 'interior';
+    audio.warm(areaId); // preload the destination's music under the loading card
     this.warp(areaId, def.origin.x + sx * T, def.origin.y + sy * T, {
       loading: big, label: big ? `Travelling to ${def.name}…` : undefined, quick: !big,
     });

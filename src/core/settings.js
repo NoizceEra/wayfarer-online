@@ -8,6 +8,7 @@ export const DEFAULT_SETTINGS = {
   music: 0.7,         // 0..1
   sfx: 0.9,           // 0..1
   showFps: false,
+  haptics: true,      // navigator.vibrate on hits / level-up (touch devices)
   shake: true,        // camera shake
   reduceMotion: false, // no shake, no flashing vignette / pulses
   uiScale: 1,         // HUD + panels zoom (0.75..2)

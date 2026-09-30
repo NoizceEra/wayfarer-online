@@ -29,6 +29,7 @@ export const settings = {
   get q() { return QUALITY[this.quality]; },
   setQuality(q, persist = true) {
     if (!QUALITY[q]) return this.quality;
+    if (!persist && ['low', 'med', 'high'].indexOf(q) < ['low', 'med', 'high'].indexOf(this.quality)) this._autoLowered = true; // perf governor may recover it (core/perf.js)
     this.quality = q;
     if (persist) { write(QKEY, q); this.explicit = true; }
     this.listeners.forEach((fn) => { try { fn(); } catch (e) { console.error(e); } });

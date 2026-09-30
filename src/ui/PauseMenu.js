@@ -158,6 +158,7 @@ export class PauseMenu {
       if (ni !== i) { settings.set('uiScale', UI_SCALES[ni]); this.hooks.applyUiScale?.(); }
     });
     toggle('showFps', 'Show FPS');
+    if (navigator.vibrate) toggle('haptics', 'Haptic vibration');
     toggle('shake', 'Screen shake');
     toggle('reduceMotion', 'Reduce motion');
     const by = ph / 2 - 36;

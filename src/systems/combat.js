@@ -682,23 +682,37 @@ export class Combat {
     const playerSafe = s.zoneHere(p.x, p.y).safe;
     const tg = this.teleG;
     tg.clear();
-    const env = {
-      p, nightBoost: s.daynight?.isNight ? 1.25 : 1,
-      playerOk: !p.dead && !playerSafe && !s.transitioning && !this.death,
+    // one reused env object (was a fresh object + 2 closures per frame)
+    const env = this._env || (this._env = {
+      p: null, nightBoost: 1, playerOk: false,
       safeAt: (x, y) => s.zoneHere(x, y).safe,
       drawLane: (e, a, len, t) => {
         const ex = e.x + Math.cos(a) * len, ey = e.y + Math.sin(a) * len;
         tg.lineStyle(7 * e.vscale, 0xff3030, 0.12 + 0.18 * t).lineBetween(e.x, e.y, ex, ey);
         tg.lineStyle(1, 0xff5040, 0.8).lineBetween(e.x, e.y, e.x + Math.cos(a) * len * t, e.y + Math.sin(a) * len * t);
       },
-    };
+    });
+    env.p = p; env.nightBoost = s.daynight?.isNight ? 1.25 : 1;
+    env.playerOk = !p.dead && !playerSafe && !s.transitioning && !this.death;
     const plv = p.level;
+    const wv = s.cameras.main.worldView;
     s.enemies.children.each((e) => {
       if (!(e instanceof Enemy) || e.dying) return true;
       if ((e.areaId || null) !== here) { e.body.setVelocity(0, 0); return true; }
       if (s.sync?.driveEnemy?.(e, time, delta)) return true; // co-op: replicas interpolate
       if (e.statuses.size) e.statuses.tick(time, (id, dmg) => this.damageEnemy(e, dmg, false, { dot: id }));
       if (!e.alive) return true;
+      // AI sleep: idle, off-screen, non-boss enemies only think every 4th frame (accumulated delta); rendering is culled in core/cull.js
+      if (e.mode === 'idle' && !e.isBoss && !e.aiUpdate && !e.engaged && (e.aiState === 'idle' || e.aiState === undefined)
+        && (e.x < wv.x - 80 || e.x > wv.right + 80 || e.y < wv.y - 80 || e.y > wv.bottom + 80)) {
+        e._sleepDt = (e._sleepDt || 0) + delta;
+        e._sleepF = ((e._sleepF ?? (Math.random() * 4 | 0)) + 1) % 4;
+        if (e._sleepF) return true;
+        delta = e._sleepDt; e._sleepDt = 0; // eslint-disable-line no-param-reassign
+        e.aiTick(s, time, delta, env);
+        return true;
+      }
+      e._sleepDt = 0;
       if (e.aiUpdate) e.aiUpdate(s, delta); else e.aiTick(s, time, delta, env);
       e.setDepth(e.y);
       const d = Phaser.Math.Distance.Between(p.x, p.y, e.x, e.y);

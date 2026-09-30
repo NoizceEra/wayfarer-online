@@ -2,11 +2,11 @@ import Phaser from 'phaser';
 import { BootScene } from './scenes/BootScene.js';
 import { TitleScene } from './scenes/TitleScene.js';
 import { CreatorScene } from './scenes/CreatorScene.js';
-import { WorldScene } from './scenes/WorldScene.js';
-import { UIScene } from './scenes/UIScene.js';
-import { CharacterScene } from './scenes/CharacterScene.js';
-import { OverlayScene } from './scenes/OverlayScene.js';
 import { input } from './core/input.js';
+import { installLazyScenes } from './scenes/lazy.js';
+import { installMobile } from './core/mobile.js';
+import { installPwa } from './core/pwa.js';
+import { installPerf } from './core/perf.js';
 
 // Mobile hardening: no pinch-zoom gestures, no long-press menu, no dblclick zoom.
 document.addEventListener('gesturestart', (e) => e.preventDefault());
@@ -37,7 +37,7 @@ const game = new Phaser.Game({
   fps: { target: 60, smoothStep: true },
   render: { antialias: false, roundPixels: true },
   physics: { default: 'arcade', arcade: { gravity: { y: 0 }, debug: false, fps: 60 } },
-  scene: [BootScene, TitleScene, CreatorScene, WorldScene, UIScene, CharacterScene, OverlayScene],
+  scene: [BootScene, TitleScene, CreatorScene], // world/ui/character/overlay are lazy (scenes/lazy.js)
   backgroundColor: '#0f380f',
   // RESIZE: canvas always fills the window; scenes pick integer zooms (core/display.js)
   scale: { mode: Phaser.Scale.RESIZE, width: window.innerWidth, height: window.innerHeight, autoCenter: Phaser.Scale.NO_CENTER },
@@ -45,5 +45,10 @@ const game = new Phaser.Game({
 
 // Debug/testing handle (also used by automated smoke tests).
 window.__wayfarer = game;
+installLazyScenes(game);
 // Central keyboard/gamepad input (core/input.js): one window listener, canvas focus, rebindable actions.
 input.install(game);
+
+installMobile();
+installPwa();
+installPerf(game);
