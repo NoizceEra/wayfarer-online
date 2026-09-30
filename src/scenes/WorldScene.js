@@ -13,6 +13,8 @@ import { audio } from '../systems/audio.js';
 import { loadProgress, saveProgress } from '../core/save.js';
 import { gearById, rollGearDrop, statLine } from '../data/gear.js';
 import { SHOP_STOCK } from '../data/gear.js';
+import { castFx } from '../systems/skillFx.js';
+import { skillDmgMul } from '../data/stats.js';
 
 // Open world: town (safe) + meadow + woods + ruins in ONE 128×128 map.
 // Solo = full simulation. Host = authoritative + broadcasts. Guest = applies
@@ -33,11 +35,8 @@ export class WorldScene extends Phaser.Scene {
     const saved = loadProgress(this.pname);
     if (saved && saved.job === this.player.job.id) {
       this.player.level = saved.level || 1; this.player.xp = saved.xp || 0;
-      this.player.xpNext = saved.xpNext || 100;
       this.player.gold = saved.gold ?? 20; this.player.potions = saved.potions ?? 3;
-      this.player.maxHp = saved.maxHp || this.player.maxHp;
-      this.player.maxMp = saved.maxMp || this.player.maxMp;
-      this.player.atk = saved.atk || this.player.atk;
+      this.player.applyProgression(saved.prog); // derived HP/MP/ATK come from stats now
       this.player.hp = this.player.effMaxHp(); this.player.mp = this.player.effMaxMp();
       this.player.setPosition(saved.x || spawn.x, saved.y || spawn.y);
       this.questState = saved.quest || { idx: 0, kills: {} };
@@ -88,6 +87,7 @@ export class WorldScene extends Phaser.Scene {
       // Safe zones (town) are truly safe: no contact damage
       const pt = CONFIG.tile;
       if (zoneAt(Math.floor(this.player.x / pt), Math.floor(this.player.y / pt), ZONES).safe) return;
+      if (this.player.tryDodge()) return; // FLEE-based dodge
       const raw = ed.def.atk * 0.15 + 1;
       const n = Math.max(1, Math.round(raw - this.player.effDef() * 0.5));
       if (this.player.hurt(n)) {
@@ -111,6 +111,7 @@ export class WorldScene extends Phaser.Scene {
     Object.entries({ ONE: '1', TWO: '2', THREE: '3', FOUR: '4' }).forEach(([k, n]) => {
       this.input.keyboard.on(`keydown-${n}`, () => this.cast(n));
     });
+    ['FIVE', 'SIX'].forEach((k, i) => this.input.keyboard.on(`keydown-${k}`, () => this.cast(String(i + 5)))); // advanced-class skills
     this.input.keyboard.on('keydown-J', () => this.attack());
     this.input.keyboard.on('keydown-Q', () => this.drinkPotion());
     this.input.keyboard.on('keydown-E', () => this.interact());
@@ -138,9 +139,10 @@ export class WorldScene extends Phaser.Scene {
     bus.emit(Events.PLAYER_XP, this.xpPayload());
     this.events.once('shutdown', () => { this.saveNow(); this.sync.destroy(); });
     this.scene.launch('ui', { hero: this.heroData, name: this.pname, job: this.player.job });
+    this.scene.launch('character'); // RPG panels (C / K) + level-up toasts, see CharacterScene.js
   }
 
-  hpPayload() { return { hp: Math.ceil(this.player.hp), maxHp: this.player.effMaxHp(), mp: Math.ceil(this.player.mp), maxMp: this.player.effMaxMp(), potions: this.player.potions, gold: this.player.gold, level: this.player.level, atk: this.player.effAtk(), def: this.player.effDef() }; }
+  hpPayload() { return { hp: Math.ceil(this.player.hp), maxHp: this.player.effMaxHp(), mp: Math.ceil(this.player.mp), maxMp: this.player.effMaxMp(), potions: this.player.potions, gold: this.player.gold, level: this.player.level, atk: Math.round(this.player.effAtk()), def: this.player.effDef() }; }
   xpPayload() { return { xp: this.player.xp, xpNext: this.player.xpNext, level: this.player.level }; }
   questText() {
     const q = QUESTS[this.questState.idx];
@@ -176,6 +178,7 @@ export class WorldScene extends Phaser.Scene {
       maxHp: this.player.maxHp, maxMp: this.player.maxMp, atk: this.player.atk,
       x: Math.round(this.player.x), y: Math.round(this.player.y), quest: this.questState,
       inventory: [...this.player.inventory], equipped: { ...this.player.equipped },
+      prog: this.player.prog,
     });
   }
 
@@ -298,12 +301,12 @@ export class WorldScene extends Phaser.Scene {
     if (this.player.dead) return;
     const cd = this.player.cooldowns.slash || 0;
     if (this.time.now < cd) return;
-    this.player.cooldowns.slash = this.time.now + 350;
+    this.player.cooldowns.slash = this.time.now + this.player.attackDelay();
     this.player.attackPose();
     const kind = this.player.weaponKind();
     const bow = kind === 'bow';
     const mage = kind === 'wand';
-    const dmg = this.player.effAtk() + Math.floor(Math.random() * 4);
+    const dmg = this.player.rollCrit(this.player.effAtk() + Math.floor(Math.random() * 4));
     const ang = { right: 0, down: 90, left: 180, up: 270 }[this.player.facing] ?? 0;
     if (bow || mage) {
       audio.play(mage ? 'cast' : 'arrow');
@@ -324,11 +327,15 @@ export class WorldScene extends Phaser.Scene {
   }
 
   cast(slot) {
-    const ab = this.player.job.abilities[Number(slot) - 1];
+    const ab = this.player.abilityForKey(slot);
     if (!ab || this.player.dead) return;
+    const lv = this.player.skillLv(ab.id); // skill level 1-5 scales dmg/effect (+15%/lv) and cooldown (-6%/lv)
+    if (lv < 1) { bus.emit(Events.SYSTEM, `Learn ${ab.name} in Skills (K) first.`); audio.play('error', 0.7); return; }
+    const dm = skillDmgMul(lv);
     const cd = this.player.cooldowns[ab.id] || 0;
     if (this.time.now < cd) { audio.play('error', 0.7); return; }
-    const setCd = () => { this.player.cooldowns[ab.id] = this.time.now + ab.cd * 1000; bus.emit(Events.PLAYER_HP, this.hpPayload()); };
+    const setCd = () => { this.player.cooldowns[ab.id] = this.time.now + this.player.skillCd(ab) * 1000; bus.emit(Events.PLAYER_HP, this.hpPayload()); };
+    if (castFx(this, ab, lv, setCd)) return;
     if (ab.id === 'camp') {
       setCd();
       audio.play('heal');
@@ -336,7 +343,7 @@ export class WorldScene extends Phaser.Scene {
       const f = this.add.circle(this.player.x, this.player.y + 6, 8, 0xe67e22).setDepth(2600);
       this.tweens.add({ targets: f, scale: 1.3, duration: 400, yoyo: true, repeat: 9, onComplete: () => f.destroy() });
       this.time.addEvent({ delay: 1000, repeat: 9, callback: () => {
-        this.player.heal(4); this.damageNumber(this.player.x, this.player.y, '+4', '#2ecc71');
+        const h = Math.round(4 * dm); this.player.heal(h); this.damageNumber(this.player.x, this.player.y, `+${h}`, '#2ecc71');
         bus.emit(Events.PLAYER_HP, this.hpPayload());
       } });
       bus.emit(Events.SYSTEM, `${ab.name}: campfire heals 4 HP/s`);
@@ -345,7 +352,7 @@ export class WorldScene extends Phaser.Scene {
     if (ab.id === 'ward') {
       if (this.player.mp < 20) { audio.play('error', 0.7); bus.emit(Events.SYSTEM, 'Not enough MP!'); return; }
       this.player.mp -= 20;
-      this.player.invulnUntil = this.time.now + 3000;
+      this.player.invulnUntil = this.time.now + 3000 * dm;
       setCd();
       audio.play('cast');
       const sh = this.spawnFx(this.player.x, this.player.y - 8, 'fx.shieldBlue', 1.4);
@@ -382,7 +389,7 @@ export class WorldScene extends Phaser.Scene {
           e.setData('slowUntil', this.time.now + 4000);
           e.sprite.setTint(0x88ccff);
           this.time.delayedCall(4000, () => e.active && e.sprite.clearTint());
-          if (ab.id === 'smoke') this.damageEnemy(e, this.player.effAtk());
+          if (ab.id === 'smoke') this.damageEnemy(e, this.player.effAtk() * dm);
           n += 1;
         }
         return true;
@@ -397,18 +404,18 @@ export class WorldScene extends Phaser.Scene {
     this.player.attackPose();
     if (ab.id === 'fan' || ab.id === 'volley') {
       audio.play('arrow');
-      for (let i = -1; i <= 1; i++) this.fireShot(this.player.x, this.player.y - 8, this.facingAngle() + i * 0.3, this.player.effAtk(), 'kunai');
+      for (let i = -1; i <= 1; i++) this.fireShot(this.player.x, this.player.y - 8, this.facingAngle() + i * 0.3, this.player.effAtk() * dm, 'kunai');
     } else if (ab.id === 'burst') {
       audio.play('explosion');
       this.spawnFx(this.player.x, this.player.y - 8, 'fx.explosion', 2);
       this.cameras.main.shake(120, 0.003);
       this.enemies.children.each((e) => {
-        if (e instanceof Enemy && Phaser.Math.Distance.Between(this.player.x, this.player.y, e.x, e.y) < 56) this.damageEnemy(e, this.player.effAtk() + 6);
+        if (e instanceof Enemy && Phaser.Math.Distance.Between(this.player.x, this.player.y, e.x, e.y) < 56) this.damageEnemy(e, (this.player.effAtk() + 6) * dm);
         return true;
       });
     } else {
       audio.play('fireball');
-      this.fireShot(this.player.x, this.player.y - 8, this.facingAngle(), this.player.effAtk() + 4, ab.id === 'bolt' ? 'fire' : 'shuriken');
+      this.fireShot(this.player.x, this.player.y - 8, this.facingAngle(), (this.player.effAtk() + 4) * dm, ab.id === 'bolt' ? 'fire' : 'shuriken');
     }
   }
 

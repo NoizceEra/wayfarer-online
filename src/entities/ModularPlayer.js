@@ -1,6 +1,12 @@
 import Phaser from 'phaser';
 import { CONFIG } from '../config.js';
-import { JOBS } from '../data/jobs.js';
+import { JOBS, ADVANCED } from '../data/jobs.js';
+import {
+  STAT_IDS, MAX_LEVEL, MAX_STAT, CLASS_CHANGE_LEVEL, SKILL_MAX, SKILL_POINTS_PER_LEVEL,
+  xpToNext, statPointsForLevel, statCost, skillCdMul, newProg, computeDerived,
+} from '../data/stats.js';
+import { sanitizeProgression } from '../core/save.js';
+import { bus, Events } from '../core/events.js';
 import { HAIR_COLORS, TOPS } from '../data/customization.js';
 import { gearById } from '../data/gear.js';
 
@@ -30,7 +36,9 @@ export class ModularPlayer extends Phaser.GameObjects.Container {
     this.maxHp = job.hp; this.hp = job.hp;
     this.maxMp = job.mp; this.mp = job.mp;
     this.atk = job.atk;
-    this.level = 1; this.xp = 0; this.xpNext = 100;
+    this.level = 1; this.xp = 0; this.xpNext = xpToNext(1);
+    this.prog = newProg();   // RPG progression (stats/skills/advanced class), see data/stats.js
+    this.buff = null;        // temporary skill buff {until, atkMul, spdMul}
     this.gold = 20; this.potions = 3;
     this.speed = job.spd || CONFIG.playerSpeed;
     this.facing = 'down';
@@ -88,6 +96,84 @@ export class ModularPlayer extends Phaser.GameObjects.Container {
     ]);
     this.applyHero(hero);
     this.setDepth(10);
+    this.recalc(true);
+  }
+
+  // — RPG progression —
+  advClass() { return this.prog.adv ? ADVANCED[this.prog.adv] : null; }
+  // Recompute derived stats (maxHp/maxMp/atk/speed) from level + stats + class.
+  recalc(fill = false) {
+    this.derived = computeDerived({ job: this.job, adv: this.advClass(), level: this.level, alloc: this.prog.alloc, weaponKind: this.weaponKind() });
+    this.maxHp = this.derived.maxHp; this.maxMp = this.derived.maxMp;
+    this.atk = this.derived.atk; this.speed = this.derived.moveSpeed;
+    if (fill) { this.hp = this.effMaxHp(); this.mp = this.effMaxMp(); }
+    else { this.hp = Math.min(this.hp, this.effMaxHp()); this.mp = Math.min(this.mp, this.effMaxMp()); }
+  }
+  applyProgression(raw) {
+    this.prog = sanitizeProgression(raw, this.level, this.job.id);
+    this.xpNext = xpToNext(this.level);
+    this.recalc(true);
+  }
+  // Base abilities (keys 1-4) + advanced-class abilities (keys 5-6).
+  skillList() { return [...this.job.abilities, ...(this.advClass()?.abilities || [])]; }
+  abilityForKey(k) { return this.skillList().find((a) => a.key === String(k)) || null; }
+  // Base skills start at Lv1; advanced skills at Lv0 until learned with a skill point.
+  skillLv(id) {
+    const base = this.job.abilities.some((a) => a.id === id) ? 1 : 0;
+    return Math.max(base, this.prog.skills[id] || 0);
+  }
+  skillCd(ab) { return ab.cd * skillCdMul(this.skillLv(ab.id)); }
+  buffMul(k) { return this.buff && this.scene.time.now < this.buff.until ? (this.buff[k] || 1) : 1; }
+  attackDelay() { return this.derived.attackDelay; }
+  // Crit roll on outgoing damage (shows a CRIT! tag). Returns final damage.
+  rollCrit(dmg) {
+    if (Math.random() * 100 >= this.derived.crit) return dmg;
+    this.scene.damageNumber?.(this.x, this.y - 14, 'CRIT!', '#ffd24a');
+    return dmg * 1.5;
+  }
+  tryDodge() {
+    const now = this.scene.time.now;
+    if (now < this.invulnUntil || this.dead || Math.random() * 100 >= this.derived.dodge) return false;
+    this.invulnUntil = now + 400;
+    this.scene.damageNumber?.(this.x, this.y - 6, 'Miss', '#9bd0ff');
+    return true;
+  }
+  _emitProgress() { bus.emit(Events.PROGRESS, { level: this.level, statPoints: this.prog.statPoints, skillPoints: this.prog.skillPoints, adv: this.prog.adv }); }
+  canChooseClass() { return this.level >= CLASS_CHANGE_LEVEL && !this.prog.adv; }
+  chooseClass(id) {
+    const adv = ADVANCED[id];
+    if (!adv || adv.base !== this.job.id || !this.canChooseClass()) return false;
+    this.prog.adv = id;
+    this.recalc(true);
+    this._emitProgress();
+    return true;
+  }
+  // Commit staged stat increments ({str:+n,...}); validates cost against points.
+  applyStats(delta) {
+    let cost = 0;
+    const alloc = { ...this.prog.alloc };
+    for (const s of STAT_IDS) {
+      for (let i = 0; i < Math.max(0, delta[s] || 0); i++) {
+        const cur = (this.job.base[s] || 5) + alloc[s];
+        if (cur >= MAX_STAT) break;
+        cost += statCost(cur); alloc[s] += 1;
+      }
+    }
+    if (cost > this.prog.statPoints) return false;
+    this.prog.alloc = alloc; this.prog.statPoints -= cost;
+    this.recalc();
+    this._emitProgress();
+    return true;
+  }
+  upgradeSkill(id) {
+    const ab = this.skillList().find((a) => a.id === id);
+    const lv = this.prog.skills[id] || 0;
+    const min = this.job.abilities.some((a) => a.id === id) ? 1 : 0;
+    if (!ab || this.prog.skillPoints < 1 || Math.max(lv, min) >= SKILL_MAX) return false;
+    this.prog.skills[id] = Math.max(lv, min) + 1;
+    this.prog.skillPoints -= 1;
+    this._emitProgress();
+    return true;
   }
 
   bodyKey() { return `char.${BODY_TEX[this.hero.body] || 'Knight'}`; }
@@ -152,11 +238,11 @@ export class ModularPlayer extends Phaser.GameObjects.Container {
     }
     return total;
   }
-  effAtk()   { return this.atk + this.equippedStats().atk; }
-  effDef()   { return this.equippedStats().def; }
+  effAtk()   { return ((this.weaponKind() === 'wand' ? this.derived.matk : this.atk) + this.equippedStats().atk) * this.buffMul('atkMul'); }
+  effDef()   { return this.derived.def + this.equippedStats().def; }
   effMaxHp() { return this.maxHp + this.equippedStats().hp; }
   effMaxMp() { return this.maxMp + this.equippedStats().mp; }
-  effSpeed() { return this.speed + this.equippedStats().spd; }
+  effSpeed() { return (this.speed + this.equippedStats().spd) * this.buffMul('spdMul'); }
   weaponKind() {
     const g = this.equipped.weapon && gearById(this.equipped.weapon);
     if (g?.kind) return g.kind;
@@ -169,8 +255,7 @@ export class ModularPlayer extends Phaser.GameObjects.Container {
     this.equipped[g.slot] = id;
     this.inventory = this.inventory.filter((x) => x !== id);
     if (prev && gearById(prev)) this.inventory.push(prev);
-    this.hp = Math.min(this.hp, this.effMaxHp());
-    this.mp = Math.min(this.mp, this.effMaxMp());
+    this.recalc(); // weapon kind can change ATK vs MATK basis; also clamps HP/MP
     this.applyGearVisuals();
     return true;
   }
@@ -179,8 +264,7 @@ export class ModularPlayer extends Phaser.GameObjects.Container {
     if (!prev) return false;
     this.equipped[slot] = null;
     if (gearById(prev)) this.inventory.push(prev);
-    this.hp = Math.min(this.hp, this.effMaxHp());
-    this.mp = Math.min(this.mp, this.effMaxMp());
+    this.recalc();
     this.applyGearVisuals();
     return true;
   }
@@ -253,7 +337,7 @@ export class ModularPlayer extends Phaser.GameObjects.Container {
     this.scene.time.delayedCall(90, () => this.sprite.clearTint());
   }
 
-  heal(n) { this.hp = Math.min(this.maxHp, this.hp + n); }
+  heal(n) { this.hp = Math.min(this.effMaxHp(), this.hp + n); }
   hurt(n) {
     const now = this.scene.time.now;
     if (now < this.invulnUntil || this.dead) return false;
@@ -265,15 +349,20 @@ export class ModularPlayer extends Phaser.GameObjects.Container {
     return true;
   }
   gainXp(n) {
+    if (this.level >= MAX_LEVEL) return false;
     this.xp += n;
-    let leveled = false;
-    while (this.xp >= this.xpNext) {
-      this.xp -= this.xpNext; this.level += 1;
-      this.xpNext = Math.floor(this.xpNext * 1.35);
-      this.maxHp += 12; this.hp = this.maxHp;
-      this.maxMp += 6; this.mp = this.maxMp;
-      this.atk += 2; leveled = true;
+    let gained = 0;
+    while (this.xp >= this.xpNext && this.level < MAX_LEVEL) {
+      this.xp -= this.xpNext; this.level += 1; gained += 1;
+      this.xpNext = xpToNext(this.level);
+      this.prog.statPoints += statPointsForLevel(this.level);
+      this.prog.skillPoints += SKILL_POINTS_PER_LEVEL;
     }
-    return leveled;
+    if (this.level >= MAX_LEVEL) this.xp = 0;
+    if (!gained) return false;
+    this.recalc(true);
+    bus.emit(Events.LEVEL_UP, { level: this.level, gained, statPoints: this.prog.statPoints, skillPoints: this.prog.skillPoints, needsClass: this.canChooseClass() });
+    this._emitProgress();
+    return true;
   }
 }

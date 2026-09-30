@@ -582,7 +582,7 @@ export class UIScene extends Phaser.Scene {
       const ab = slot.s.ab;
       let remain = 0, total = 1;
       if (ab && w?.player) {
-        total  = ab.cd;
+        total  = w.player.skillCd(ab);
         remain = Math.max(0, ((w.player.cooldowns[ab.id] || 0) - now) / 1000);
       }
       const on = remain > 0;
