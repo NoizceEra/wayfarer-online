@@ -94,7 +94,7 @@ export class UIScene extends Phaser.Scene {
 
     // ── GB palette tint + scanlines ─────────────────────────────────────────
     const pal = PALETTES[this.hero.palette] || PALETTES.classic;
-    this.gbTint = this.add.rectangle(0, 0, W, H, pal.bg, this.hero.palette === 'modern' ? 0 : 0.12)
+    this.gbTint = this.add.rectangle(0, 0, W, H, pal.bg, this.hero.palette === 'modern' ? 0 : 0.06)
       .setOrigin(0).setDepth(90).setScrollFactor(0);
     this.scan = this.add.graphics().setDepth(91);
     this.drawScan();
@@ -320,7 +320,7 @@ export class UIScene extends Phaser.Scene {
   drawScan() {
     this.scan.clear();
     const { width: W, height: H } = this.scale;
-    for (let y = 0; y < H; y += 4) this.scan.fillStyle(0x000000, 0.08).fillRect(0, y, W, 1);
+    for (let y = 0; y < H; y += 4) this.scan.fillStyle(0x000000, 0.035).fillRect(0, y, W, 1);
   }
 
   say(s) {

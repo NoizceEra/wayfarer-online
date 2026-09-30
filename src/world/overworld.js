@@ -13,50 +13,16 @@ export function zoneAt(tx, ty, ZONES) {
   return ZONES[1];
 }
 
-const TILE_TEX = { town: 'tile.town', meadow: 'tile.meadow', woods: 'tile.woods', ruins: 'tile.ruins' };
-
 export function buildOverworld(scene, ZONES) {
   const t = CONFIG.tile;
   const W = CONFIG.worldCols * t, H = CONFIG.worldRows * t;
 
-  // Textured ground per zone (generated 16×16 noise tiles).
-  // Largest-area-first so enclaves (town inside meadow) draw ON TOP —
-  // same-depth TileSprites render in creation order.
-  const byAreaDesc = [...ZONES].sort((a, b) => (b.rect.w * b.rect.h) - (a.rect.w * a.rect.h));
-  for (const z of byAreaDesc) {
-    const r = z.rect;
-    scene.add.tileSprite((r.x + r.w / 2) * t, (r.y + r.h / 2) * t, r.w * t, r.h * t, TILE_TEX[z.id] || 'tile.meadow').setDepth(-10);
-  }
-  // Meadow base under everything (zones tile over it)
-  scene.add.tileSprite(W / 2, H / 2, W, H, 'tile.meadow').setDepth(-11);
-
-  // Water border + foam
-  const g = scene.add.graphics().setDepth(-8);
-  g.fillStyle(0x2e86c1, 1).fillRect(0, 0, W, 24).fillRect(0, H - 24, W, 24).fillRect(0, 0, 24, H).fillRect(W - 24, 0, 24, H);
-  g.lineStyle(3, 0xaed6f1, 0.8).strokeRect(24, 24, W - 48, H - 48);
-
-  // Feathered biome edges: 6-step alpha gradient bands (zone colour fading
-  // into the neighbour) so woods/ruins melt instead of hard-cutting.
-  // Base colours mirror the generated tile.* textures in loader.js.
-  // Bands are 4 tiles wide — 2 tiles read as a hard edge on a zoomed camera.
-  const feather = (x, y, w, h, color, horizontal, flip) => {
-    const fg = scene.add.graphics().setDepth(-9);
-    const steps = [0.08, 0.16, 0.26, 0.38, 0.50, 0.62];
-    for (let i = 0; i < 6; i++) {
-      fg.fillStyle(color, flip ? steps[5 - i] : steps[i]);
-      if (horizontal) fg.fillRect(x, y + i * 8, w, 8);
-      else fg.fillRect(x + i * 8, y, 8, h);
-    }
-  };
+  // Baked ground: one canvas texture for the whole map. Zone colours blend
+  // smoothly (signed-distance falloff + noise-jittered edges), with value-noise
+  // patches, grass blades, pebbles and sand speckle so nothing reads as a flat fill.
+  bakeGround(scene, ZONES, W, H, t);
   const woodsR = ZONES.find((z) => z.id === 'woods').rect;
   const ruinsR = ZONES.find((z) => z.id === 'ruins').rect;
-  feather((woodsR.x - 4) * t, woodsR.y * t, 64, woodsR.h * t, 0x3e8e41, false, false); // W
-  feather(woodsR.x * t, (woodsR.y - 4) * t, woodsR.w * t, 64, 0x3e8e41, true, false);  // N
-  feather(woodsR.x * t, (woodsR.y + woodsR.h) * t, woodsR.w * t, 64, 0x3e8e41, true, true); // S
-  feather((woodsR.x + woodsR.w) * t, woodsR.y * t, 64, woodsR.h * t, 0x3e8e41, false, true); // E
-  feather(ruinsR.x * t, (ruinsR.y - 4) * t, ruinsR.w * t, 64, 0x6b7f8e, true, false);  // N
-  feather((ruinsR.x - 4) * t, ruinsR.y * t, 64, ruinsR.h * t, 0x6b7f8e, false, false); // W
-  feather((ruinsR.x + ruinsR.w) * t, ruinsR.y * t, 64, ruinsR.h * t, 0x6b7f8e, false, true); // E
 
   let seed = 1234567;
   const rnd = () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let z = Math.imul(seed ^ (seed >>> 15), 1 | seed); z = (z + Math.imul(z ^ (z >>> 7), 61 | z)) ^ z; return ((z ^ (z >>> 14)) >>> 0) / 4294967296; };
@@ -306,4 +272,90 @@ export function buildOverworld(scene, ZONES) {
 
   scene.physics.world.setBounds(32, 32, W - 64, H - 64);
   return { spawn, solids, W, H, windows, glows };
+}
+
+
+// ── Ground baking ────────────────────────────────────────────────────────
+function bakeGround(scene, ZONES, W, H, t) {
+  if (scene.textures.exists('world.ground')) scene.textures.remove('world.ground');
+  const tex = scene.textures.createCanvas('world.ground', W, H);
+  const ctx = tex.getContext();
+  const img = ctx.createImageData(W, H);
+  const d = img.data;
+
+  const hash = (x, y) => { let h = (x * 374761393 + y * 668265263) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+  const vnoise = (x, y, sc) => {
+    const gx = x / sc, gy = y / sc, x0 = Math.floor(gx), y0 = Math.floor(gy);
+    const fx = gx - x0, fy = gy - y0, u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy);
+    const a = hash(x0, y0), b = hash(x0 + 1, y0), c = hash(x0, y0 + 1), e = hash(x0 + 1, y0 + 1);
+    return a + (b - a) * u + (c - a) * v + (a - b - c + e) * u * v;
+  };
+  const hex = (c) => [(c >> 16) & 255, (c >> 8) & 255, c & 255];
+  const PAL = {
+    meadow: { base: hex(0x7ec850), dark: hex(0x5fae42), light: hex(0x96d860) },
+    woods:  { base: hex(0x3f8f44), dark: hex(0x2c7136), light: hex(0x55a558) },
+    town:   { base: hex(0xcdb968), dark: hex(0xb89f54), light: hex(0xdccb80) },
+    ruins:  { base: hex(0x70828f), dark: hex(0x5a6c7a), light: hex(0x8797a3) },
+  };
+  const rects = {};
+  for (const z of ZONES) rects[z.id] = { x0: z.rect.x * t, y0: z.rect.y * t, x1: (z.rect.x + z.rect.w) * t, y1: (z.rect.y + z.rect.h) * t };
+  const sdf = (r, x, y) => Math.min(x - r.x0, r.x1 - x, y - r.y0, r.y1 - y); // >0 inside
+  const sm = (e0, e1, x) => { const k = Math.min(1, Math.max(0, (x - e0) / (e1 - e0))); return k * k * (3 - 2 * k); };
+  const shore = 24, water = [hex(0x2e86c1), hex(0x3a9bd6), hex(0x1f6fa8)], sand = hex(0xe8d9a0);
+
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = (y * W + x) * 4;
+      const edge = Math.min(x, y, W - 1 - x, H - 1 - y);
+      const jit = (vnoise(x, y, 6) - 0.5) * 14;     // wobbly biome borders
+      let col;
+      if (edge < shore + jit * 0.3) {
+        // water with soft ripples
+        const rip = Math.sin((x + y * 0.6) * 0.45 + vnoise(x, y, 10) * 6) * 0.5 + 0.5;
+        const w = rip > 0.82 ? water[1] : (rip < 0.15 ? water[2] : water[0]);
+        col = w;
+      } else if (edge < shore + 6 + jit * 0.3) {
+        col = edge < shore + 2 + jit * 0.3 ? hex(0xf2f6f8) : sand; // foam then beach
+      } else {
+        const P = PAL.meadow;
+        let r = P.base[0], g = P.base[1], b = P.base[2];
+        const blend = (pal, wgt) => { r += (pal.base[0] - r) * wgt; g += (pal.base[1] - g) * wgt; b += (pal.base[2] - b) * wgt; };
+        const wW = sm(-28, 28, sdf(rects.woods, x, y) + jit * 2);
+        const wR = sm(-28, 28, sdf(rects.ruins, x, y) + jit * 2);
+        const wT = sm(-10, 14, sdf(rects.town, x, y) + jit);
+        if (wW > 0) blend(PAL.woods, wW);
+        if (wR > 0) blend(PAL.ruins, wR);
+        if (wT > 0) blend(PAL.town, wT);
+        // broad patches + fine grain
+        const n1 = vnoise(x, y, 48) - 0.5, n2 = vnoise(x, y, 14) - 0.5, n3 = hash(x >> 1, y >> 1) - 0.5;
+        const sh = n1 * 22 + n2 * 14 + n3 * 10;
+        r += sh; g += sh * 1.05; b += sh * 0.8;
+        // grass blades (not on town/ruins-heavy cells)
+        const grassy = (1 - wT) * (1 - wR * 0.85);
+        const hb = hash(x * 7 + 3, y * 13 + 1);
+        if (grassy > 0.4 && hb > 0.985) { r -= 26; g -= 16; b -= 24; }
+        else if (grassy > 0.4 && hb < 0.008) { r += 22; g += 22; b += 8; }
+        // pebbles on ruins, speckle on town
+        if (wR > 0.5 && hash(x * 3, y * 5) > 0.992) { r += 30; g += 30; b += 30; }
+        if (wT > 0.5 && hash(x * 5, y * 3) > 0.985) { r -= 24; g -= 26; b -= 30; }
+        col = [r, g, b];
+      }
+      d[i] = col[0]; d[i + 1] = col[1]; d[i + 2] = col[2]; d[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  // grass tufts: little 3px blades drawn over the image for a hand-placed feel
+  ctx.fillStyle = 'rgba(40,110,40,0.55)';
+  for (let n = 0; n < 9000; n++) {
+    const x = Math.floor(hash(n, 11) * W), y = Math.floor(hash(n, 29) * H);
+    const edge = Math.min(x, y, W - x, H - y);
+    if (edge < 44) continue;
+    const inTown = x > rects.town.x0 - 6 && x < rects.town.x1 + 6 && y > rects.town.y0 - 6 && y < rects.town.y1 + 6;
+    const inRuins = x > rects.ruins.x0 && x < rects.ruins.x1 && y > rects.ruins.y0 && y < rects.ruins.y1;
+    if (inTown || inRuins) continue;
+    ctx.fillRect(x, y, 1, 3); ctx.fillRect(x + 2, y + 1, 1, 2);
+    ctx.fillStyle = n % 3 ? 'rgba(40,110,40,0.55)' : 'rgba(170,230,110,0.6)';
+  }
+  tex.refresh();
+  scene.add.image(0, 0, 'world.ground').setOrigin(0).setDepth(-10);
 }
