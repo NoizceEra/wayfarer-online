@@ -43,6 +43,8 @@ Set the client URL via `.env`: `VITE_SERVER_URL=ws://localhost:2567`
 - Ability 1-4: 1-4 (clickable hotbar) · Potion: Q · Skill shortcut: SKL button casts slot 2
 - Equipment: I / B or BAG button (paper doll, 8 slots, bag, dyes; drag or double-click) · Shops: Maren, Dovey (hats/capes) and Bram (arms) at the market stalls (E), buy + sell
 - Gear data: `src/data/gear.js` (80 items, 4 rarities, `getEquipBonuses(equipped)` → str/agi/vit/int/dex/luk/atk/def/hp/mp/spd); worn art `src/systems/wearArt.js`, icons `src/systems/iconArt.js`
+- Quests: talk to NPCs with a gold `!` (new quest) or `?` (turn-in) overhead; notice board in town posts daily bounties. Journal: L (Active / Available / Done / Lore / Bestiary / Codex / Feats; track up to 3, 8 active max). Data: `src/data/quests.js`, engine `src/systems/questSystem.js`
+- Gathering: E at herbs, berry bushes, logs, ore/bone/crystal veins and fishing ripples (timing mini-game); nodes respawn. Crafting: U or E at a campfire / anvil / alchemy table (recipes in `src/systems/crafting.js`, materials in `src/data/materials.js`). Vendors buy materials and junk, keep a buy-back list and restock every 10 minutes
 - Minimap: M · Sound: P · Chat: Enter · Pause: Esc · Touch: stick + ATK/SKL/E/Q/BAG buttons
 - Progress (level/XP/gold/gear/position/quest) autosaves every 10s + on exit — Continue resumes it
 

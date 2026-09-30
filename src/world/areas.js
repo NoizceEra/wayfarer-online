@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { CONFIG } from '../config.js';
-import { AREAS, SIDE_QUESTS, WAYSTONES } from '../data/zones.js';
+import { AREAS, WAYSTONES } from '../data/zones.js';
 import { bus, Events } from '../core/events.js';
 import { audio } from '../systems/audio.js';
 import { makeBiomeTextures } from './biomeTextures.js';
@@ -68,14 +68,19 @@ export class AreaManager {
       this.wanderers.push(c);
     }
     let line = 0;
+    s.quests?.registerNpc(cfg.name, c, area); // quest '!' / '?' markers (content systems)
     this.addInteract({
       area, x: cfg.x, y: cfg.y, r: 30, label: `Talk to ${cfg.name}`, ref: c,
       onUse: () => {
         audio.play('npc');
         s.spawnFx?.(c.x, c.y - 20, 'fx.spark', 0.9);
-        if (cfg.onUse) return cfg.onUse(c);
-        const lines = Array.isArray(cfg.text) ? cfg.text : [cfg.text];
-        this.say(cfg.name, lines[line++ % lines.length]);
+        const plain = () => {
+          if (cfg.onUse) return cfg.onUse(c);
+          const lines = Array.isArray(cfg.text) ? cfg.text : [cfg.text];
+          this.say(cfg.name, lines[line++ % lines.length]);
+        };
+        if (s.quests?.talk(cfg.name, plain, cfg.onUse ? 'Talk' : 'Chat', c)) return;
+        plain();
       },
     });
     return c;
@@ -138,6 +143,7 @@ export class AreaManager {
       }
     }
     b.boss = b.enemies.find((e) => e.isBoss) || null;
+    s.onAreaBuilt?.(def, b); // gather nodes + craft stations (WorldScene)
     return b;
   }
 
@@ -327,48 +333,12 @@ export class AreaManager {
   }
 
   // — side quests —
-  activeQuest() {
-    if (!this.current) return null;
-    return SIDE_QUESTS.find((q) => q.area === this.current.id && !this.qs.sideDone[q.id]) || null;
-  }
-  questLine() {
-    if (!this.current) return null;
-    const q = this.activeQuest();
-    if (!q) return null;
-    const got = this.qs.side[q.id] || 0;
-    const prog = q.need.count ? ` (${got}/${q.need.count})` : '';
-    return `${q.name}: ${q.text}${prog}`;
-  }
-  _complete(q) {
-    const s = this.scene;
-    this.qs.sideDone[q.id] = true;
-    s.player.gainXp(q.reward.xp); s.player.gold += q.reward.gold;
-    bus.emit(Events.SYSTEM, `Quest complete: ${q.name}! +${q.reward.xp} XP, +${q.reward.gold}g`);
-    audio.play('quest');
-    s.spawnFx?.(s.player.x, s.player.y - 12, 'fx.circleOrange', 1.6);
-    bus.emit(Events.PLAYER_HP, s.hpPayload());
-    bus.emit(Events.PLAYER_XP, s.xpPayload());
-    bus.emit(Events.QUEST, s.questText());
-    s.saveNow();
-  }
-  // Progress counts for every unfinished quest of this area (not just the tracked one).
-  _areaQuests(pred) {
-    if (!this.current) return [];
-    return SIDE_QUESTS.filter((q) => q.area === this.current.id && !this.qs.sideDone[q.id] && pred(q));
-  }
-  onKill(ed) {
-    const hit = this._areaQuests((q) => q.need.enemy === ed.typeId);
-    for (const q of hit) {
-      this.qs.side[q.id] = (this.qs.side[q.id] || 0) + 1;
-      if (this.qs.side[q.id] >= q.need.count) this._complete(q);
-    }
-    if (hit.length) bus.emit(Events.QUEST, this.scene.questText());
-  }
-  onUse(id) {
-    const hit = this._areaQuests((q) => q.need.use === id);
-    hit.forEach((q) => this._complete(q));
-    return hit.length > 0;
-  }
+  // Superseded by the data-driven quest system (systems/questSystem.js): these
+  // stay as thin delegates so builders/WorldScene keep calling them.
+  activeQuest() { return null; }
+  questLine() { return null; }
+  onKill() {}
+  onUse(id) { return !!this.scene.quests?.onInteract(id); }
 
   // — per-frame —
   interact() {

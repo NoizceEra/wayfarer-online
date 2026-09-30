@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { CONFIG } from '../config.js';
 import { JOBS, ENEMY_TABLE } from '../data/jobs.js';
-import { ZONES, QUESTS } from '../data/zones.js';
+import { ZONES } from '../data/zones.js';
 import { buildOverworld, zoneAt } from '../world/overworld.js';
 import { ModularPlayer } from '../entities/ModularPlayer.js';
 import { Enemy } from '../entities/Enemy.js';
@@ -11,7 +11,7 @@ import { net } from '../net/NetworkManager.js';
 import { DayNight } from '../systems/daynight.js';
 import { audio } from '../systems/audio.js';
 import { installWorldZoom } from '../core/display.js';
-import { loadProgress, saveProgress } from '../core/save.js';
+import { loadProgress, saveProgress, normalizeExtras } from '../core/save.js';
 import { gearById, rollGearDrop, statLine, RARITY, sellPrice } from '../data/gear.js';
 import { BAG_SIZE } from '../core/save.js';
 import { initPrompt, updatePrompt, showRoomCode } from '../systems/worldFeel.js';
@@ -22,6 +22,13 @@ import { AreaManager } from '../world/areas.js';
 import { buildOverworldFeatures, overworldClearings } from '../world/overworldFeatures.js';
 import { rollDefDrop, rollItemDrops, EXTRA_OVERWORLD_SPAWNS } from '../data/worldEnemies.js';
 import { installSocialWorld } from '../systems/social/world.js';
+import { QuestSystem, BOARD } from '../systems/questSystem.js';
+import { GatherSystem, placeGatherNodes, contentClearings } from '../systems/gathering.js';
+import { CraftSystem } from '../systems/crafting.js';
+import { Achievements } from '../systems/achievements.js';
+import { addMat } from '../systems/pack.js';
+import { rollMatDrops } from '../data/materials.js';
+import { NPC_SPOTS } from '../data/quests.js';
 
 // Open world: town (safe) + meadow + woods + ruins in ONE 128×128 map.
 // Solo = full simulation. Host = authoritative + broadcasts. Guest = applies
@@ -34,7 +41,7 @@ export class WorldScene extends Phaser.Scene {
     audio.attach(this);
     const t = CONFIG.tile;
     const tz = ZONES[0].rect;
-    const { spawn, solids, W, H, houses } = buildOverworld(this, ZONES, { clearings: overworldClearings({ x: (tz.x + tz.w / 2) * t, y: (tz.y + tz.h / 2) * t }) });
+    const { spawn, solids, W, H, houses } = buildOverworld(this, ZONES, { clearings: [...overworldClearings({ x: (tz.x + tz.w / 2) * t, y: (tz.y + tz.h / 2) * t }), ...contentClearings({ x: (tz.x + tz.w / 2) * t, y: (tz.y + tz.h / 2) * t })] });
     this.spawn = spawn;
     this.touchInput = { x: 0, y: 0 }; // written by UIScene touch controls
     this.uiLock = false; this.uiLockUntil = 0; this.transitioning = false; // set by OverlayScene / AreaManager
@@ -61,6 +68,12 @@ export class WorldScene extends Phaser.Scene {
       for (const [slot, id] of Object.entries(st)) { const g = id && gearById(id); if (g && g.slot === slot) eq[slot] = id; }
       this.player.setLook({ equipped: eq, dyes: {} });
     }
+    // Content-depth state (quests v2, materials, recipes, achievements...): progress.ext, safe defaults for old saves.
+    this.meta = (saved && saved.job === this.player.job.id && saved.ext) || normalizeExtras(null);
+    this.gather = new GatherSystem(this);
+    this.craft = new CraftSystem(this);
+    this.quests = new QuestSystem(this, this.questState);
+    this.ach = new Achievements(this);
     this.player.onLookChange = () => net.pushHero(this.player.lookHero());
     this.saveAcc = 0;
     this.physics.add.collider(this.player, solids);
@@ -79,8 +92,9 @@ export class WorldScene extends Phaser.Scene {
       { name: 'Bram', tex: 'GladiatorBlue', dx: -82, dy: 78, shop: 'bram', text: 'Steel for every class. Sell me your spares.' },
       { name: 'Old Tob', tex: 'OldMan', dx: 0, dy: -46, text: 'Tidehollow sleeps below the south cliffs. Lv 8, or not at all.' },
     ];
+    for (const [name, sp] of Object.entries(NPC_SPOTS)) npcDefs.push({ name, tex: sp.tex, ax: sp.tx * t + 8, ay: sp.ty * t + 8, text: sp.text });
     for (const n of npcDefs) {
-      const c = this.add.container(spawn.x + n.dx, spawn.y + (n.dy || 8));
+      const c = this.add.container(n.ax ?? spawn.x + n.dx, n.ay ?? spawn.y + (n.dy || 8));
       const sh = this.add.image(0, 3, 'char.shadow').setScale(1.4, 1);
       const b = this.add.sprite(0, -8, `char.${n.tex}`, 0);
       const idle = `char.${n.tex}.idle.down`;
@@ -88,6 +102,7 @@ export class WorldScene extends Phaser.Scene {
       const l = this.add.text(0, -26, n.name, { fontFamily: '"Silkscreen", monospace', fontSize: '8px', color: '#fff', backgroundColor: '#00000088' }).setOrigin(0.5);
       c.add([sh, b, l]); c.setDepth(c.y); c.setData('def', n); // y-sorted with world
       this.npcs.push(c);
+      this.quests.registerNpc(n.name, c, null);
     }
 
     // Enemies scattered per zone
@@ -97,6 +112,14 @@ export class WorldScene extends Phaser.Scene {
     // Interiors, expansion maps, portals, signs, waystones, ambient NPCs (world/areas.js)
     this.areas = new AreaManager(this, { solids, W, H, spawn });
     buildOverworldFeatures(this, this.areas, { spawn, houses, solids });
+    placeGatherNodes(this, null);
+    this.craft.buildStations(this, null, spawn);
+    { // notice board (prop drawn by the overworld builder): bounties + '!' marker
+      const bx = spawn.x - 118, by = spawn.y - 22;
+      const bc = this.add.container(bx, by + 6).setDepth(by + 10);
+      this.quests.registerNpc(BOARD, bc, null);
+      this.areas.addInteract({ area: null, x: bx, y: by + 6, r: 38, label: 'Read Notice Board', onUse: () => this.quests.openBoard() });
+    }
     this.physics.add.overlap(this.player, this.enemies, (p, e) => {
       const ed = e instanceof Enemy ? e : null;
       if (!ed) return;
@@ -156,7 +179,7 @@ export class WorldScene extends Phaser.Scene {
     bus.emit(Events.QUEST, this.questText());
     bus.emit(Events.PLAYER_HP, this.hpPayload());
     bus.emit(Events.PLAYER_XP, this.xpPayload());
-    this.events.once('shutdown', () => { this.saveNow(); this.sync.destroy(); this.scene.stop('overlay'); });
+    this.events.once('shutdown', () => { this.saveNow(); this.quests.destroy(); this.ach.destroy(); this.sync.destroy(); this.scene.stop('overlay'); });
     this.scene.launch('ui', { hero: this.heroData, name: this.pname, job: this.player.job });
     initPrompt(this); showRoomCode(this);
     this.scene.launch('character'); // RPG panels (C / K) + level-up toasts, see CharacterScene.js
@@ -166,12 +189,7 @@ export class WorldScene extends Phaser.Scene {
   hpPayload() { return { hp: Math.ceil(this.player.hp), maxHp: this.player.effMaxHp(), mp: Math.ceil(this.player.mp), maxMp: this.player.effMaxMp(), potions: this.player.potions, gold: this.player.gold, level: this.player.level, atk: Math.round(this.player.effAtk()), def: this.player.effDef() }; }
   xpPayload() { return { xp: this.player.xp, xpNext: this.player.xpNext, level: this.player.level }; }
   questText() {
-    const sideLine = this.areas?.questLine();
-    if (sideLine) return sideLine;
-    const q = QUESTS[this.questState.idx];
-    if (!q) return 'All errands done! The ruins are yours, Wayfarer.';
-    const got = this.questState.kills[q.need.enemy] || 0;
-    return `${q.name}: ${q.text} (${got}/${q.need.count})`;
+    return this.quests ? this.quests.trackerText() : '';
   }
 
   spawnEnemies(solids) {
@@ -220,7 +238,7 @@ export class WorldScene extends Phaser.Scene {
       maxHp: this.player.maxHp, maxMp: this.player.maxMp, atk: this.player.atk,
       x: Math.round(this.areas?.savePos()?.x ?? this.player.x), y: Math.round(this.areas?.savePos()?.y ?? this.player.y), quest: this.questState,
       inventory: [...this.player.inventory], equipped: { ...this.player.equipped }, dyes: { ...this.player.dyes },
-      prog: this.player.prog,
+      prog: this.player.prog, ext: this.meta,
     });
   }
 
@@ -343,15 +361,7 @@ export class WorldScene extends Phaser.Scene {
       this.areas?.onKill(ed);
       this.player.questKills[ed.typeId] = (this.player.questKills[ed.typeId] || 0) + 1;
       this.questState.kills[ed.typeId] = (this.questState.kills[ed.typeId] || 0) + 1;
-      const q = QUESTS[this.questState.idx];
-      if (q && this.questState.kills[q.need.enemy] >= q.need.count) {
-        this.player.gainXp(q.reward.xp); this.player.gold += q.reward.gold;
-        bus.emit(Events.SYSTEM, `Quest complete: ${q.name}! +${q.reward.xp} XP, +${q.reward.gold}g`);
-        this.grantGear(q.reward.gear, 'Quest reward');
-        audio.play('quest');
-        this.spawnFx(this.player.x, this.player.y - 12, 'fx.circleOrange', 1.6);
-        this.questState.idx += 1; this.questState.kills = {};
-      }
+      this.onKillContent(ed, dropId);
       bus.emit(Events.PLAYER_HP, this.hpPayload());
       bus.emit(Events.PLAYER_XP, this.xpPayload());
       bus.emit(Events.QUEST, this.questText());
@@ -361,6 +371,22 @@ export class WorldScene extends Phaser.Scene {
       ed.destroy();
       this.time.delayedCall(ed.def.respawn || 12000, () => { if (this.scene.isActive()) this.makeEnemy(x, y, typeId, areaId); });
     }
+  }
+
+  // Quests v2 / bestiary / material drops / achievements on a kill.
+  onKillContent(ed, dropId) {
+    const b = this.meta.bestiary[ed.typeId] || (this.meta.bestiary[ed.typeId] = { kills: 0, drops: {} });
+    b.kills += 1;
+    if (dropId) b.drops[dropId] = 1;
+    for (const id of rollMatDrops(ed.typeId, this.player.equipBonuses().luk)) { if (addMat(this, id, 1)) b.drops[id] = 1; }
+    bus.emit(Events.ACH_EVENT, { k: 'kill', boss: !!ed.def.boss });
+    this.quests.onKill(ed.typeId);
+  }
+
+  // Called by AreaManager once a map/interior is built: nodes + stations for that space.
+  onAreaBuilt(def, b) {
+    placeGatherNodes(this, def, b);
+    this.craft.buildStations(this, def.id, def.origin);
   }
 
   attack(tx, ty) {
@@ -512,12 +538,16 @@ export class WorldScene extends Phaser.Scene {
       audio.play('npc');
       this.spawnFx(best.x, best.y - 20, 'fx.spark', 0.9);
       const def = best.getData('def');
-      if (def.shop) {
-        bus.emit(Events.GEAR, { open: 'shop', shop: def.shop });
-        bus.emit(Events.SYSTEM, `${def.name}: have a look at my wares!`);
-      } else {
-        bus.emit(Events.SYSTEM, `${def.name}: ${def.text}`);
-      }
+      const plain = () => {
+        if (def.shop) {
+          bus.emit(Events.GEAR, { open: 'shop', shop: def.shop });
+          bus.emit(Events.SYSTEM, `${def.name}: have a look at my wares!`);
+        } else {
+          bus.emit(Events.SYSTEM, `${def.name}: ${def.text}`);
+        }
+      };
+      if (this.quests.talk(def.name, plain, def.shop ? 'Browse wares' : 'Chat', best)) return;
+      plain();
     }
   }
 
@@ -594,6 +624,10 @@ export class WorldScene extends Phaser.Scene {
     this.player.setDepth(this.player.y); // y-sort against trees/props/NPCs
     this.areas.update(time, delta);
     this.life?.update(time, delta); this.townfolk?.update(time, delta); // ambient critters + NPC schedules
+    this.gather.update();
+    this.craft.update(dt);
+    this.quests.update(dt);
+    this.ach.update(dt);
 
     // zone tracking
     const t = CONFIG.tile;

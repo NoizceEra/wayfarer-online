@@ -10,6 +10,11 @@ import { EquipPanel } from '../ui/EquipPanel.js';
 import { ShopPanel } from '../ui/ShopPanel.js';
 import { social } from '../systems/social/index.js';
 import { installSocialUI } from '../ui/socialUI.js';
+import { JournalPanel } from '../ui/JournalPanel.js';
+import { CraftPanel } from '../ui/CraftPanel.js';
+import { FishingGame } from '../ui/FishingGame.js';
+import { Toaster } from '../ui/Toast.js';
+import { registerHotkey } from '../core/hotkeys.js';
 
 // HUD: HP/MP/XP bars, hotbar with cooldown sweep (clickable), minimap,
 // quest tracker, chat, party, pause (palette + mute), GB tint + scanlines,
@@ -255,6 +260,8 @@ export class UIScene extends Phaser.Scene {
 
     this.input.keyboard.on('keydown-ESC',   () => {
       if (this.social?.anyOpen()) { social.act('closeAll'); return; } // chat / party / players / emote wheel
+      if (this.fishing?.isOpen) return; // FishingGame handles its own Esc
+      if (this.journal?.isOpen || this.craftPanel?.isOpen) { this.journal.close(); this.craftPanel.close(); return; }
       if (this.equip?.isOpen || this.shop?.isOpen) { this.equip.toggle(false); this.shop.close(); } else this.togglePause();
     });
     this.input.keyboard.on('keydown-ENTER', () => this.openChat());
@@ -275,7 +282,8 @@ export class UIScene extends Phaser.Scene {
       else if (m.open === 'shop')      { this.equip.toggle(false); this.shop.show(m.shop || 'maren'); }
       else if (m.changed)              { this.equip.refresh(); this.shop.refresh(); }
     });
-    this.events.once('shutdown', () => { offGear(); this.equip?.destroy(); this.shop?.destroy(); });
+    const offToast = bus.on(Events.TOAST, (t) => this.toast?.push(t));
+    this.events.once('shutdown', () => { offGear(); offToast(); this.equip?.destroy(); this.shop?.destroy(); this.journal?.destroy(); this.craftPanel?.destroy(); this.fishing?.destroy(); this.toast?.destroy(); });
 
     this.buildTouch();
     this.buildPanels();
@@ -389,6 +397,8 @@ export class UIScene extends Phaser.Scene {
     mkBtn(W - 60,  H - 176, 'E',   () => this.world()?.interact());
     mkBtn(W - 122, H - 146, 'Q',   () => this.world()?.drinkPotion());
     mkBtn(W - 184, H - 110, 'BAG', () => bus.emit(Events.GEAR, { open: 'inventory' }));
+    mkBtn(W - 184, H - 176, 'LOG', () => bus.emit(Events.JOURNAL, { open: 'toggle' }));
+    mkBtn(W - 246, H - 110, 'CFT', () => bus.emit(Events.CRAFT, { open: 'toggle' }));
   }
 
   // ── equipment + shop panels (src/ui/EquipPanel.js, ShopPanel.js) ───────────
@@ -406,10 +416,48 @@ export class UIScene extends Phaser.Scene {
     };
     this.equip = new EquipPanel(this, hooks);
     this.shop = new ShopPanel(this, hooks);
-    this.scale.on('resize', () => { this.equip.resize(); this.shop.refresh(); });
+    // Content panels: Journal (L), Crafting (U), fishing mini-game, toasts.
+    const wh = { world: () => this.world() };
+    this.journal = new JournalPanel(this, wh);
+    this.craftPanel = new CraftPanel(this, wh);
+    this.fishing = new FishingGame(this);
+    this.toast = new Toaster(this);
+    const blocked = () => this.fishing?.isOpen || this.paused;
+    registerHotkey(this, 'journal', 'L', () => { if (!blocked()) { this.craftPanel.close(); bus.emit(Events.JOURNAL, { open: 'toggle' }); } });
+    registerHotkey(this, 'craft', 'U', () => { if (!blocked()) { this.journal.close(); bus.emit(Events.CRAFT, { open: 'toggle' }); } });
+    this.scale.on('resize', () => { this.equip.resize(); this.shop.refresh(); this.journal.resize(); this.craftPanel.resize(); });
+    this.buildContentButtons();
   }
 
-  update() {
+  // On phones the full-width Journal/Craft panels would sit under CharacterScene's
+  // HUD buttons (separate scene above this one): lift the UI scene while they are open.
+  syncRaise() {
+    if (!this.small) return;
+    const on = !!(this.journal?.isOpen || this.craftPanel?.isOpen);
+    if (on === this._raised) return;
+    this._raised = on;
+    if (on) this.scene.bringToTop();
+    else { if (this.scene.get('character')) this.scene.bringToTop('character'); this.scene.bringToTop('overlay'); }
+  }
+
+  // Small HUD buttons next to CHAR / SKILL (keyboard L / U also work)
+  buildContentButtons() {
+    const y = this.small ? 144 : 124;
+    const mk = (x, txt, cb) => {
+      const fill = this.add.rectangle(x, y, 62, 20, 0x9bbc0f).setStrokeStyle(1, 0x1a1a22).setDepth(120).setInteractive({ useHandCursor: true });
+      const t = this.add.text(x, y, txt, { fontFamily: '"Silkscreen", monospace', fontSize: '9px', color: '#3a1f00' }).setOrigin(0.5).setDepth(121);
+      fill.on('pointerover', () => fill.setFillStyle(0xb8d820)); fill.on('pointerout', () => fill.setFillStyle(0x9bbc0f));
+      fill.on('pointerdown', () => { audio.play('ui', 0.6); cb(); });
+      return [fill, t];
+    };
+    mk(8 + 31 + 132, 'LOG L', () => { this.craftPanel.close(); bus.emit(Events.JOURNAL, { open: 'toggle' }); });
+    mk(8 + 31 + 198, 'CRAFT U', () => { this.journal.close(); bus.emit(Events.CRAFT, { open: 'toggle' }); });
+  }
+
+  update(time, delta) {
+    const dtS = (delta || 16) / 1000;
+    this.fishing?.update(dtS);
+    this.craftPanel?.update();
     // Hotbar cooldown sweep
     const w   = this.world();
     const now = w?.time.now ?? 0;
@@ -506,6 +554,13 @@ export class UIScene extends Phaser.Scene {
     // zone outlines (only where explored is fine: fog covers them)
     const dot = (px, py, r, fill) => { g.fillStyle(0x1a1024, 1).fillCircle(px, py, r + 1); g.fillStyle(fill, 1).fillCircle(px, py, r); };
     for (const n of w.npcs || []) dot(x + (n.x / T) * k, y + (n.y / T) * k, 1.6, 0xffd84a);
+    // quest markers: gold = quest available, green = turn-in, cyan = talk target
+    if (!w.areas?.current) for (const m of w.quests?.markerList() || []) {
+      if (m.area) continue;
+      const mx = x + (m.x / T) * k, my = y + (m.y / T) * k, col = m.kind === 'talk' ? 0x7fdcff : m.kind === '?' ? 0x9be88a : 0xffd84a;
+      g.fillStyle(0x1a1024, 1).fillTriangle(mx, my - 5, mx - 4, my + 2, mx + 4, my + 2);
+      g.fillStyle(col, 1).fillTriangle(mx, my - 3.6, mx - 2.6, my + 1, mx + 2.6, my + 1);
+    }
     // other players: party green (bigger), friends pink, guild gold, else blue; grey = peer inside an interior/dungeon
     const REL = { party: 0x7dff9a, friend: 0xff9ad5, guild: 0xffd84a, other: 0x5ad0ff };
     w.sync?.remotes?.forEach((r, id) => { const m = r.mapPos ? r.mapPos() : r; if (!m) return; const rel = social.relation(id); dot(x + (m.x / T) * k, y + (m.y / T) * k, rel === 'party' ? 2.6 : 2, m.grey ? 0x7a7a88 : REL[rel]); });

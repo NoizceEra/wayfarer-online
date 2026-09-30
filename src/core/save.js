@@ -1,6 +1,7 @@
 import { ADVANCED } from '../data/jobs.js';
 import { STAT_IDS, MAX_STAT, SKILL_MAX, CLASS_CHANGE_LEVEL, emptyAlloc, retroProg } from '../data/stats.js';
 import { gearById, SLOTS } from '../data/gear.js';
+import { matById } from '../data/materials.js';
 
 const PROFILE_KEY = 'wayfarer.profile.v1';
 const HERO_KEY = 'wayfarer.hero.v1';
@@ -45,7 +46,7 @@ export function loadProgress(name) {
   try {
     const p = JSON.parse(localStorage.getItem(progressKey(name)));
     if (!p) return null;
-    return { ...p, ...normalizeGearState(p) };
+    return { ...p, ...normalizeGearState(p), ext: normalizeExtras(p.ext) };
   } catch { return null; }
 }
 // Save listeners (net/NetworkManager uploads to the server-side character store).
@@ -76,4 +77,42 @@ export function sanitizeProgression(raw, level, jobId) {
   const adv = typeof raw.adv === 'string' ? ADVANCED[raw.adv] : null;
   if (adv && adv.base === jobId && level >= CLASS_CHANGE_LEVEL) out.adv = adv.id;
   return out;
+}
+
+// Content-depth state (quests v2, materials, recipes, achievements, bestiary,
+// codex, tempering, counters) stored under progress.ext. Everything defaults
+// safely so pre-ext saves load unchanged; `quests: null` tells QuestSystem to
+// migrate from the legacy questState ({idx, kills, side, sideDone}).
+const isObj = (v) => v && typeof v === 'object' && !Array.isArray(v);
+const cleanMap = (m, valid) => {
+  const out = {};
+  if (isObj(m)) for (const [k, v] of Object.entries(m)) if ((!valid || valid(k)) && Number.isFinite(Number(v)) && Number(v) > 0) out[k] = Math.min(9999, Math.floor(Number(v)));
+  return out;
+};
+export function normalizeExtras(raw) {
+  const r = isObj(raw) ? raw : {};
+  const q = isObj(r.quests) ? r.quests : null;
+  const flagMap = (m) => { const o = {}; if (isObj(m)) for (const k of Object.keys(m).slice(0, 400)) if (m[k]) o[k] = m[k] === true ? 1 : Number(m[k]) || 1; return o; };
+  return {
+    mats: cleanMap(r.mats, (k) => matById(k)),
+    recipes: Array.isArray(r.recipes) ? r.recipes.filter((x) => typeof x === 'string').slice(0, 80) : [],
+    ach: flagMap(r.ach),
+    bestiary: (() => {
+      const o = {};
+      if (isObj(r.bestiary)) for (const [k, v] of Object.entries(r.bestiary).slice(0, 80)) if (isObj(v)) o[k] = { kills: Math.max(0, Math.floor(Number(v.kills)) || 0), drops: flagMap(v.drops) };
+      return o;
+    })(),
+    codex: { mats: flagMap(r.codex?.mats), gear: flagMap(r.codex?.gear) },
+    upg: cleanMap(r.upg, (k) => gearById(k)),
+    counters: cleanMap(r.counters),
+    visited: flagMap(r.visited),
+    lore: flagMap(r.lore),
+    buyback: Array.isArray(r.buyback) ? r.buyback.filter((b) => b && typeof b.id === 'string').slice(0, 10).map((b) => ({ kind: b.kind === 'mat' ? 'mat' : 'gear', id: b.id, n: Math.max(1, Math.floor(b.n) || 1), price: Math.max(0, Math.floor(b.price) || 0) })) : [],
+    quests: q ? {
+      active: isObj(q.active) ? q.active : {},
+      done: flagMap(q.done),
+      tracked: Array.isArray(q.tracked) ? q.tracked.filter((x) => typeof x === 'string').slice(0, 3) : [],
+      bounty: isObj(q.bounty) ? q.bounty : {},
+    } : null,
+  };
 }

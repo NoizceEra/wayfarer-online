@@ -289,7 +289,15 @@ export class OverlayScene extends Phaser.Scene {
     // exit / npcs / enemies / player
     for (const i of w.areas.interacts) {
       if (i.area !== a.id) continue;
+      if (i.node) { g.fillStyle(0x58d068, 0.8).fillRect(tx(i.x) - 0.6, ty(i.y) - 0.6, 1.2, 1.2); continue; }
       g.fillStyle(i.ref ? 0xf1c40f : 0x5ad1ff, 1).fillCircle(tx(i.x), ty(i.y), 1.4);
+    }
+    // quest markers ('!' available, '?' turn-in, cyan = talk target)
+    for (const m of w.quests?.markerList() || []) {
+      if (m.area !== a.id) continue;
+      const col = m.kind === 'talk' ? 0x7fdcff : m.kind === '?' ? 0x9be88a : 0xffd84a;
+      g.fillStyle(0x1a1024, 1).fillCircle(tx(m.x), ty(m.y), 3);
+      g.fillStyle(col, 1).fillCircle(tx(m.x), ty(m.y), 2.2);
     }
     for (const t of w.areas.triggers) if (t.area === a.id) g.fillStyle(0x2ecc71, 1).fillRect(tx(t.x) - 1.5, ty(t.y) - 1.5, 3, 3);
     g.fillStyle(0xe74c3c, 1);
