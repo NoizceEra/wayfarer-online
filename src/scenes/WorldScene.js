@@ -167,6 +167,7 @@ export class WorldScene extends Phaser.Scene {
       for (let i = 0; i < n; i++) {
         const tx = z.rect.x + 1 + Math.floor(rnd() * (z.rect.w - 2));
         const ty = z.rect.y + 1 + Math.floor(rnd() * (z.rect.h - 2));
+        if (zoneAt(tx, ty, ZONES).id !== zoneId) continue; // keep enemies out of town/woods enclaves of their parent rect
         const e = new Enemy(this, tx * t + 8, ty * t + 8, type);
         this.enemies.add(e);
       }
