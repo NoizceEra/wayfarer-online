@@ -20,6 +20,14 @@ export function installSocialNet(social) {
     on('whisper', (m) => social.onWhisper(m));
     on('whisper-sent', (m) => social.onWhisperSent(m));
     on('emote', (m) => social.onEmote(m));
+    on('trade-offer', (m) => social.onTradeOffer(m));
+    on('trade-sent', (m) => social.onTradeSent(m));
+    on('trade-done', (m) => social.onTradeDone(m));
+    on('duel-challenge', (m) => social.onDuelChallenge(m));
+    on('duel-decline', (m) => social.system(`${m.fromName || '???'} declined your duel.`));
+    on('duel-start', (m) => social.onDuelStart(m));
+    on('duel-end', (m) => social.onDuelEnd(m));
+    on('pvp-hit', (m) => social.onPvpHit(m));
     on('party-invite', (m) => social.onInvite(m));
     on('party-update', (m) => social.onPartyUpdate(m));
     on('party-msg', (m) => social.addLine({ ch: 'party', text: m.text, plain: true }));

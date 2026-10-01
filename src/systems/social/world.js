@@ -104,14 +104,12 @@ export function installSocialWorld(scene) {
   };
   scene.events.on('update', onUpdate);
 
-  // right-click a remote hero -> context menu (invite / whisper / friend / ignore)
+  // right-click a remote hero -> context menu (invite / whisper / friend / ignore).
+  // Left-click/tap near a hero opens it too — WorldScene checks remoteAt()
+  // first so the tap never also swings a weapon (see below).
   const onPointer = (p) => {
     if (p.button !== 2 || !scene.sync?.remotes?.size) return;
-    let best = null, bd = 26;
-    scene.sync.remotes.forEach((r, id) => {
-      const d = Phaser.Math.Distance.Between(p.worldX, p.worldY + 8, r.x, r.y);
-      if (d < bd) { bd = d; best = { id, name: r.rname }; }
-    });
+    const best = remoteAt(scene, p.worldX, p.worldY + 8);
     if (best) social.act('contextMenu', { id: best.id, name: best.name, x: p.event?.clientX ?? p.x, y: p.event?.clientY ?? p.y });
   };
   scene.input.on('pointerdown', onPointer);
@@ -126,4 +124,16 @@ export function installSocialWorld(scene) {
   };
   scene.events.once('shutdown', destroy);
   return { destroy };
+}
+
+// Nearest remote hero to a world point (for tap-to-open menu). Shared with
+// WorldScene's attack handler so taps on players never trigger swings.
+export function remoteAt(scene, x, y, radius = 26) {
+  if (!scene.sync?.remotes?.size) return null;
+  let best = null, bd = radius;
+  scene.sync.remotes.forEach((r, id) => {
+    const d = Phaser.Math.Distance.Between(x, y + 8, r.x, r.y);
+    if (d < bd) { bd = d; best = { id, name: r.rname }; }
+  });
+  return best;
 }
