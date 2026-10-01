@@ -14,6 +14,10 @@ const str = (v, max) => (typeof v === 'string' ? v.slice(0, max) : null);
 export const CAPS = {
   LEVEL_MAX: 99,
   GOLD_MAX: 9_999_999,
+  // Gold a brand-new character may already hold on its FIRST upload. The clamp
+  // below treats a missing previous record as this baseline instead of trusting
+  // the save, so a first upload cannot set its own level and gold.
+  freshGold: 0,
   // a level every 20s of wall time + 1 is far above any legit pace
   levelPerSec: 1 / 20,
   // generous: quest rewards / boss / selling a bag of epics
@@ -56,14 +60,23 @@ export function validateSave(prev, progress, now = Date.now()) {
   const clamped = [];
   const p = sanitizeProgress(progress);
   if (!p) return { rec: null, clamped: ['invalid'] };
+  // A MISSING previous record must not be a licence to claim anything. Treat a
+  // first save as a fresh character at the baseline allowance and apply the SAME
+  // rate clamp; previously `if (pp)` skipped clamping entirely, so a fresh device
+  // could upload level 99 / 100k gold verbatim, and because one device may hold 12
+  // characters that mint was repeatable (docs/audit/validation.md:
+  // forged-first-save, mint-per-character). Clamping is deliberately the response
+  // rather than a rejection, so an honest client resyncs instead of losing the
+  // character; `clamped` is reported to the caller either way.
   const pp = prev?.progress;
-  if (pp) {
-    const dt = Math.max(0, (now - (prev.savedAt || now)) / 1000);
-    const maxLevel = pp.level + 1 + Math.floor(dt * CAPS.levelPerSec);
-    if (p.level > maxLevel) { clamped.push(`level ${p.level}>${maxLevel}`); p.level = maxLevel; }
-    const maxGold = pp.gold + CAPS.goldBase + Math.floor(dt * CAPS.goldPerSec);
-    if (p.gold > maxGold) { clamped.push(`gold ${p.gold}>${maxGold}`); p.gold = maxGold; }
-  }
+  const base = pp
+    ? { level: pp.level, gold: pp.gold, savedAt: prev.savedAt || now }
+    : { level: 1, gold: CAPS.freshGold, savedAt: now };
+  const dt = Math.max(0, (now - (base.savedAt || now)) / 1000);
+  const maxLevel = base.level + 1 + Math.floor(dt * CAPS.levelPerSec);
+  if (p.level > maxLevel) { clamped.push(`level ${p.level}>${maxLevel}`); p.level = maxLevel; }
+  const maxGold = base.gold + CAPS.goldBase + Math.floor(dt * CAPS.goldPerSec);
+  if (p.gold > maxGold) { clamped.push(`gold ${p.gold}>${maxGold}`); p.gold = maxGold; }
   return { rec: p, clamped };
 }
 

@@ -78,7 +78,15 @@ const httpServer = http.createServer(app);
 const gameServer = new Server({
   greet: false,
   // 3s pings x2 retries: dead sockets are detected in ~6-9s (then the seat is held RECONNECT_SECONDS)
-  transport: new WebSocketTransport({ server: httpServer, pingInterval: 3000, pingMaxRetries: 2 }),
+  transport: new WebSocketTransport({
+    server: httpServer, pingInterval: 3000, pingMaxRetries: 2,
+    // Must stay >= the largest payload the validators accept, or colyseus' 4096-byte
+    // default silently kills the socket (close 1009) and the save never lands while
+    // the client believes it saved. validate.js budgets quest < 24_000 + prog < 12_000
+    // + hero < 6_000 = 42_000 characters, so 64 KiB covers that plus framing
+    // (docs/audit/validation.md: transport-vs-app-budget).
+    maxPayload: 64 * 1024,
+  }),
 });
 
 gameServer.define('party', WayfarerRoom, { kind: 'party' });

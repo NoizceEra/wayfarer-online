@@ -32,6 +32,26 @@ const DEFAULTS = {
   names: () => ({ names: {} }),
 };
 export const db = {};
+// Every string-keyed map here is rebuilt with NO prototype (see nullProtoMaps).
+// JSON.parse returns ordinary objects, so a lookup like `listings["__proto__"]`
+// resolves Object.prototype instead of "no such listing": the `!l` gone-guard
+// never fires and the caller receives an inherited member. That let
+// `market-buy {id:"__proto__"}` corrupt the buyer's own gold and bag, and
+// `mail-send {to:"__proto__"}` file mail under "[object Object]"
+// (docs/audit/validation.md: proto-listing-id, proto-mail-recipient). Fixing it
+// once at load beats patching every call site — and a fresh install is covered
+// too, because the defaults pass through the same rehydration.
+const rebirth = (o) => Object.assign(Object.create(null), o || {});
+// The doc for each resource IS the resource (db.market = {seq, listings}), so these
+// keys are top-level within the doc that DEFAULTS produced.
+function nullProtoMaps(doc) {
+  if (doc.listings) doc.listings = rebirth(doc.listings);
+  if (doc.boxes) doc.boxes = rebirth(doc.boxes);
+  if (doc.guilds) doc.guilds = rebirth(doc.guilds);
+  if (doc.memberOf) doc.memberOf = rebirth(doc.memberOf);
+  if (doc.names) doc.names = rebirth(doc.names);
+  return doc;
+}
 const dirty = new Set();
 let timer = null;
 let txSeq = 0;
@@ -76,7 +96,7 @@ export function initEconStore() {
       const parsed = JSON.parse(fs.readFileSync(fileOf(name), 'utf8'));
       if (parsed && typeof parsed === 'object') doc = { ...doc, ...parsed };
     } catch (e) { if (e.code !== 'ENOENT') log.error(`econ: ${name}.json unreadable (starting empty)`, { err: e.message }); }
-    db[name] = doc;
+    db[name] = nullProtoMaps(doc);
   }
   timer = setInterval(() => { try { flushEcon(); } catch (e) { log.error('econ flush failed', { err: e.message }); } }, CFG.SAVE_FLUSH_MS);
   timer.unref?.();

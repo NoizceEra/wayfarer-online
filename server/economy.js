@@ -83,6 +83,12 @@ const stateOf = (rec) => ({ rev: rec.rev || 0, gold: rec.progress.gold | 0, inve
 // Apply an economy mutation to a server copy: bumps rev, marks the device dirty.
 function mutate(p, rec, { gold = 0, add = [], remove = [] }) {
   const pr = rec.progress;
+  // Only non-empty item-id strings may enter or leave a bag. A lookup hole could
+  // otherwise hand a non-string (e.g. null) straight into an inventory, where it
+  // persists and shows up as a null bag slot (docs/audit/validation.md).
+  const isId = (v) => typeof v === 'string' && v.length > 0 && v.length <= 48;
+  remove = (Array.isArray(remove) ? remove : []).filter(isId);
+  add = (Array.isArray(add) ? add : []).filter(isId);
   pr.inventory = withoutItems(pr.inventory, remove).concat(add);
   pr.gold = (pr.gold | 0) + gold;
   const t = now();
@@ -210,9 +216,12 @@ export function install(room) {
     } catch (e) { log.warn('econ handler error', { type, err: e.message }); }
   });
 
-  // Server->client economy types must never ride the generic '*' passthrough
+  // Server->client types must never ride the generic '*' passthrough
   // (a client could forge a trade-result / econ-sync for its peers): swallow them.
-  for (const t of ['econ-state', 'econ-sync', 'econ-msg', 'econ-error', 'trade-open', 'trade-update', 'trade-result', 'trade-closed', 'market-page', 'mail-box', 'mail-unread', 'guild-info', 'guild-update']) {
+  // 'saved', 'adead' and 'notice' are included because the CLIENT treats them as
+  // server-authoritative (src/net/NetworkManager.js), whereas the relay used to
+  // forward a peer's forged copy verbatim (docs/audit/validation.md: forged-server-msg).
+  for (const t of ['econ-state', 'econ-sync', 'econ-msg', 'econ-error', 'trade-open', 'trade-update', 'trade-result', 'trade-closed', 'market-page', 'mail-box', 'mail-unread', 'guild-info', 'guild-update', 'saved', 'adead', 'notice']) {
     room.onMessage(t, () => {});
   }
 
