@@ -21,7 +21,19 @@
  *     key that can inflate the supply). The relay can never mint, so the wallet
  *     balance (§ settlement) is the true hard cap on payouts either way.
  *
- *  3. READ-ONLY. Everything here goes through `rpc.js`. Nothing signs.
+ *  3. TOKEN PROGRAM. The mint account's on-chain `owner` field is the ONLY authority
+ *     for which token standard backs a mint, and it decides the shape of every
+ *     payout: an associated token account is derived from (mint, owner, programId),
+ *     so a transfer built for the wrong program targets a different, non-existent
+ *     address. Two programs are supported, both fail-closed:
+ *       * legacy SPL Token  — `Tokenkeg…` (pump.fun's original `create`);
+ *       * Token-2022        — `Tokenz…`  (pump.fun's current `create_v2` standard,
+ *         decimals 6, native metadata).
+ *     Any other owning program is NOT a token program this relay can pay on and is a
+ *     hard refusal. `CHAIN_TOKEN_PROGRAM` is an EXPECTED value only: it must agree
+ *     with the chain, and a disagreement refuses rather than overriding.
+ *
+ *  4. READ-ONLY. Everything here goes through `rpc.js`. Nothing signs.
  */
 
 import { rpcCall } from './rpc.js';
@@ -31,6 +43,34 @@ const envMs = Number(process.env.CHAIN_MINT_TIMEOUT_MS);
 const RPC_TIMEOUT_MS = Number.isFinite(envMs) && envMs > 0 ? envMs : 8_000;
 
 export { REQUIRED_DECIMALS };
+
+// ── the two token programs the relay can pay on ──────────────────────────────
+// A Token-2022 ATA is derived from (mint, owner, TOKEN_2022_PROGRAM_ID); a legacy one
+// from (mint, owner, TOKEN_PROGRAM_ID). Same mint, same owner, DIFFERENT address — so
+// the program is part of the payout's correctness, not a detail. pump.fun's `create_v2`
+// (the current standard) mints on Token-2022; the legacy `create` mints on SPL Token.
+export const TOKEN_PROGRAM_ID = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+export const TOKEN_2022_PROGRAM_ID = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb';
+export const TOKEN_PROGRAMS = Object.freeze({
+  [TOKEN_PROGRAM_ID]: { id: TOKEN_PROGRAM_ID, name: 'spl-token', standard: 'legacy' },
+  [TOKEN_2022_PROGRAM_ID]: { id: TOKEN_2022_PROGRAM_ID, name: 'token-2022', standard: 'token-2022' },
+});
+
+/** Classify an on-chain owning program id. null when it is not a token program we pay on. */
+export function tokenProgramInfo(programId) {
+  return TOKEN_PROGRAMS[String(programId || '')] || null;
+}
+
+/**
+ * The configured program EXPECTATION, `CHAIN_TOKEN_PROGRAM` (a program id). It is an
+ * escape hatch for an operator who wants the relay to insist on a specific standard —
+ * never an override: settlement still reads the mint's owning program from the chain
+ * and REFUSES when the two disagree.
+ */
+export function expectedTokenProgram() {
+  const v = String(process.env.CHAIN_TOKEN_PROGRAM || '').trim();
+  return v || null;
+}
 
 /**
  * The mint authorities the operator expects to see (e.g. the pump.fun bonding-curve
@@ -100,6 +140,10 @@ export async function readMintOnChain(cfg = mintConfig(), opts = {}) {
   const decimals = Number(info.decimals);
   if (!Number.isInteger(decimals)) return { ok: false, reason: 'mint account reports no decimals' };
 
+  // The mint account's OWNER is the authority for the token program (never config).
+  const ownerProgram = res.value.owner != null ? String(res.value.owner) : null;
+  const tokenProgram = tokenProgramInfo(ownerProgram);
+
   return {
     ok: true,
     mint: cfg.mint,
@@ -110,6 +154,9 @@ export async function readMintOnChain(cfg = mintConfig(), opts = {}) {
     mintAuthority: info.mintAuthority ?? null,
     freezeAuthority: info.freezeAuthority ?? null,
     isInitialized: info.isInitialized !== false,
+    ownerProgram,                                   // verbatim owning program id
+    tokenProgram,                                   // {id,name,standard} | null
+    programName: tokenProgram ? tokenProgram.name : null,
     ...authorityAssessment(info.mintAuthority ?? null),
   };
 }
@@ -129,6 +176,29 @@ export async function mintUsable(cfg = mintConfig(), opts = {}) {
       reason: `mint ${m.mint} has ${m.decimals} decimals on-chain; the economy stores base units `
         + `assuming ${REQUIRED_DECIMALS} (server/economy/CONTRACT.md), so every payout would be `
         + `mis-priced by 10^${Math.abs(m.decimals - REQUIRED_DECIMALS)} (factor ${factor}). Refusing.`,
+    };
+  }
+  // THE TOKEN PROGRAM, FROM THE CHAIN. The ATA for (mint, owner) is derived under the
+  // program, so a transfer built for the wrong one targets a different address. Only
+  // the two token programs are payable; anything else — and a configured expectation
+  // that disagrees with the chain — is fail-closed.
+  if (!m.tokenProgram) {
+    return {
+      ok: false,
+      onChain: m,
+      reason: `mint ${m.mint} is owned by ${m.ownerProgram || 'an unknown program'}, which is not a token `
+        + `program the relay can pay on (legacy SPL Token ${TOKEN_PROGRAM_ID} or Token-2022 `
+        + `${TOKEN_2022_PROGRAM_ID}). Refusing to build a transfer against an unrecognised program.`,
+    };
+  }
+  const expected = expectedTokenProgram();
+  if (expected && expected !== m.tokenProgram.id) {
+    return {
+      ok: false,
+      onChain: m,
+      reason: `CHAIN_TOKEN_PROGRAM=${expected} disagrees with the chain: mint ${m.mint} is owned by `
+        + `${m.tokenProgram.id} (${m.tokenProgram.name}). The chain is the authority; refusing to `
+        + 'sign against the configured program.',
     };
   }
   return { ok: true, onChain: m };

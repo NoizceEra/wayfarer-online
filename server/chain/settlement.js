@@ -17,6 +17,15 @@
  *       4. the destination token account is derived deterministically from the
  *          destination address and, when it does not exist, is created with the
  *          payer — a caller can never redirect it.
+ *   * THE TOKEN PROGRAM COMES FROM THE CHAIN, NOT AN ASSUMPTION. The mint account's
+ *     owning program decides the shape of the payout: an associated token account is
+ *     derived from (mint, owner, programId), so the legacy SPL Token program and
+ *     Token-2022 (pump.fun's current `create_v2` standard) produce DIFFERENT addresses
+ *     for the same (mint, owner). This module reads the mint's `owner` on-chain and
+ *     passes that program to every spl-token helper — a transfer built for the wrong
+ *     program reverts, which is exactly the bug this replaces. `CHAIN_TOKEN_PROGRAM`
+ *     is an EXPECTED value only: it must agree with the chain or the send is refused.
+ *     Any other owning program is fail-closed.
  *   * IDEMPOTENT ON THE CLAIM ID. A record is written before the send (status
  *     `pending`) and updated to `settled` with the signature after it. A replay finds
  *     `settled` and returns the SAME signature without signing again; a replay while a
@@ -32,7 +41,10 @@ import path from 'node:path';
 import { CFG } from '../config.js';
 import { log } from '../log.js';
 import { mintConfig, assertChainConfigured } from './mintConfig.js';
-import { assertMintUsable, mintUsable } from './mintVerify.js';
+import {
+  assertMintUsable, mintUsable, tokenProgramInfo, expectedTokenProgram,
+  TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID,
+} from './mintVerify.js';
 import { isSolanaAddress } from './walletAuth.js';
 
 const DIR = path.join(CFG.DATA_DIR, 'chain');
@@ -105,6 +117,43 @@ export function settlementHistory(limit = 50) {
 /** Test-only: forget every claim id. */
 export function clearSettlements() { try { fs.rmSync(RECORD_FILE, { force: true }); } catch { /* ignore */ } }
 
+// ── token-program selection (the authority is the CHAIN) ─────────────────────
+/**
+ * Choose the token program for a payout from what the chain says about the mint.
+ *
+ * `ownerProgram` is the mint account's on-chain `owner` field — the ONLY authority.
+ * `CHAIN_TOKEN_PROGRAM` is a configured EXPECTATION (default from mintVerify), never
+ * an override: a disagreement is fail-closed. Any owning program that is not one of the
+ * two supported token programs throws, so nothing is ever signed against it.
+ *
+ * Throws (fail closed) — the caller must NOT catch-and-continue.
+ * @returns {{id:string, name:string, standard:'legacy'|'token-2022'}}
+ */
+export function selectTokenProgram({ ownerProgram, configured = expectedTokenProgram() } = {}) {
+  const info = tokenProgramInfo(ownerProgram);
+  if (!info) {
+    throw new Error(`mint is owned by ${ownerProgram || '(unknown program)'}, which is not a token program `
+      + `the relay can pay on (legacy SPL Token ${TOKEN_PROGRAM_ID} or Token-2022 ${TOKEN_2022_PROGRAM_ID}). `
+      + 'Refusing to sign a transfer against an unrecognised program.');
+  }
+  if (configured && configured !== info.id) {
+    throw new Error(`CHAIN_TOKEN_PROGRAM=${configured} disagrees with the chain, which owns the mint with `
+      + `${info.id} (${info.name}). The chain is the authority; refusing to sign against the configured program.`);
+  }
+  return info;
+}
+
+/**
+ * Read the mint account's owning program from the chain and classify it. The owning
+ * program is used ONLY to select which token program the transfer helpers target; it is
+ * never trusted from configuration.
+ */
+async function readMintProgram(conn, mint) {
+  const acct = await conn.getAccountInfo(mint);
+  if (!acct) throw new Error(`mint ${String(mint)} does not exist on ${conn.rpcEndpoint || 'the configured RPC'}`);
+  return selectTokenProgram({ ownerProgram: acct.owner.toBase58() });
+}
+
 // ── the paying wallet's on-chain balance (read-only, never creates) ──────────
 /**
  * The paying wallet's real SPL balance, in base units, or null when it cannot be
@@ -112,7 +161,10 @@ export function clearSettlements() { try { fs.rmSync(RECORD_FILE, { force: true 
  * never mint, so it can never pay more than it holds.
  *
  * Read-only: the associated token account address is DERIVED (no transaction, no
- * signature) — unlike a get-or-create, this cannot accidentally sign at read time.
+ * signature) — unlike a get-or-create, this cannot accidentally sign at read time. The
+ * derivation is done under the SAME program the transfer will use (read from the
+ * chain), because the ATA address depends on it: deriving under the wrong program would
+ * read a different, empty account and report a zero balance.
  */
 export async function payoutWalletRaw(cfg = settlementConfig(), deps = {}) {
   if (deps.balanceImpl) return deps.balanceImpl(cfg);
@@ -126,8 +178,9 @@ export async function payoutWalletRaw(cfg = settlementConfig(), deps = {}) {
   const spl = await import('@solana/spl-token');
   const payer = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(fs.readFileSync(keypairPath, 'utf8'))));
   const mint = new PublicKey(cfg.mint);
-  const ata = spl.getAssociatedTokenAddressSync(mint, payer.publicKey);   // pure derivation
   const conn = new Connection(cfg.rpcUrl, 'confirmed');
+  const program = await readMintProgram(conn, mint);            // chain-authoritative
+  const ata = spl.getAssociatedTokenAddressSync(mint, payer.publicKey, false, new PublicKey(program.id));
   try {
     const bal = await conn.getTokenAccountBalance(ata);
     return Number(bal.value.amount);
@@ -158,18 +211,29 @@ async function realSend({ cfg, destination, amountRaw }) {
   const mint = new PublicKey(cfg.mint);
   const to = new PublicKey(destination);
 
+  // WHICH TOKEN PROGRAM — FROM THE CHAIN. The mint account's owning program decides
+  // the ATA derivation: (mint, owner, programId). Token-2022 (pump.fun's current
+  // `create_v2` standard) and legacy SPL Token give DIFFERENT addresses for the same
+  // (mint, owner), so building the transfer for the wrong program targets an account
+  // that does not exist and every transfer reverts. This reads the owner on-chain
+  // (never config) and fails closed on anything unrecognised or on a configured
+  // CHAIN_TOKEN_PROGRAM that disagrees.
+  const program = await readMintProgram(conn, mint);
+  const programId = new PublicKey(program.id);
+
   // Verify-first: derive the destination token account from the requested owner and
-  // mint. Creating it with the payer is deterministic (an ATA address is a function
-  // of (mint, owner)), so a caller cannot redirect the funds elsewhere.
-  const toAta = await spl.getOrCreateAssociatedTokenAccount(conn, payer, mint, to);
+  // mint UNDER THE CHAIN'S PROGRAM. Creating it with the payer is deterministic (an ATA
+  // address is a function of (mint, owner, programId)), so a caller cannot redirect
+  // the funds elsewhere.
+  const toAta = await spl.getOrCreateAssociatedTokenAccount(conn, payer, mint, to, false, undefined, undefined, programId);
   if (String(toAta.mint) !== String(mint) || String(toAta.owner) !== String(to)) {
     throw new Error('destination token account does not match the requested mint/owner');
   }
-  const fromAta = await spl.getOrCreateAssociatedTokenAccount(conn, payer, mint, payer.publicKey);
+  const fromAta = await spl.getOrCreateAssociatedTokenAccount(conn, payer, mint, payer.publicKey, false, undefined, undefined, programId);
 
-  const sig = await spl.transfer(conn, payer, fromAta.address, toAta.address, payer, BigInt(amountRaw));
+  const sig = await spl.transfer(conn, payer, fromAta.address, toAta.address, payer, BigInt(amountRaw), [], undefined, programId);
   await conn.confirmTransaction(sig, 'confirmed');
-  return { signature: String(sig), destinationAta: String(toAta.address), mint: String(mint) };
+  return { signature: String(sig), destinationAta: String(toAta.address), mint: String(mint), tokenProgram: program.id, tokenProgramName: program.name };
 }
 
 // ── the settlement entry point ───────────────────────────────────────────────
@@ -227,6 +291,7 @@ export async function settleClaim({ claimId, destination, amountRaw, cfg = settl
     status: 'pending', at: Date.now(), destination, amountRaw,
     cluster: cfg.cluster, mint: cfg.mint,
     onChainDecimals: onChain?.decimals ?? null, walletRaw,
+    tokenProgram: onChain?.tokenProgram?.id ?? null,
   });
 
   // 4. Sign and send.
@@ -242,16 +307,18 @@ export async function settleClaim({ claimId, destination, amountRaw, cfg = settl
   }
 
   const signature = String(sent.signature);
+  const tokenProgram = sent.tokenProgram || onChain?.tokenProgram?.id || null;
   setRecord(claimId, {
     status: 'settled', at: Date.now(), signature, destination, amountRaw,
     cluster: cfg.cluster, mint: cfg.mint,
     onChainDecimals: onChain?.decimals ?? null, walletRaw,
+    tokenProgram,
     destinationAta: sent.destinationAta || null,
   });
-  log.info('settlement sent', { claimId, amountRaw, sig: signature.slice(0, 16) });
+  log.info('settlement sent', { claimId, amountRaw, sig: signature.slice(0, 16), tokenProgram });
   return {
     ok: true, reason: 'settled', signature, amountRaw,
-    onChainDecimals: onChain?.decimals ?? null, walletRaw,
+    onChainDecimals: onChain?.decimals ?? null, walletRaw, tokenProgram,
     record: { claimId, status: 'settled', signature, at: Date.now() },
   };
 }

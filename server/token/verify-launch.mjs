@@ -7,13 +7,17 @@
  * a single claim is enabled. It signs nothing, sends nothing, and never reads or prints key
  * material. It reads the mint account off-chain and reports what the CHAIN says.
  *
- * A pump.fun mint is a STANDARD SPL token (Token Program `Tokenkeg…`) with `decimals = 6`
- * and a FIXED supply of 1,000,000,000. It is the NORMAL case here, not an anomaly.
+ * A pump.fun mint is a STANDARD SPL token with `decimals = 6` and a FIXED supply of
+ * 1,000,000,000. It is the NORMAL case here, not an anomaly. pump.fun's CURRENT standard
+ * for a new launch is `create_v2`, which mints a **Token-2022** coin (decimals 6, native
+ * Token-2022 metadata); the legacy `create` mints an SPL Token coin and still exists.
+ * BOTH are expected and BOTH pass. The on-chain owning program is reported verbatim.
  *
  * HARD checks (a failure is a NO-GO and exits non-zero):
  *   * the account exists and is initialised
- *   * the owning program is the SPL Token Program (a Token-2022 mint is a NO-GO: the
- *     relay's payout path builds legacy-Token instructions)
+ *   * the owning program is a token program the relay can pay on: legacy SPL Token
+ *     (`Tokenkeg…`) OR Token-2022 (`Tokenz…`). Any OTHER owning program is a NO-GO —
+ *     the relay builds transfers for exactly those two and nothing else.
  *   * decimals === 6 — if this is wrong, EVERY raw amount in the economy is wrong by
  *     orders of magnitude. Fails loudly and specifically.
  *   * on-chain supply === 1,000,000,000 * 10^6 (fixed at creation; never changes)
@@ -39,7 +43,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Connection, PublicKey, clusterApiUrl } from '@solana/web3.js';
-import { getMint, TOKEN_PROGRAM_ID } from '@solana/spl-token';
+import { getMint, TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID as SPL_TOKEN_2022_PROGRAM_ID } from '@solana/spl-token';
 import { writeSecretFile } from './keyfile.mjs';
 
 // pump.fun's fixed parameters (checked against pump docs / pump-public-docs, 2026-10-01).
@@ -47,9 +51,16 @@ const PUMP_PROGRAM_ID = '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P';
 // Published address of the `['mint-authority']` PDA for the program above. The derivation
 // below is self-checked against it, so a wrong program id or seed cannot silently pass.
 const PUMP_MINT_AUTHORITY_PUBLISHED = 'TSLvdd1pWpHVjahSpsvCXUbgwsL3JAcvokwaKt1eokM';
-const TOKEN_2022_PROGRAM_ID = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb';
+const TOKEN_2022_PROGRAM_ID = SPL_TOKEN_2022_PROGRAM_ID.toBase58();
 const PUMP_DECIMALS = 6;
 const PUMP_SUPPLY_TOKENS = 1_000_000_000n;
+
+// The token programs the relay can pay on. pump.fun's current `create_v2` mints on
+// Token-2022; the legacy `create` mints on the SPL Token program. Anything else is a NO-GO.
+const PROGRAM_NAMES = {
+  [TOKEN_PROGRAM_ID.toBase58()]: 'legacy SPL Token (pump.fun create)',
+  [TOKEN_2022_PROGRAM_ID]: 'Token-2022 (pump.fun create_v2 standard)',
+};
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const KEYS_ROOT = path.join(HERE, 'keys');
@@ -118,14 +129,15 @@ console.log('── Wayfarer token verification (READ-ONLY, pump.fun path) ─�
 console.log(`cluster     ${cluster}${IS_MAINNET ? '  (REAL MONEY)' : '  (devnet)'}`);
 console.log(`mint        ${mintPk.toBase58()}`);
 console.log(`rpc         ${rpc}`);
-console.log(`expect      SPL Token program, ${expectedDecimals} decimals, supply ${expectedSupplyTokens}`);
+console.log(`expect      legacy SPL Token OR Token-2022 program, ${expectedDecimals} decimals, supply ${expectedSupplyTokens}`);
 console.log(`pump PDA    ${pumpPdaStr}  (['mint-authority'] on ${PUMP_PROGRAM_ID})`);
 
 const conn = new Connection(rpc, 'confirmed');
-let info;
 let acct;
 try {
-  info = await getMint(conn, mintPk);
+  // Read the raw account FIRST: its `owner` field is the token program, and getMint
+  // must be told the program (it defaults to the legacy one, which cannot decode a
+  // Token-2022 mint).
   acct = await conn.getAccountInfo(mintPk);
 } catch (e) {
   console.error(`\nNO-GO  could not read the mint off-chain: ${e.message}`);
@@ -135,25 +147,41 @@ try {
 if (!acct) die(`no account exists at ${mintPk.toBase58()} on ${cluster}. Nothing was launched here.`);
 
 const actualProgram = acct.owner.toBase58();
-const supplyRaw = info.supply.toString();
-const authorityAddr = info.mintAuthority ? info.mintAuthority.toBase58() : null;
-const freezeAddr = info.freezeAuthority ? info.freezeAuthority.toBase58() : null;
+const programName = PROGRAM_NAMES[actualProgram] || null;
+
+let info = null;
+if (programName) {
+  try {
+    info = await getMint(conn, mintPk, 'confirmed', new PublicKey(actualProgram));
+  } catch (e) {
+    console.error(`\nNO-GO  the mint is owned by ${actualProgram} (${programName}) but its data could not be ` +
+      `decoded: ${e.message}`);
+    process.exit(1);
+  }
+}
+
+const supplyRaw = info ? info.supply.toString() : null;
+const authorityAddr = info && info.mintAuthority ? info.mintAuthority.toBase58() : null;
+const freezeAddr = info && info.freezeAuthority ? info.freezeAuthority.toBase58() : null;
 
 // ── HARD checks: any failure is a NO-GO ──────────────────────────────────────
 const hard = [];
 const h = (name, ok, detail) => hard.push({ name, ok, detail });
 
-h('mint account exists and is initialised', info.isInitialized === true, `isInitialized=${info.isInitialized}`);
-h('owner program is the SPL Token Program', actualProgram === expectedProgram,
-  actualProgram === TOKEN_2022_PROGRAM_ID
-    ? `${actualProgram} (Token-2022) — the relay payout path builds LEGACY Token instructions; `
-      + 'a Token-2022 mint needs a code change before claims can work'
-    : `${actualProgram} vs ${expectedProgram}`);
-h('decimals === 6  (raw amounts depend on it)', info.decimals === expectedDecimals,
-  `decimals=${info.decimals}: NOT ${expectedDecimals}. Every raw amount in the economy would be `
-  + `wrong by 10^${Math.abs(info.decimals - expectedDecimals)}. Do not enable a single claim.`);
-h('on-chain supply is the fixed 1,000,000,000', info.supply === expectedRawSupply,
-  `${supplyRaw} raw vs ${expectedRawSupply} raw`);
+h('mint account exists and is initialised', info ? info.isInitialized === true : false,
+  info ? `isInitialized=${info.isInitialized}` : 'not decoded (the owning program is not a token program)');
+h('owner program is a token program the relay can pay on (SPL Token or Token-2022)',
+  programName !== null,
+  `${actualProgram}${programName ? ` (${programName})` : ' — not the legacy SPL Token program '
+    + `(${TOKEN_PROGRAM_ID.toBase58()}) nor Token-2022 (${TOKEN_2022_PROGRAM_ID}); the relay builds `
+    + 'transfers for exactly those two and nothing else'}`);
+h('decimals === 6  (raw amounts depend on it)',
+  info !== null && info.decimals === expectedDecimals,
+  info === null ? 'not decoded' : `decimals=${info.decimals}: NOT ${expectedDecimals}. Every raw amount in the `
+    + `economy would be wrong by 10^${Math.abs(info.decimals - expectedDecimals)}. Do not enable a single claim.`);
+h('on-chain supply is the fixed 1,000,000,000',
+  info !== null && info.supply === expectedRawSupply,
+  info === null ? 'not decoded' : `${supplyRaw} raw vs ${expectedRawSupply} raw`);
 
 // ── RISK checks: block the mainnet gate when strict ──────────────────────────
 const risks = [];
@@ -172,10 +200,10 @@ r('a freeze authority is set',
 
 // ── report ───────────────────────────────────────────────────────────────────
 console.log('\n── on chain (the source of truth) ──────────────────────────────────');
-console.log(`program     ${actualProgram}`);
-console.log(`decimals    ${info.decimals}`);
-console.log(`supply      ${supplyRaw} raw  (= ${Number(supplyRaw) / 10 ** info.decimals} tokens)`);
-console.log(`mint auth   ${authorityAddr === null ? 'null (burned)' : authorityAddr}`);
+console.log(`program     ${actualProgram}${programName ? `  (${programName})` : '  (UNKNOWN — not a token program the relay can pay on)'}`);
+console.log(`decimals    ${info ? info.decimals : '(not decoded)'}`);
+console.log(`supply      ${info ? `${supplyRaw} raw  (= ${Number(supplyRaw) / 10 ** info.decimals} tokens)` : '(not decoded)'}`);
+console.log(`mint auth   ${authorityAddr === null ? (info ? 'null (burned)' : '(not decoded)') : authorityAddr}`);
 if (authorityAddr !== null) console.log(`            ${classifyAuthority(authorityAddr)}`);
 console.log(`freeze auth ${freezeAddr === null ? 'null' : freezeAddr}`);
 if (freezeAddr !== null) console.log(`            ${classifyAuthority(freezeAddr)}`);
@@ -216,14 +244,16 @@ const receipt = {
   verifiedAt: new Date().toISOString(),
   mint: mintPk.toBase58(),
   programId: actualProgram,
-  decimals: info.decimals,
+  programName: programName,                     // which standard backs the mint (verbatim id above)
+  decimals: info ? info.decimals : null,
   supplyRaw,
-  supplyTokens: (Number(supplyRaw) / 10 ** info.decimals).toString(),
+  supplyTokens: info ? (Number(supplyRaw) / 10 ** info.decimals).toString() : null,
   mintAuthority: authorityAddr,
   freezeAuthority: freezeAddr,
   mintAuthorityIsPumpPda: authorityAddr === pumpPdaStr,
   expected: {
     programId: expectedProgram,
+    acceptedProgramIds: [expectedProgram, TOKEN_2022_PROGRAM_ID],
     decimals: expectedDecimals,
     rawSupply: expectedRawSupply.toString(),
     pumpProgramId: PUMP_PROGRAM_ID,

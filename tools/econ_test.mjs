@@ -35,6 +35,11 @@
 //   dupe guard       a save claiming an extra copy of an item the economy moved
 //                    out is stripped by beforeSave (read back via econ-state)
 //
+// HOW GOLD ENTERS: gold is EARNED over the wire, never uploaded. A first save is
+// clamped to CAPS.freshGold = 0 (server/validate.js), so the harness seeds each
+// character through the relay's own per-kill credit path (earnGold below) and then
+// pins the exact balance the scenario reasons about — exactly what a player does.
+//
 // HOW IT DRIVES THE RELAY: every step waits for the server's own message
 // (econ-sync / trade-update / trade-result / guild-info / ...) before the next
 // one is sent. The two clients are SEPARATE sockets, so there is no ordering
@@ -56,6 +61,9 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
+// server/rewards.js is a pure data table (no side effects): the harness needs it to
+// seed gold the ONLY way the relay lets gold in — see earnGold below.
+import { ENEMY_REWARDS } from '../server/rewards.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..').replace(/\\/g, '/');
 const args = process.argv.slice(2);
@@ -162,16 +170,18 @@ class Peer {
     assert(m, 'no econ-state reply to econ-hello (is server/economy.js installed in the room?)');
     return m;
   }
-  progress(gold = this.gold, inventory = this.inventory) {
+  progress(gold = this.gold, inventory = this.inventory, kills = {}) {
     return {
       job: 'wayfarer', level: 5, xp: 10, xpNext: 100, gold, potions: 0,
       maxHp: 110, maxMp: 30, atk: 12, x: 100, y: 100, inventory: [...inventory], equipped: {}, dyes: {},
+      // top-level per-enemy-type lifetime kills: the ONLY source of gold (validate.js)
+      kills: { ...kills },
       quest: { idx: 0, kills: {} }, prog: null, savedAt: Date.now(),
     };
   }
-  async save({ rev = this.rev, gold = this.gold, inventory = this.inventory } = {}) {
+  async save({ rev = this.rev, gold = this.gold, inventory = this.inventory, kills = {} } = {}) {
     await this.pace('save');
-    this.room.send('save', { name: this.name, progress: this.progress(gold, inventory), hero: { name: this.name }, rev });
+    this.room.send('save', { name: this.name, progress: this.progress(gold, inventory, kills), hero: { name: this.name }, rev });
   }
   async expectError({ code = null, msg = null, wait = 4000 } = {}) {
     const m = await this.waitFor('econ-error', (e) => (!code || e.code === code) && (!msg || String(e.msg).includes(msg)), wait);
@@ -277,10 +287,49 @@ async function waitDisk(peer, want, wait = 4000) {
 const X = GEAR[0], Y = GEAR[1], Z = GEAR[2], W = GEAR[3], UNOWNED = GEAR[5];
 const tok = (s) => `${s}${crypto.randomBytes(12).toString('hex')}`; // matches server store.js TOKEN_RE
 let cfg = null;
-const A = new Peer({ name: 'Aldra', token: tok('econTestA'), gold: 5000, inventory: [X, Y, Z] });
-const B = new Peer({ name: 'Brann', token: tok('econTestB'), gold: 1000, inventory: [W] });
+let startTotal = 0;               // the seeded total gold, the conservation baseline
+const SEED_A = 5000, SEED_B = 1000;
+const A = new Peer({ name: 'Aldra', token: tok('econTestA'), gold: SEED_A, inventory: [X, Y, Z] });
+const B = new Peer({ name: 'Brann', token: tok('econTestB'), gold: SEED_B, inventory: [W] });
 const sinks = [];   // fees the server reported, for the conservation invariant
 const fee = (price) => Math.max(1, Math.ceil(price * cfg.tax));
+
+// ─── legitimate gold seeding ─────────────────────────────────────────
+// Gold enters the economy exactly ONE way (server/validate.js): a save may claim kills,
+// each enemy type crediting its OWN per-kill value, capped by burst + dt*perSec of wall
+// time since the previous ACCEPTED save. A character's FIRST save holds
+// CAPS.freshGold = 0 gold — the anti-gold-mint rule — so the harness CANNOT upload a
+// starting balance. It earns the gold it needs over the wire, exactly as a player would.
+// The clamp is not weakened, no production limit moves, and the relay is spawned with
+// production defaults: this makes the fixture honest, it does not make the server loose.
+async function earnGold(peer, want, inventory) {
+  assert(inventory, 'earnGold needs an inventory to save with');
+  // A server record must exist FIRST: the credit is measured from the previous accepted
+  // save's timestamp, so one save has to land before any kill can be credited.
+  await peer.save({ rev: peer.rev, gold: 0, inventory });
+  assert(await peer.waitFor('saved', () => true, 4000), `${peer.name}: seed save was not acknowledged`);
+  await peer.hello();
+  let gold = peer.gold | 0;
+  let kills = {};                 // cumulative lifetime counts (they must never rewind)
+  for (let i = 0; i < 4 && gold < want; i++) {
+    await sleep(3300);            // wall time for the per-type caps to accrue
+    const dt = 3;                 // claim strictly below the true elapsed time
+    const next = {}; let credit = 0;
+    for (const id of Object.keys(ENEMY_REWARDS)) {
+      const r = ENEMY_REWARDS[id];
+      const add = r.cap.burst + Math.floor(dt * r.cap.perSec);
+      if (add <= 0) continue;
+      next[id] = (kills[id] | 0) + add;      // lifetime count, never lower than before
+      credit += add * r.gold[1];
+    }
+    kills = next;
+    await peer.save({ rev: peer.rev, gold: gold + credit, inventory, kills });
+    assert(await peer.waitFor('saved', () => true, 4000), `${peer.name}: kill-credit save was not acknowledged`);
+    await peer.hello();
+    gold = peer.gold | 0;
+  }
+  return gold;
+}
 
 async function main() {
   rmScratch();
@@ -300,24 +349,42 @@ async function main() {
     assert(world.players === 2, `relay sees ${world.players} player(s) in the world, expected 2`);
   });
 
-  step('hello: upload a character, then read the server copy back');
+  step('hello: EARN the starting gold over the wire (a first save is clamped to 0), then read the server copy back');
   await t('both clients save a character and econ-state mirrors it (server is authoritative)', async () => {
     await A.save({ rev: 0 }); await B.save({ rev: 0 });
     const savedA = await A.waitFor('saved', () => true, 4000);
     const savedB = await B.waitFor('saved', () => true, 4000);
     assert(savedA && savedB, `save not acknowledged (A:${!!savedA} B:${!!savedB})`);
-    const sa = await A.hello(); const sb = await B.hello();
+    const firstA = await A.hello(); const firstB = await B.hello();
     // Populate cfg BEFORE any assertion that can throw: it used to be set after the
     // gold assertion, so a single clamp mismatch left cfg null and turned the rest of
     // the run into 14 misleading "Cannot read properties of null" failures instead of
     // one honest failure.
-    cfg = sa.cfg;
+    cfg = firstA.cfg;
     assert(cfg && typeof cfg.tax === 'number', `econ-state carried no cfg: ${JSON.stringify(cfg)}`);
+    assert(firstA.hasSave === true && firstB.hasSave === true, `hasSave false (A:${firstA.hasSave} B:${firstB.hasSave})`);
+
+    // Earn the starting gold the ONLY way the relay lets it in — per-kill credit
+    // (server/rewards.js), capped by wall time between accepted saves. A first save is
+    // clamped to CAPS.freshGold = 0, so uploading a balance is impossible by design.
+    const gA = await earnGold(A, SEED_A, [X, Y, Z]);
+    const gB = await earnGold(B, SEED_B, [W]);
+    assert(gA >= SEED_A && gB >= SEED_B, `could not earn the starting gold (A ${gA}/${SEED_A}, B ${gB}/${SEED_B})`);
+    // Pin the exact balances this scenario reasons about: a save may KEEP gold the
+    // character already holds (kills only ever credit upward) but can never invent it.
+    await A.save({ rev: A.rev, gold: SEED_A, inventory: [X, Y, Z] });
+    assert(await A.waitFor('saved', () => true, 4000), 'A: pin save not acknowledged');
+    await B.save({ rev: B.rev, gold: SEED_B, inventory: [W] });
+    assert(await B.waitFor('saved', () => true, 4000), 'B: pin save not acknowledged');
+
+    const sa = await A.hello(); const sb = await B.hello();
     assert(sa.hasSave === true && sb.hasSave === true, `hasSave false (A:${sa.hasSave} B:${sb.hasSave})`);
-    assert(sa.gold === 5000 && ms(sa.inventory) === ms([X, Y, Z]), `A copy ${sa.gold}g [${sa.inventory}]`);
-    assert(sb.gold === 1000 && ms(sb.inventory) === ms([W]), `B copy ${sb.gold}g [${sb.inventory}]`);
+    assert(sa.gold === SEED_A && ms(sa.inventory) === ms([X, Y, Z]), `A copy ${sa.gold}g [${sa.inventory}]`);
+    assert(sb.gold === SEED_B && ms(sb.inventory) === ms([W]), `B copy ${sb.gold}g [${sb.inventory}]`);
     eq({ bag: cfg.bag, tradeItems: cfg.tradeItems, tax: cfg.tax, postage: cfg.postage, priceMax: cfg.priceMax },
       { bag: 30, tradeItems: 8, tax: 0.05, postage: 5, priceMax: 1000000 }, 'econ-state cfg (mirrors validate.js ECON)');
+    // the seeded total is what conservation below must hold to
+    startTotal = sa.gold + sb.gold;
   });
 
   // ── happy: direct trade ──────────────────────────────────────────
@@ -486,7 +553,7 @@ async function main() {
   await t('total gold = start minus reported fees (nothing created or destroyed)', async () => {
     await A.hello(); await B.hello();
     const sunk = sinks.reduce((s, x) => s + x.gold, 0);
-    assert(A.gold + B.gold === 6000 - sunk, `A(${A.gold}) + B(${B.gold}) != 6000 - ${sunk} sinks (= ${6000 - sunk})`);
+    assert(A.gold + B.gold === startTotal - sunk, `A(${A.gold}) + B(${B.gold}) != ${startTotal} - ${sunk} sinks (= ${startTotal - sunk})`);
     assert(sunk === 18, `reported sinks ${sunk} != 13 (market fees) + 5 (postage)`);
   });
 
