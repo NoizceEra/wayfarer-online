@@ -87,8 +87,11 @@ export function installSocialWorld(scene) {
     scene.sync?.remotes?.forEach((r, id) => {
       if (!r.label?.active) return;
       const p = social.plateFor(id, r.rname);
-      if (r.label.text !== p.text) r.label.setText(p.text);
-      if (r.label.style.color !== p.color) r.label.setColor(p.color);
+      if (r.redrawLabel) r.redrawLabel(p.text, p.color);
+      else {
+        if (r.label.text !== p.text) r.label.setText(p.text);
+        if (r.label.style.color !== p.color) r.label.setColor(p.color);
+      }
     });
   };
 

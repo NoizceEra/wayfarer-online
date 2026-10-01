@@ -13,7 +13,8 @@ import { input } from '../core/input.js';
 import { JOBS } from '../data/jobs.js';
 import { NEWS } from '../data/news.js';
 import { randomName } from '../data/names.js';
-import { wallet } from '../core/wallet.js';
+import { wallet, MOBILE_HINT } from '../core/wallet.js';
+import { WalletPanel } from '../ui/WalletPanel.js';
 import { whenWorldReady } from '../assets/worldLoad.js';
 import {
   C, FONT, txt, frame, makeButton, makeField, Nav, DomEntry, addLogo, bindTitleNav, ago, copyText,
@@ -67,12 +68,20 @@ export class TitleScene extends Phaser.Scene {
     this.bd = null;
 
     this.build();
+    // Restore the remembered "the user chose to link" state, then let the wallet's own change
+    // event rebuild this screen. Deliberately do NOT mount wallet-marks' DOM chip here: this
+    // scene already provides the wallet entry point in-canvas, so mounting the chip as well
+    // would put two wallet affordances on the title screen. The signed link/relink flow is
+    // still reachable — the wallet page opens WalletPanel (see buildWallet below).
+    this.walletPanel = null;
+    wallet.restore().catch(() => {});
     bindTitleNav(this, this.nav, { isOpen: () => this.page !== 'home', close: () => this.goPage('home') });
     this.offWallet = wallet.on('change', () => { if (this.scene.isActive()) this.build(); });
     this.events.once('shutdown', () => {
       this.entry.stop(true);
       this.bd?.destroy();
       this.offWallet?.();
+      this.walletPanel?.destroy?.();
     });
     whenWorldReady().then(() => { if (this.scene.isActive() && this.page === 'home') this.build(); }).catch(() => {});
     this.pollServer();
@@ -430,17 +439,22 @@ export class TitleScene extends Phaser.Scene {
       'Play is first. A wallet is only a way to sign in later and unlock collectibles.',
       'We never pop a wallet prompt on their own. This screen is the only place that talks about it.',
       wallet.available()
-        ? (wallet.state.connected ? `Connected: ${wallet.shortAddress() || 'wallet'}` : 'A wallet adapter is ready if you want it.')
-        : 'Wallet linking is not wired in this build yet. Nothing is requested.',
+        ? (wallet.state.connected
+            ? (wallet.state.linked
+                ? `Linked: ${wallet.shortAddress() || 'wallet'}`
+                : `Connected: ${wallet.shortAddress() || 'wallet'} — not linked yet`)
+            : 'A wallet adapter is ready if you want it.')
+        : MOBILE_HINT,
     ];
     let y = top + 48;
     for (const line of lines) {
       txt(this, this.root, cx, y, line, { size: 11, font: FONT.body, color: C.text, wrap: pw - 36, lineSpacing: 2 });
       y += 42;
     }
+    const canLink = wallet.available() && wallet.state.connected;
     if (wallet.available()) {
       makeButton(this, this.root, this.nav, {
-        id: 'connect', x: cx, y: bot - 58, w: Math.min(260, pw - 40), h: 32,
+        id: 'connect', x: cx, y: canLink ? bot - 92 : bot - 58, w: Math.min(260, pw - 40), h: 32,
         label: wallet.state.connected ? 'Disconnect' : 'Connect wallet',
         kind: wallet.state.connected ? 'ghost' : 'normal',
         onClick: async () => {
@@ -449,6 +463,22 @@ export class TitleScene extends Phaser.Scene {
             else await wallet.connect();
           } catch (e) { this.say(e.message || 'Wallet failed'); audio.error(); }
           this.build();
+        },
+      });
+    }
+    // The signed link / relink / claim flow lives in WalletPanel (wallet-marks). This page
+    // owns the redesign's presentation, so it OPENS that panel instead of duplicating the
+    // flow — without this button, connecting a wallet would prove nothing about ownership.
+    if (canLink) {
+      makeButton(this, this.root, this.nav, {
+        id: 'link', x: cx, y: bot - 58, w: Math.min(260, pw - 40), h: 32,
+        label: wallet.state.linked ? 'Manage wallet link' : 'Link to this device',
+        kind: wallet.state.linked ? 'ghost' : 'normal',
+        onClick: () => {
+          try {
+            if (!this.walletPanel) this.walletPanel = new WalletPanel();
+            this.walletPanel.open();
+          } catch (e) { this.say(e.message || 'Wallet panel unavailable'); audio.error(); }
         },
       });
     }

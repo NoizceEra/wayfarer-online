@@ -108,6 +108,13 @@ online characters.
 | `GET /health` | `{ok, uptime}`. Returns 503 while shutting down. Use it as the Railway healthcheck. |
 | `GET /stats` | Players, rooms and shards, area authorities, message and violation counters, store stats, RSS. |
 | `GET /rooms/:code` | Turns a 5-character co-op code into a roomId. |
+| `GET /wallet/config` | Feature flags + the human-readable link statement. |
+| `POST /wallet/challenge` | `{token, address, action}` → single-use SIWS-style nonce + message. |
+| `POST /wallet/link` | `{token, nonce, signature}` → verify ed25519 (`signMessage` only). |
+| `POST /wallet/unlink` | `{token}` → drop this device's link (attestations stay on the wallet). |
+| `POST /wallet/status` | `{token}` → `{linked, address, short, badges}`. |
+| `POST /wallet/claim` | Stub. Always `403 {error: not_enabled}`. |
+| `GET /marks/leaderboard` | Opt-in seasonal display-name board. |
 
 ## Environment
 
@@ -126,6 +133,17 @@ online characters.
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error` |
 | `CORS_ORIGIN` | `*` | Comma-separated allowed origins for the HTTP routes |
 | `MARKET_DURATION_SCALE` | `1` | Multiplies listing durations. It exists for tests: `0.001` turns 2 h into about 7 s. |
+| `FEATURE_WALLET_LINK` | on | Optional wallet ↔ device link (`signMessage` only; never a transaction) |
+| `FEATURE_MARKS` | on | Off-chain Wayfarer Marks + cosmetics shop |
+| `FEATURE_LEADERBOARD` | on | Seasonal Marks board (opt-in display name) |
+| `FEATURE_FOUNDER_BADGE` | on | Cosmetic founder frame (off-chain attestation) |
+| `FEATURE_SEASON_BADGE` | on | Cosmetic season frame |
+| `FEATURE_REDEEMABLE_REWARDS` | **hard-off** | Not implemented. Ignored even if set. See [docs/EARN_AND_COMPLIANCE.md](../docs/EARN_AND_COMPLIANCE.md). |
+| `FEATURE_ONCHAIN_CLAIM` | **hard-off** | `/wallet/claim` always `not_enabled` |
+| `MARKS_SEASON` | `s1` | Season id |
+| `WALLET_DOMAIN` | empty | If set, challenge Origin host must be in this list |
+| `WALLET_NONCE_TTL_S` | `300` | Link-nonce lifetime |
+| `WALLET_RELINK_COOLDOWN_H` | `24` | Cooldown to move a wallet to another device |
 
 ## Deploy (Railway)
 

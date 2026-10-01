@@ -27,9 +27,19 @@ try { economy = await import('./economy.js'); } catch (e) {
   if (e?.code !== 'ERR_MODULE_NOT_FOUND') log.error('economy.js failed to load', { err: e.message });
 }
 
+// Optional wallet link + Wayfarer Marks module (cosmetic, off-chain; flags in
+// server/walletStore.js). Same hook shape as economy plus afterSave().
+let wallet = null;
+try { wallet = await import('./wallet.js'); } catch (e) {
+  if (e?.code !== 'ERR_MODULE_NOT_FOUND') log.error('wallet.js failed to load', { err: e.message });
+}
+
 initStore();
 if (economy) {
   try { economy.init?.(); addRoomModule(economy); log.info('economy module loaded'); } catch (e) { log.error('economy init failed', { err: e.message }); economy = null; }
+}
+if (wallet) {
+  try { wallet.init?.(); addRoomModule(wallet); log.info('wallet/marks module loaded'); } catch (e) { log.error('wallet init failed', { err: e.message }); wallet = null; }
 }
 
 const app = express();
@@ -62,6 +72,7 @@ app.get('/rooms/:code', async (req, res) => {
 });
 try { social?.routes?.(app); } catch (e) { log.error('social.routes failed', { err: e.message }); }
 try { economy?.routes?.(app); } catch (e) { log.error('economy.routes failed', { err: e.message }); }
+try { wallet?.routes?.(app); } catch (e) { log.error('wallet.routes failed', { err: e.message }); }
 
 const httpServer = http.createServer(app);
 const gameServer = new Server({
@@ -80,6 +91,7 @@ gameServer.onShutdown(async () => {
   log.info('shutdown: flushing store');
   await flushAll();
   try { economy?.stop?.(); } catch (e) { log.error('economy flush failed', { err: e.message }); }
+  try { wallet?.stop?.(); } catch (e) { log.error('wallet flush failed', { err: e.message }); }
   stopStore();
   log.info('shutdown complete');
 });

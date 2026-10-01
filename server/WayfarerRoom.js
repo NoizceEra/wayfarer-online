@@ -397,6 +397,7 @@ export class WayfarerRoom extends Room {
     saveChar(p.token, name, { name, hero, progress: rec, savedAt: now, clamped: clamped.length ? clamped : undefined, rev: prev?.rev, econOut: prev?.econOut });
     p.lastSave = { progress: rec };
     this.sendTo(client, 'saved', { savedAt: now, clamped: clamped.length ? { level: rec.level, gold: rec.gold } : null });
+    hook('afterSave', this, client, p, { name, rec, raw: m.progress, clamped }); // wallet.js: Marks from validated milestones
   }
   // server-side position refresh of the last accepted save (logout, shutdown)
   persist(p) {

@@ -8,6 +8,7 @@ import { Enemy } from '../entities/Enemy.js';
 import { bus, Events } from '../core/events.js';
 import { WorldSync } from '../net/WorldSync.js';
 import { net } from '../net/NetworkManager.js';
+import { marks } from '../net/marksNet.js';
 import { DayNight } from '../systems/daynight.js';
 import { Fx } from '../systems/fx.js';
 import { audio } from '../systems/audio.js';
@@ -656,6 +657,7 @@ export class WorldScene extends Phaser.Scene {
     // autosave progress every 10s
     this.saveAcc += dt;
     if (this.saveAcc > 10) { this.saveAcc = 0; this.saveNow(); }
+    if (this.player) marks.pulse(this.player.x, this.player.y);
 
     // net
     this.sync.update(dt);
