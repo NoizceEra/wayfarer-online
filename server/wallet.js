@@ -5,9 +5,10 @@ import { deviceKey, TOKEN_RE } from './store.js';
 import { solAddress, solSignature, NONCE_RE, WALLET_ACTIONS, shortAddr } from './validate.js';
 import {
   WCFG, links, initWalletStore, stopWalletStore, flushWalletStore, saveLinks, audit, ipTag, flagsPublic, badgesFor,
-  marksRec, attest,
+  marksRec, attest, linkVerifiedWallet, unlinkVerifiedWallet, verifiedWalletFor,
 } from './walletStore.js';
 import * as marks from './marks.js';
+import * as chainStatus from './chain/status.js';
 
 // OPTIONAL wallet link + Wayfarer Marks module. Loaded by index.js like
 // economy.js (addRoomModule): the game is fully playable without it, without
@@ -116,6 +117,10 @@ export function init() {
   initWalletStore();
   timer = setInterval(sweepNonces, 30_000);
   timer.unref?.();
+  // The chain surfaces (GET /chain/status, and the boot line about whether a mint is
+  // configured) ride along with this module because index.js already hands the wallet
+  // module the express app and the boot call — see routes() below.
+  chainStatus.bootNotice();
 }
 export function flush() { flushWalletStore(); }
 export function stop() { if (timer) clearInterval(timer); stopWalletStore(); }
@@ -191,47 +196,39 @@ export function routes(app) {
     if (n.dk !== dk) return reject(res, ctx, 403, 'nonce_device_mismatch');
     if (n.exp < Date.now()) return reject(res, ctx, 400, 'nonce_expired', { addr: n.addr });
     if (!verifyEd25519(solAddress(n.addr), n.message, sig)) return reject(res, ctx, 401, 'bad_signature', { addr: n.addr });
-    // re-check the link rules now (state may have changed since the challenge)
-    const mine = links.byDevice[dk];
-    if (mine) return reject(res, ctx, 409, mine.addr === n.addr ? 'already_linked' : 'device_has_wallet', { addr: n.addr });
-    const other = links.byAddr[n.addr];
-    let relinked = false;
-    if (other?.dk && other.dk !== dk) {
-      if (n.action !== 'relink') return reject(res, ctx, 409, 'wallet_linked_elsewhere', { addr: n.addr });
-      if (other.relinkAt && Date.now() - other.relinkAt < WCFG.RELINK_COOLDOWN_MS) return reject(res, ctx, 429, 'relink_cooldown', { addr: n.addr });
-      const oldDk = other.dk;
-      delete links.byDevice[oldDk];
-      relinked = true;
-      audit({ ev: 'relink-out', dk: oldDk, addr: n.addr, to: dk });
-      setImmediate(() => marks.pushState(oldDk));
-    }
+    // Write THROUGH the single verified-wallet authority (walletStore.linkVerifiedWallet).
+    // It is the one place the one-wallet-per-device / one-device-per-wallet rules, the
+    // relink cooldown and the `verified:true` stamp live — the WIP /identity/* link
+    // routes call the same function, so a link can never exist in two shapes that a
+    // login and a payout would disagree about.
+    const LINKS_STATUS = { already_linked: 409, device_has_wallet: 409, wallet_linked_elsewhere: 409, relink_cooldown: 429 };
+    const linkRes = linkVerifiedWallet(dk, n.addr, { action: n.action, save: false });
+    if (!linkRes.ok) return reject(res, ctx, LINKS_STATUS[linkRes.error] || 400, linkRes.error, { addr: n.addr });
     const now = Date.now();
-    links.byDevice[dk] = { addr: n.addr, at: now };
-    const a = links.byAddr[n.addr] || { attest: [] };
-    links.byAddr[n.addr] = { ...a, dk, at: a.at || now, relinkAt: relinked ? now : a.relinkAt };
+    if (linkRes.relinked) {
+      audit({ ev: 'relink-out', dk: linkRes.oldDk, addr: n.addr, to: dk });
+      setImmediate(() => marks.pushState(linkRes.oldDk));
+    }
     // founder attestation: first link of this wallet before FOUNDER_CUTOFF (stays with the wallet)
     if (WCFG.FOUNDER_BADGE && now < WCFG.FOUNDER_CUTOFF) attest(n.addr, 'founder', { season: WCFG.SEASON });
     try { saveLinks(); } catch (e) {
       log.error('wallet: links write failed', { err: e.message });
       return fail(res, 500, 'store_failed');
     }
-    audit({ ev: relinked ? 'relink' : 'link', dk, addr: n.addr, ip: ipTag(ctx.ip) });
-    log.info('wallet linked', { dk: dk.slice(0, 8), addr: shortAddr(n.addr), relinked });
+    audit({ ev: linkRes.relinked ? 'relink' : 'link', dk, addr: n.addr, ip: ipTag(ctx.ip) });
+    log.info('wallet linked', { dk: dk.slice(0, 8), addr: shortAddr(n.addr), relinked: linkRes.relinked });
     marks.pushState(dk);
     const founder = !!links.byAddr[n.addr].attest?.some((x) => x.id === 'founder');
-    res.json({ ok: true, linked: true, address: n.addr, short: shortAddr(n.addr), founder, relinked });
+    res.json({ ok: true, linked: true, address: n.addr, short: shortAddr(n.addr), founder, relinked: linkRes.relinked });
   });
 
   app.post('/wallet/unlink', json, (req, res) => {
     const ctx = pre(req, res); if (!ctx) return;
     const { dk } = ctx;
-    const mine = links.byDevice[dk];
-    if (!mine) return res.json({ ok: true, linked: false });
-    delete links.byDevice[dk];
-    const a = links.byAddr[mine.addr];
-    if (a && a.dk === dk) a.dk = null; // keep the wallet record (attestations, relink cooldown)
+    const removed = unlinkVerifiedWallet(dk);
+    if (!removed.linked) return res.json({ ok: true, linked: false });
     try { saveLinks(); } catch (e) { log.error('wallet: links write failed', { err: e.message }); return fail(res, 500, 'store_failed'); }
-    audit({ ev: 'unlink', dk, addr: mine.addr, ip: ipTag(ctx.ip) });
+    audit({ ev: 'unlink', dk, addr: removed.address, ip: ipTag(ctx.ip) });
     marks.pushState(dk);
     res.json({ ok: true, linked: false });
   });
@@ -240,7 +237,14 @@ export function routes(app) {
     const ctx = pre(req, res); if (!ctx) return;
     const { dk } = ctx;
     const mine = links.byDevice[dk];
-    res.json({ ok: true, linked: !!mine, address: mine?.addr || null, short: mine ? shortAddr(mine.addr) : '', badges: badgesFor(dk, marksRec(dk)) });
+    res.json({
+      ok: true, linked: !!mine, address: mine?.addr || null, short: mine ? shortAddr(mine.addr) : '',
+      // Whether the AUTHORITY considers this a signature-verified link — the same
+      // answer a payout uses. A legacy record without the flag shows linked:true,
+      // verified:false, and is never a payout destination.
+      verified: verifiedWalletFor(dk) !== null,
+      badges: badgesFor(dk, marksRec(dk)),
+    });
   });
 
   // Stub, by design: no redeemable rewards, no minting, no on-chain anything in this build.
@@ -255,4 +259,10 @@ export function routes(app) {
     if (!WCFG.MARKS || !WCFG.LEADERBOARD) return fail(res, 403, 'leaderboard_disabled');
     res.json({ ok: true, ...marks.leaderboard(50) });
   });
+
+  // The chain status surface (GET /chain/status) is additive and read-only. It is
+  // mounted here, rather than from index.js, because index.js (owned by another
+  // workstream) already hands this module the express app — so /chain/status is
+  // served without editing a file this workstream does not own.
+  try { chainStatus.routes(app); } catch (e) { log.error('chain status routes failed', { err: e.message }); }
 }

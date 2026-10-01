@@ -1,19 +1,27 @@
 /**
- * payouts.js — the ONLY place the relay signs a transaction (token claims).
+ * payouts.js — the claim path: the ledger, the gates, and the compensating entry.
  *
- * A claim moves value off the relay's hot wallet to a player. Everything here exists to
- * make that safe, because a wrong signature cannot be rolled back:
+ * This module moves value off the relay's hot wallet to a player. It owns the LEDGER
+ * side of a payout (debit, idempotency, compensation) and every accounting gate. It
+ * does NOT sign: the actual SPL transfer lives in `server/chain/settlement.js`, which
+ * is the only module in the relay that touches a keypair.
  *
  *   * DRY RUN BY DEFAULT. Nothing is signed unless PAYOUTS_ENABLED === 'true'. The
  *     default path computes and reports exactly what it would do and moves nothing.
- *   * VERIFIED WALLET ONLY. The destination must be a signature-verified wallet link
- *     (identity.isWalletVerifiedFor). An unverified address — anyone can type one — must
- *     never receive a payout, which is why the wallet link requires a signature at all.
- *   * FLOAT CAP. The hot wallet holds a bounded float, not the treasury. Paying is
- *     refused if it would drop the float below HOT_FLOAT_MIN, and refused entirely if the
- *     float is already above HOT_FLOAT_MAX (that means someone topped it up by mistake —
- *     sweep it by hand rather than let a leak take more). Worst case from a stolen relay
- *     key is therefore the float, not the supply.
+ *   * VERIFIED WALLET ONLY. The destination is resolved through the ONE
+ *     signature-verified authority (server/walletStore.js). An unverified address —
+ *     anyone can type one — is refused, and a legacy on-disk link without the verified
+ *     flag resolves to null there, so it can never receive a payout.
+ *   * CHAIN-VERIFIED MINT. When a mint is configured it is checked ON-CHAIN first, and
+ *     a mint whose decimals are not the economy's 6 is refused outright: the ledger
+ *     stores base units, so a different exponent mis-prices every payout.
+ *   * FLOAT CAP + HARD WALLET CEILING. The hot wallet holds a bounded float, not the
+ *     treasury. Paying is refused if it would drop the float below HOT_FLOAT_MIN,
+ *     refused entirely if the float is already above HOT_FLOAT_MAX (that means someone
+ *     topped it up by mistake — sweep it by hand rather than let a leak take more), and
+ *     refused if it would exceed the wallet's actual on-chain token balance. Since the
+ *     relay can never mint, that balance is the true hard cap. Worst case from a stolen
+ *     relay key is therefore the float.
  *   * IDEMPOTENT. The ledger debit is keyed on the claim id, so a retried claim cannot
  *     pay twice. The client may safely retry on a timeout.
  *   * COMPENSATED. Order is debit -> send. If the send fails, the debit is reversed with
@@ -22,7 +30,8 @@
  *   * DUST FLOOR. Claims below MIN_CLAIM_RAW are refused: the transaction fee would
  *     exceed the payout.
  *
- * The chain call is INJECTABLE (`deps.sendImpl`) so the failure and refund paths can be
+ * The chain calls are INJECTABLE (`deps.sendImpl`, `deps.floatBalanceImpl`,
+ * `deps.mintCheckImpl`, `deps.verifierImpl`) so the failure and refund paths can be
  * tested without spending anything.
  */
 
@@ -32,7 +41,10 @@ import crypto from 'node:crypto';
 import { CFG } from '../config.js';
 import { log } from '../log.js';
 import { apply, balancesOf } from './ledger.js';
-import { isWalletVerifiedFor } from '../identity.js';
+import { mintConfig } from '../chain/mintConfig.js';
+import { mintUsable } from '../chain/mintVerify.js';
+import { settleClaim, payoutWalletRaw } from '../chain/settlement.js';
+import { verifiedWalletFor } from '../walletStore.js';
 
 const DIR = path.join(CFG.DATA_DIR, 'economy');
 const PAYOUT_FILE = path.join(DIR, 'payouts.json');
@@ -43,14 +55,23 @@ const intOr = (v, d) => {
   return Number.isSafeInteger(n) && n >= 0 ? n : d;
 };
 
+/**
+ * The payout configuration. The mint, cluster and paying key come from
+ * `chain/mintConfig.js` — the mint is REQUIRED there and has NO compiled-in fallback,
+ * because a hardcoded mint silently pays the wrong cluster's token. When `mint` is
+ * null the chain is simply unconfigured and no money path can run.
+ */
 export function payoutConfig() {
+  const chain = mintConfig();
   return {
     enabled: process.env.PAYOUTS_ENABLED === 'true',
-    mint: process.env.WAYFARER_MINT || '8q4tDsGTD1J2xNzpm4YVCY1QEpXGwMDhE3BkCdCd5xWg',
-    hotKeypairPath: process.env.RELAY_HOT_KEYPAIR || null,
-    cluster: process.env.CHAIN_CLUSTER || 'devnet',
-    minClaimRaw: intOr(process.env.MIN_CLAIM_RAW, 1_000_000),          // 1 token
-    floatMinRaw: intOr(process.env.HOT_FLOAT_MIN_RAW, 100_000_000),    // 100 tokens kept as runway
+    mint: chain.mint,                                              // null, never a default
+    cluster: chain.cluster,
+    decimals: chain.decimals,
+    requiredDecimals: chain.requiredDecimals,
+    hotKeypairPath: chain.payoutKeypairPath,                        // PAYOUT_KEYPAIR_PATH, or the cluster's rewards keypair
+    minClaimRaw: intOr(process.env.MIN_CLAIM_RAW, 1_000_000),       // 1 token at 6 decimals
+    floatMinRaw: intOr(process.env.HOT_FLOAT_MIN_RAW, 100_000_000), // 100 tokens kept as runway
     floatMaxRaw: intOr(process.env.HOT_FLOAT_MAX_RAW, 20_000_000_000), // 20,000 token CAP = blast radius
   };
 }
@@ -80,44 +101,38 @@ function appendJournal(record) {
 
 export function payoutHistory(limit = 50) { return readJournal().slice(-limit).reverse(); }
 
-// ── the real chain sender (lazy: only loaded when actually paying) ───────────
-async function realSend({ amountRaw, destination, cfg }) {
-  if (!cfg.hotKeypairPath) throw new Error('RELAY_HOT_KEYPAIR is not set');
-  if (!fs.existsSync(cfg.hotKeypairPath)) throw new Error(`hot keypair not found: ${cfg.hotKeypairPath}`);
-  const { Connection, Keypair, clusterApiUrl } = await import('@solana/web3.js');
-  const spl = await import('@solana/spl-token');
-  const conn = new Connection(process.env.CHAIN_RPC_URL || clusterApiUrl(cfg.cluster), 'confirmed');
-  const payer = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(fs.readFileSync(cfg.hotKeypairPath, 'utf8'))));
-  const mint = new (await import('@solana/web3.js')).PublicKey(cfg.mint);
-  const to = new (await import('@solana/web3.js')).PublicKey(destination);
-  const from = await spl.getOrCreateAssociatedTokenAccount(conn, payer, mint, payer.publicKey);
-  const toAta = await spl.getOrCreateAssociatedTokenAccount(conn, payer, mint, to);
-  const sig = await spl.transfer(conn, payer, from.address, toAta.address, payer, BigInt(amountRaw));
-  return { signature: String(sig) };
+// ── the ONE verified-wallet authority, as a payout destination gate ──────────
+// Fail closed: an unknown player, a malformed key, an unverified link, or only one
+// side of the link marked verified all resolve to "refused". A legacy on-disk link
+// (no `verified` flag) resolves to null, so it is never a payout destination.
+function defaultVerifier(playerKey, walletAddress) {
+  const addr = verifiedWalletFor(String(playerKey || ''));
+  return typeof addr === 'string' && addr === String(walletAddress || '').trim();
 }
 
-// ── float balance ────────────────────────────────────────────────────────────
-async function realFloatBalance(cfg) {
-  if (!cfg.hotKeypairPath || !fs.existsSync(cfg.hotKeypairPath)) return null;
-  const { Connection, Keypair, PublicKey, clusterApiUrl } = await import('@solana/web3.js');
-  const spl = await import('@solana/spl-token');
-  const conn = new Connection(process.env.CHAIN_RPC_URL || clusterApiUrl(cfg.cluster), 'confirmed');
-  const payer = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(fs.readFileSync(cfg.hotKeypairPath, 'utf8'))));
-  const ata = await spl.getOrCreateAssociatedTokenAccount(conn, payer, new PublicKey(cfg.mint), payer.publicKey);
-  return Number((await conn.getTokenAccountBalance(ata.address)).value.amount);
-}
+// ── defaults that reach the chain (lazy: only loaded when paying is attempted) ────
+// The signer is `server/chain/settlement.js` — the only module in the relay that holds
+// a keypair. The float read is read-only and never creates anything.
+const defaultSend = (opts) => settleClaim({
+  claimId: opts.claimId,
+  destination: opts.destination,
+  amountRaw: opts.amountRaw,
+  cfg: opts.cfg,
+});
+const defaultFloatBalance = (cfg) => payoutWalletRaw(cfg);
 
 /**
  * Claim accrued token balance to a verified wallet.
  *
- * deps (all optional, for tests): { sendImpl, floatBalanceImpl, verifierImpl }
+ * deps (all optional, for tests): { sendImpl, floatBalanceImpl, mintCheckImpl, verifierImpl }
  * @returns {{ok:boolean, reason:string, signature?:string, amountRaw?:number, refunded?:boolean}}
  */
 export async function claim({ playerKey, walletAddress, amountRaw, claimId }, deps = {}) {
   const cfg = payoutConfig();
-  const sendImpl = deps.sendImpl || realSend;
-  const floatBalanceImpl = deps.floatBalanceImpl || realFloatBalance;
-  const verifierImpl = deps.verifierImpl || isWalletVerifiedFor;
+  const sendImpl = deps.sendImpl || defaultSend;
+  const floatBalanceImpl = deps.floatBalanceImpl || defaultFloatBalance;
+  const verifierImpl = deps.verifierImpl || defaultVerifier;
+  const mintCheckImpl = deps.mintCheckImpl || mintUsable;
 
   if (!CLAIM_ID_RE.test(String(claimId || ''))) return { ok: false, reason: 'bad_claim_id' };
   if (!Number.isSafeInteger(amountRaw) || amountRaw <= 0) return { ok: false, reason: 'bad_amount' };
@@ -137,7 +152,22 @@ export async function claim({ playerKey, walletAddress, amountRaw, claimId }, de
     return { ok: false, reason: 'insufficient', available: bal ? bal.wayfarer : 0 };
   }
 
-  // Gate 3: the float. Checked BEFORE any ledger movement so a refusal is free.
+  // Gate 3: when a mint is configured it must be REAL and must have the economy's
+  // decimals. Checked ON-CHAIN, never trusted from config, and a mismatch REFUSES
+  // rather than logging: the ledger stores base units, so a mint with any other
+  // exponent would mis-price every payout by orders of magnitude. (With no mint at all
+  // the settlement layer refuses anyway, so this gate only ever adds a reason.)
+  if (cfg.mint) {
+    let mintCheck;
+    try { mintCheck = await mintCheckImpl(cfg); }
+    catch (e) { return { ok: false, reason: `mint_unverifiable: ${e.message}` }; }
+    if (!mintCheck || !mintCheck.ok) {
+      return { ok: false, reason: 'mint_rejected',
+        error: (mintCheck && mintCheck.reason) || 'mint could not be verified on-chain' };
+    }
+  }
+
+  // Gate 4: the float. Checked BEFORE any ledger movement so a refusal is free.
   let floatRaw = null;
   try { floatRaw = await floatBalanceImpl(cfg); }
   catch (e) { return { ok: false, reason: `float_unreadable: ${e.message}` }; }
@@ -145,6 +175,12 @@ export async function claim({ playerKey, walletAddress, amountRaw, claimId }, de
     if (floatRaw > cfg.floatMaxRaw) {
       return { ok: false, reason: 'float_over_cap', floatRaw, cap: cfg.floatMaxRaw,
         advice: 'sweep the hot wallet down by hand before resuming payouts' };
+    }
+    // THE HARD CEILING. The relay can never mint this token, so the paying wallet's
+    // real on-chain balance — not the ledger — is the true upper bound on a payout.
+    if (amountRaw > floatRaw) {
+      return { ok: false, reason: 'float_insufficient', floatRaw, amountRaw,
+        advice: 'the paying wallet holds less than this payout; fund the rewards wallet first' };
     }
     if (floatRaw - amountRaw < cfg.floatMinRaw) {
       return { ok: false, reason: 'float_too_low', floatRaw, required: cfg.floatMinRaw + amountRaw };
@@ -165,8 +201,10 @@ export async function claim({ playerKey, walletAddress, amountRaw, claimId }, de
 
   let sent;
   try {
-    sent = await sendImpl({ amountRaw, destination: walletAddress, cfg });
-    if (!sent || !sent.signature) throw new Error('send returned no signature');
+    sent = await sendImpl({ amountRaw, destination: walletAddress, claimId, playerKey, cfg });
+    if (!sent || !sent.signature) {
+      throw new Error(sent && sent.error ? sent.error : 'send returned no signature');
+    }
   } catch (e) {
     // COMPENSATE: the debit must not stand if the value never left.
     const refund = apply(playerKey, {

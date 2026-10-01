@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { CFG } from './config.js';
 import { log } from './log.js';
 import { normalizeDoc, newDoc } from './shared/marksRules.js';
+import { solAddress } from './validate.js';
 
 // Persistence + feature flags for the optional wallet / Marks layer
 // (server/wallet.js, server/marks.js). Plain JSON files, no DB:
@@ -87,7 +88,10 @@ export function initWalletStore() {
   log.info('wallet store ready', { links: Object.keys(links.byDevice).length, season: WCFG.SEASON, flags: flagsPublic() });
 }
 
-export function saveLinks() { writeAtomicSync(LINKS, JSON.stringify(links)); }
+export function saveLinks() {
+  fs.mkdirSync(WDIR, { recursive: true });     // a link recorded outside init() must still persist
+  writeAtomicSync(LINKS, JSON.stringify(links));
+}
 
 export function flushWalletStore() {
   for (const k of [...dirty]) {
@@ -169,4 +173,114 @@ export function maybeSeasonAttest(dk, rec) {
   saveLinks();
   audit({ ev: 'attest', id, dk, addr: l.addr });
   return true;
+}
+
+// ─── THE single verified-wallet authority ────────────────────────────────────
+// Two wallet-link implementations arrived with the merge: the shipped `/wallet/*`
+// routes (wallet.js, the client codes against them) and the WIP `/identity/*` routes.
+// This module is the ONE source of truth for "is this device's wallet
+// signature-verified", so a payout can never trust a link that the login path would
+// refuse, and a login can never trust a link a payout would refuse.
+//
+// The rule:
+//   * a link exists ONLY because a link route verified an Ed25519 signature over a
+//     relay-issued, single-use, expiring challenge (wallet.js `/wallet/link`, or
+//     identity.js `/identity/link` for kind `solana`, which routes through
+//     `linkVerifiedWallet` below — it keeps no copy of its own);
+//   * a record is trusted ONLY when it carries `verified:true` on BOTH the device
+//     side and the address side. A record written by an older build — which stored a
+//     public address with no proof of key control — FAILS CLOSED: it is never a
+//     payout destination and never a login credential, so it can never be a takeover
+//     payload (see server/chain/README.md).
+
+const isVerifiedRecord = (rec) => !!rec && rec.verified === true;
+
+/**
+ * The signature-verified Solana address for this device key, or null.
+ * **This is the authority**: payouts resolve their destination through it, and
+ * identity resolves its `solana` kind through it.
+ */
+export function verifiedWalletFor(dk) {
+  if (!DK_RE.test(String(dk || ''))) return null;
+  const mine = links.byDevice[dk];
+  if (!isVerifiedRecord(mine) || typeof mine.addr !== 'string') return null;
+  const byAddr = links.byAddr[mine.addr];
+  // Both sides must agree, and the wallet must still point back at this device. Any
+  // disagreement fails closed rather than guessing which side is right.
+  if (!isVerifiedRecord(byAddr) || byAddr.dk !== dk) return null;
+  return mine.addr;
+}
+
+/** The verified link record for a device key: { address, addedAt, verified } | null. */
+export function verifiedWalletRecordFor(dk) {
+  const address = verifiedWalletFor(dk);
+  if (!address) return null;
+  return { address, addedAt: links.byDevice[dk].at || 0, verified: true };
+}
+
+/** The device key that owns a signature-verified link to `address`, or null. */
+export function deviceWithVerifiedWallet(address) {
+  const addr = String(address || '').trim();
+  const byAddr = links.byAddr[addr];
+  if (!isVerifiedRecord(byAddr) || typeof byAddr.dk !== 'string' || !DK_RE.test(byAddr.dk)) return null;
+  const mine = links.byDevice[byAddr.dk];
+  if (!isVerifiedRecord(mine) || mine.addr !== addr) return null;
+  return byAddr.dk;
+}
+
+/**
+ * Record a SIGNATURE-VERIFIED wallet link. The one write path for wallet links:
+ * wallet.js `/wallet/link` and identity.js `/identity/link` (kind `solana`) both call
+ * it AFTER verifying the signature, so there is exactly one place the link can exist
+ * and exactly one place the one-wallet-per-device / one-device-per-wallet rules live.
+ *
+ * A pre-existing link WITHOUT the verified flag (legacy on-disk state) is treated as
+ * absent here: the honest owner can simply re-link with a signature, and the legacy
+ * record is never usable in the meantime.
+ *
+ * @returns {{ok:boolean, error?:string, relinked?:boolean, oldDk?:string}}
+ */
+export function linkVerifiedWallet(dk, address, { action = 'link', now = Date.now(), save = true } = {}) {
+  if (!DK_RE.test(String(dk || ''))) return { ok: false, error: 'bad_device' };
+  if (!solAddress(String(address || '').trim())) return { ok: false, error: 'bad_address' };
+  const addr = String(address).trim();
+
+  const mine = links.byDevice[dk];
+  if (isVerifiedRecord(mine)) {
+    return mine.addr === addr ? { ok: false, error: 'already_linked' } : { ok: false, error: 'device_has_wallet' };
+  }
+  // Unverified legacy entry for this device: drop it so it can never shadow the real
+  // link, and clear its back-reference if it still points here.
+  if (mine && mine.addr && links.byAddr[mine.addr]?.dk === dk) links.byAddr[mine.addr].dk = null;
+  delete links.byDevice[dk];
+
+  const other = links.byAddr[addr];
+  let relinked = false;
+  let oldDk = null;
+  if (other && other.dk && other.dk !== dk) {
+    if (action !== 'relink') return { ok: false, error: 'wallet_linked_elsewhere' };
+    if (other.relinkAt && now - other.relinkAt < WCFG.RELINK_COOLDOWN_MS) return { ok: false, error: 'relink_cooldown' };
+    oldDk = other.dk;
+    delete links.byDevice[oldDk];
+    relinked = true;
+  }
+
+  links.byDevice[dk] = { addr, at: now, verified: true };
+  const a = other || { attest: [] };
+  links.byAddr[addr] = { ...a, dk, at: a.at || now, relinkAt: relinked ? now : a.relinkAt, verified: true };
+  if (save) saveLinks();
+  return { ok: true, relinked, oldDk };
+}
+
+/**
+ * Remove a device's wallet link (any time, no signature needed — losing a link is
+ * always safe). Keeps the wallet record itself (attestations, relink cooldown).
+ */
+export function unlinkVerifiedWallet(dk) {
+  const mine = links.byDevice[dk];
+  if (!mine) return { ok: true, linked: false };
+  delete links.byDevice[dk];
+  const a = mine.addr ? links.byAddr[mine.addr] : null;
+  if (a && a.dk === dk) { a.dk = null; delete a.verified; }
+  return { ok: true, linked: true, address: mine.addr };
 }
