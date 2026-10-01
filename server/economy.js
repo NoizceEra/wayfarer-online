@@ -220,8 +220,15 @@ export function install(room) {
   // (a client could forge a trade-result / econ-sync for its peers): swallow them.
   // 'saved', 'adead' and 'notice' are included because the CLIENT treats them as
   // server-authoritative (src/net/NetworkManager.js), whereas the relay used to
-  // forward a peer's forged copy verbatim (docs/audit/validation.md: forged-server-msg).
-  for (const t of ['econ-state', 'econ-sync', 'econ-msg', 'econ-error', 'trade-open', 'trade-update', 'trade-result', 'trade-closed', 'market-page', 'mail-box', 'mail-unread', 'guild-info', 'guild-update', 'saved', 'adead', 'notice']) {
+  // forward a peer's forged copy verbatim. 'trade-done' likewise: a forged copy made
+  // a third party's client zero its own gold and bag and PERSIST that state
+  // (docs/audit/dupes.md: wildcard-forged-trade-done, verified exploitable).
+  // NOTE the structural weakness this list only patches: WayfarerRoom.js routes any
+  // UNREGISTERED type through the '*' passthrough to every peer, so every server->client
+  // type not listed here is forgeable, and the next one added reopens the hole. The
+  // durable fix is an allowlist for the '*' relay plus a sender-sessionId guard on the
+  // client (src/net/socialNet.js).
+  for (const t of ['econ-state', 'econ-sync', 'econ-msg', 'econ-error', 'trade-open', 'trade-update', 'trade-result', 'trade-closed', 'trade-done', 'market-page', 'mail-box', 'mail-unread', 'guild-info', 'guild-update', 'saved', 'adead', 'notice']) {
     room.onMessage(t, () => {});
   }
 
