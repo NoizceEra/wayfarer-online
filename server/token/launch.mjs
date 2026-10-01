@@ -1,22 +1,32 @@
 #!/usr/bin/env node
 /**
- * launch.mjs — create the Wayfarer token (SPL) with its treasury/rewards wallets.
+ * launch.mjs — DEVNET / THROWAWAY ONLY. Create a test SPL token with treasury/rewards
+ * wallets so the plumbing (accounts, ATAs, receipts, payouts) can be exercised for free.
  *
- * Parameterised on purpose: the devnet mint is throwaway, so the name/symbol/supply
- * decision does not have to be made before the plumbing is proven. Re-run with
- * different flags for the real thing.
+ * *** THIS IS NOT THE MAINNET PATH. ***
+ * The production Wayfarer token is launched on PUMP.FUN: a standard SPL mint with a FIXED
+ * 6 decimals and a FIXED 1,000,000,000 supply whose mint authority is pump.fun's, not ours.
+ * This launcher mints a token WE control and exists only to prove devnet flows and to
+ * produce this repo's own test mints. Do not use it to create the real token, and never
+ * present it as the way the token ships.
  *
- * SAFETY RULES (this script touches money for real on mainnet):
+ * SAFETY RULES (kept intact even though the path is devnet):
  *   * Refuses mainnet unless --i-understand-mainnet is passed explicitly.
  *   * Refuses to overwrite an existing launch unless --force.
  *   * NEVER prints secret key material — receipts contain public keys only.
- *   * Writes keys to a gitignored dir (server/keys/), mode 0600.
+ *   * Key material is CLUSTER-SCOPED: keys/<cluster>/ (gitignored, restricted to this
+ *     user). A mainnet run can therefore never silently reuse a devnet keypair.
  *   * Pre-checks the payer balance and aborts before signing anything if short.
+ *   * After minting, reads the mint BACK off-chain and records what the chain actually
+ *     says (decimals/supply/authorities/owning program) in the receipt, not just the ask.
  *
  * Usage (devnet — costs nothing):
- *   node server/token/launch.mjs --authority "D:/path/authority.json"
+ *   node server/token/launch.mjs --authority "D:/path/authority.json" --cluster devnet
  * Mainnet (real SOL, real consequences — deliberate extra flag):
- *   node server/token/launch.mjs --authority ... --cluster mainnet-beta --i-understand-mainnet
+ *   node server/token/launch.mjs --authority ... --cluster mainnet --i-understand-mainnet
+ *
+ * Key layout:  <script dir>/keys/<cluster>/<name>.keypair.json  (create or reuse, per cluster)
+ * Point it at the canonical ops key set instead:  --keys-root D:/ai-studio/wayfarer-online/server/token/keys
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -31,7 +41,7 @@ import {
 import { writeSecretFile, describeHardening } from './keyfile.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const KEYS_DIR = path.join(HERE, 'keys');
+const KEYS_ROOT = path.join(HERE, 'keys');
 
 // ── args ─────────────────────────────────────────────────────────────────────
 function parseArgs(argv) {
@@ -53,6 +63,7 @@ const cfg = {
   decimals: Number(args.decimals ?? 6),
   supply: BigInt(String(args.supply || '1000000000')),
   authorityPath: args.authority ? String(args.authority) : null,
+  keysRoot: args['keys-root'] ? String(args['keys-root']) : null,
   rpc: args.rpc ? String(args.rpc) : null,
   force: Boolean(args.force),
   mainnetOk: Boolean(args['i-understand-mainnet']),
@@ -60,6 +71,14 @@ const cfg = {
 
 const IS_MAINNET = cfg.cluster === 'mainnet-beta' || cfg.cluster === 'mainnet';
 const die = (m) => { console.error(`ERROR: ${m}`); process.exit(1); };
+
+// Cluster-scoped key material. Every keypair this script reads or writes lives under
+// keys/<cluster>/, so a mainnet run cannot pick up a devnet keypair (or vice versa).
+// The label is validated so it can never escape the keys root.
+if (!/^[a-z0-9-]{3,20}$/.test(cfg.cluster)) {
+  die(`--cluster must be a short lowercase label (e.g. devnet | mainnet), got ${JSON.stringify(cfg.cluster)}`);
+}
+const KEYS_DIR = path.join(cfg.keysRoot ? cfg.keysRoot : KEYS_ROOT, cfg.cluster);
 
 if (!cfg.authorityPath) die('--authority <keypair.json> is required (the mint authority + fee payer)');
 if (!fs.existsSync(cfg.authorityPath)) die(`authority keypair not found: ${cfg.authorityPath}`);
@@ -73,6 +92,9 @@ if (IS_MAINNET && !cfg.mainnetOk) {
     + '       Re-run with --i-understand-mainnet once you have reviewed:\n'
     + '         * the cluster, the name/symbol/supply, and the authority keypair path\n'
     + '         * where the authority key lives and who else can read it\n'
+    + '       NOTE: this script is NOT the Wayfarer mainnet path. The real token is launched\n'
+    + '       on pump.fun (fixed supply, we never hold the mint authority) — see\n'
+    + '       docs/LAUNCH_RUNBOOK.md before even considering mainnet here.\n'
     + '       (Prove everything on devnet first: it is free and identical in shape.)');
 }
 
@@ -89,12 +111,15 @@ if (fs.existsSync(receiptPath) && !cfg.force) {
     + '       Refusing to mint a second token by accident. Pass --force to launch another.');
 }
 
-console.log('── Wayfarer token launch ───────────────────────────────────────────');
-console.log(`cluster     ${cfg.cluster}  ${IS_MAINNET ? '(REAL MONEY)' : '(devnet — free)'}`);
+console.log('── Wayfarer token launch (DEVNET / THROWAWAY TOOLING) ──────────────');
+console.log('This launcher mints a token WE control. The production Wayfarer token is launched');
+console.log('on pump.fun — this is NOT the mainnet path (see docs/LAUNCH_RUNBOOK.md).');
+console.log(`cluster     ${cfg.cluster}  ${IS_MAINNET ? '(REAL MONEY — see the warning below)' : '(devnet — free)'}`);
 console.log(`rpc         ${rpc}`);
 console.log(`token       ${cfg.name} (${cfg.symbol}), ${cfg.decimals} decimals`);
 console.log(`supply      ${cfg.supply} → ${rawToken} raw units`);
 console.log(`authority   ${authority.publicKey.toBase58()}   (from ${path.basename(cfg.authorityPath)})`);
+console.log(`keys dir    ${KEYS_DIR}  (cluster-scoped)`);
 const bal = await conn.getBalance(authority.publicKey);
 console.log(`balance     ${bal / LAMPORTS_PER_SOL} SOL`);
 
@@ -167,7 +192,39 @@ const mintSig = await mintTo(
   [], { commitment: 'confirmed' }, TOKEN_PROGRAM_ID,
 );
 console.log(`done  ${mintSig}`);
+
+// ── POST-LAUNCH READ-BACK: record what the CHAIN says, not what we asked for ──
+// A receipt assembled only from the request can lie (a stale mint keypair, a different
+// cluster, an authority that did not take). Re-read the mint account and store the
+// authoritative values; if they disagree with the request, say so on the console and
+// mark receipt.verified=false rather than quietly writing a flattering receipt.
 const info = await getMint(conn, mint);
+const mintAcct = await conn.getAccountInfo(mint);
+const onChainAuthority = info.mintAuthority ? info.mintAuthority.toBase58() : null;
+const onChainFreeze = info.freezeAuthority ? info.freezeAuthority.toBase58() : null;
+const onChain = {
+  decimals: info.decimals,
+  supply: info.supply.toString(),
+  mintAuthority: onChainAuthority,
+  freezeAuthority: onChainFreeze,
+  ownerProgram: mintAcct ? mintAcct.owner.toBase58() : null,
+  isInitialized: info.isInitialized,
+  readAt: new Date().toISOString(),
+  rpc,
+};
+const readBackOk = onChain.isInitialized === true
+  && onChain.decimals === cfg.decimals
+  && onChain.supply === rawToken.toString()
+  && onChain.ownerProgram === TOKEN_PROGRAM_ID.toBase58()
+  && onChainAuthority === authority.publicKey.toBase58()
+  && onChainFreeze === authority.publicKey.toBase58();
+console.log('\n── read-back (the chain is the source of truth) ───────────────────');
+console.log(`decimals    ${onChain.decimals}`);
+console.log(`supply      ${onChain.supply} raw`);
+console.log(`mint auth   ${onChain.mintAuthority}`);
+console.log(`freeze auth ${onChain.freezeAuthority}`);
+console.log(`program     ${onChain.ownerProgram}`);
+console.log(`read-back   ${readBackOk ? 'MATCHES the request' : 'MISMATCH — receipt.verified=false, investigate before funding'}`);
 
 // ── receipt: PUBLIC data only, safe to share ─────────────────────────────────
 const receipt = {
@@ -183,6 +240,8 @@ const receipt = {
     hotFloat: { address: hotFloat.publicKey.toBase58(), tokenAccount: hotAta.address.toBase58() },
   },
   actuallyMinted: info.supply.toString(),
+  onChain,
+  verified: readBackOk,
   mintTransaction: mintSig,
   explorer: `https://explorer.solana.com/address/${mint.toBase58()}${IS_MAINNET ? '' : '?cluster=devnet'}`,
   keysDir: path.relative(path.dirname(HERE), KEYS_DIR),
@@ -194,9 +253,10 @@ console.log(`mint        ${receipt.mint}`);
 console.log(`treasury    ${receipt.wallets.treasury.address}`);
 console.log(`rewards     ${receipt.wallets.rewards.address}`);
 console.log(`hot-float   ${receipt.wallets.hotFloat.address}`);
-console.log(`supply held ${info.supply} raw (= ${cfg.supply} ${cfg.symbol})`);
+console.log(`supply held ${info.supply} raw (= ${cfg.supply} ${cfg.symbol})  ${readBackOk ? 'read-back OK' : 'read-back MISMATCH'}`);
 console.log(`explorer    ${receipt.explorer}`);
 console.log(`\nwritten to  ${receiptPath}`);
 console.log(`keys in     ${KEYS_DIR}  (gitignored; ${describeHardening(hardening)} — back these up, they cannot be recovered)`);
-console.log('\nNOT done here: mainnet, liquidity, on-chain name/symbol metadata, the hot-float');
-console.log('funding cap, or the earn → claim payout pipeline.');
+console.log('\nNOT done here: liquidity, on-chain name/symbol/URI metadata (needs the Metaplex CLI,');
+console.log('which is deliberately NOT a dependency — see docs/LAUNCH_RUNBOOK.md §5), the');
+console.log('hot-float funding cap, or the earn → claim payout pipeline.');
