@@ -9,6 +9,9 @@ import {
   TOKEN_RE, deviceKey, docKeyFor, getDocByKey, markDirty, writeAtomic, setAlias, hasDoc,
 } from './store.js';
 import { issueNonce, verifyWalletLink, isSolanaAddress } from './chain/walletAuth.js';
+import {
+  WCFG, saveLinks, linkVerifiedWallet, verifiedWalletRecordFor, deviceWithVerifiedWallet,
+} from './walletStore.js';
 
 // Identity: guest-first, link-later, wallet-as-a-badge.
 // No backend service, no database: the same file-backed store plus one small
@@ -16,13 +19,23 @@ import { issueNonce, verifyWalletLink, isSolanaAddress } from './chain/walletAut
 //   DATA_DIR/links/<sha256(kind + ':' + id)[0:32]>.json = { primaryKey, kind, idHash, addedAt }
 //
 // SECURITY INVARIANTS
-//  * Raw recovery codes and wallet addresses are NEVER written to disk — only
-//    sha256(kind + ':' + id)[0:32] (idHash). Raw device tokens were already never
-//    written (see store.js); this module does not change that.
+//  * Raw recovery codes are NEVER written to disk — only sha256(kind + ':' + id)[0:32]
+//    (idHash). Raw device tokens were already never written (see store.js).
+//  * THIS MODULE KEEPS NO WALLET LINK OF ITS OWN. Two wallet-link implementations
+//    arrived with the merge and this was the duplicate one. Kind `solana` now resolves
+//    through the single signature-verified authority in `server/walletStore.js`: this
+//    module verifies the signature and then hands the link to that authority, and it
+//    reads the link back from that authority. A wallet address is public, so it is a
+//    credential only while the authority holds a signature-verified link for it; a
+//    legacy on-disk record fails closed and can never mint a token.
 //  * POST /identity/continue MINTS a brand-new random device token and returns it.
 //    It never returns, echoes or logs an existing token — the existing account
 //    credential does not exist on disk, so it cannot be leaked from here.
 //  * Logs carry hashes/counts only: never a token, a recovery code or an address.
+//
+// NOTE: the authority stores the wallet ADDRESS in the clear (DATA_DIR/wallets/
+// links.json) — it must, because that is the payout destination. This module never
+// writes an address to its own links dir.
 
 const KINDS = new Set(['recovery', 'solana']);
 const LINK_DIR = path.join(CFG.DATA_DIR, 'links');
@@ -98,8 +111,56 @@ const wrap = (fn) => (req, res) => Promise.resolve(fn(req, res)).catch((e) => {
 });
 
 // ─── handlers ────────────────────────────────────────────────────────────────
-// POST /identity/link { token, kind, id } — attach a recovery code / wallet to
-// the account `token` owns. Idempotent; never steals an id bound elsewhere.
+// The links reported for a device: the identity links on the player document
+// (recovery codes) plus, read back from the ONE authority, its signature-verified
+// wallet link. identity keeps no wallet link of its own.
+async function linksFor(docKey, dk) {
+  const out = publicLinks(getDocByKey(docKey));
+  const rec = verifiedWalletRecordFor(dk);
+  if (rec) out.push({ kind: 'solana', addedAt: rec.addedAt, verified: true });
+  return out;
+}
+
+// POST /identity/link, kind 'solana' — prove the key, then hand the link to the
+// authority. Nothing is stored here: `linkVerifiedWallet` is the single write path.
+async function postWalletLink(req, res, { token, addr, docKey }) {
+  if (!WCFG.WALLET_LINK) return fail(res, 403, 'wallet_link_disabled');
+  const { message, signature } = req.body || {};
+  // A wallet ADDRESS is public — it is on-chain and in every marketplace UI — so
+  // presenting one proves nothing about ownership. Linking a wallet is therefore an
+  // authentication step: it must carry a signature over a challenge WE issued.
+  // Without this, a public address becomes a login credential and anyone could mint
+  // a token into a player's account.
+  if (typeof message !== 'string' || typeof signature !== 'string') {
+    return fail(res, 401, 'wallet_signature_required');
+  }
+  try {
+    verifyWalletLink(addr, message, signature);
+  } catch {
+    // Deliberately one generic error: never tell a caller which half failed.
+    return fail(res, 401, 'wallet_not_proven');
+  }
+
+  const dk = deviceKey(token);
+  const r = linkVerifiedWallet(dk, addr, { action: 'link', save: false });
+  if (!r.ok) {
+    if (r.error === 'already_linked') return res.json({ ok: true, links: await linksFor(docKey, dk) });
+    if (r.error === 'relink_cooldown') return fail(res, 429, 'relink_cooldown');
+    if (r.error === 'device_has_wallet') return fail(res, 409, 'device_has_wallet');
+    if (r.error === 'wallet_linked_elsewhere') return fail(res, 409, 'link_taken');
+    return fail(res, 400, r.error);
+  }
+  try { saveLinks(); } catch (e) {
+    log.error('identity: wallet link persist failed', { err: e.message });
+    return fail(res, 500, 'store_failed');
+  }
+  log.info('identity: wallet link recorded in the single authority', { key: dk.slice(0, 8) });
+  res.json({ ok: true, links: await linksFor(docKey, dk) });
+}
+
+// POST /identity/link { token, kind, id } — attach a recovery code to the account
+// `token` owns (kind 'solana' is routed to the authority above). Idempotent; never
+// steals an id bound elsewhere.
 async function postLink(req, res) {
   const { token, kind, id } = req.body || {};
   if (!TOKEN_RE.test(String(token || ''))) return fail(res, 400, 'bad_token');
@@ -108,44 +169,24 @@ async function postLink(req, res) {
   if (!norm) return fail(res, 400, 'bad_id');
   const docKey = docKeyFor(token);
   if (!docKey) return fail(res, 400, 'bad_token');
+
+  if (kind === 'solana') return postWalletLink(req, res, { token, addr: norm, docKey });
+
   const idHash = linkIdHash(kind, norm);
-
-  // A wallet ADDRESS is public — it is on-chain and in every marketplace UI — so
-  // presenting one proves nothing about ownership. Linking a wallet is therefore an
-  // authentication step: it must carry a signature over a challenge WE issued.
-  // Without this, /identity/continue would turn a public address into a login
-  // credential and anyone could mint a token into a player's account.
-  let verified = false;
-  if (kind === 'solana') {
-    const { message, signature } = req.body || {};
-    if (typeof message !== 'string' || typeof signature !== 'string') {
-      return fail(res, 401, 'wallet_signature_required');
-    }
-    try {
-      verifyWalletLink(norm, message, signature);
-      verified = true;
-    } catch {
-      // Deliberately one generic error: never tell a caller which half failed.
-      return fail(res, 401, 'wallet_not_proven');
-    }
-  }
-
   const existing = await readLink(idHash);
   if (existing && existing.primaryKey !== docKey) return fail(res, 409, 'link_taken');
 
   const doc = getDocByKey(docKey);
   if (!doc) return fail(res, 400, 'bad_token');
-  const links = Array.isArray(doc.links) ? doc.links : (doc.links = []);
-  if (!links.some((l) => l && l.kind === kind && l.idHash === idHash)) {
+  const docLinks = Array.isArray(doc.links) ? doc.links : (doc.links = []);
+  if (!docLinks.some((l) => l && l.kind === kind && l.idHash === idHash)) {
     const addedAt = Date.now();
-    const entry = { kind, idHash, addedAt };
-    if (verified) entry.verified = true;
-    links.push(entry);
+    docLinks.push({ kind, idHash, addedAt });
     markDirty(docKey);
-    await writeLink(idHash, { primaryKey: docKey, kind, idHash, addedAt, verified });
+    await writeLink(idHash, { primaryKey: docKey, kind, idHash, addedAt, verified: false });
     log.info('identity link added', { kind, key: docKey.slice(0, 8), idHash: idHash.slice(0, 8) });
   }
-  res.json({ ok: true, links: publicLinks(doc) });
+  res.json({ ok: true, links: await linksFor(docKey, deviceKey(token)) });
 }
 
 // POST /identity/continue { kind, id } — recover an account on a new device.
@@ -156,16 +197,31 @@ async function postContinue(req, res) {
   const norm = normalizeId(kind, id);
   if (!norm) return fail(res, 400, 'bad_id');
 
+  if (kind === 'solana') {
+    // Kind 'solana' RESOLVES THROUGH THE ONE AUTHORITY (server/walletStore.js). The
+    // address is public, so it is a credential only while the authority holds a
+    // signature-verified link for it — and the account is the device that holds that
+    // link. Everything the old duplicate identity link dir holds is, by definition,
+    // not the authority's answer, so it fails closed and mints nothing.
+    const dk = deviceWithVerifiedWallet(norm);
+    if (!dk) {
+      const legacy = await readLink(linkIdHash('solana', norm));
+      return fail(res, 403, legacy ? 'wallet_not_verified' : 'code_unknown');
+    }
+    if (!hasDoc(dk)) return fail(res, 404, 'code_unknown');
+    const newToken = crypto.randomBytes(18).toString('base64url');    // 24 chars, matches TOKEN_RE
+    const ok = await setAlias(deviceKey(newToken), dk);
+    if (!ok) return fail(res, 500, 'alias_failed');
+    log.info('identity continue: alias minted via the verified-wallet authority', { key: dk.slice(0, 8) });
+    return res.json({ ok: true, token: newToken });
+  }
+
   const rec = await readLink(linkIdHash(kind, norm));
   if (!rec || !hasDoc(String(rec.primaryKey))) return fail(res, 404, 'code_unknown');
 
   // WHY THIS GATE EXISTS: a recovery code is a SECRET, so presenting it is itself the
-  // proof of possession. A wallet address is PUBLIC, so it is only ever a credential
-  // if the link was established with a signature. Links written before this rule
-  // (verified !== true) are treated as unproven and cannot mint a token — fail closed.
-  if (kind === 'solana' && rec.verified !== true) return fail(res, 403, 'wallet_not_verified');
+  // proof of possession. A wallet address is PUBLIC and never reaches this branch.
   const primaryKey = String(rec.primaryKey);
-
   const newToken = crypto.randomBytes(18).toString('base64url');    // 24 chars, matches TOKEN_RE
   const ok = await setAlias(deviceKey(newToken), primaryKey);
   if (!ok) return fail(res, 500, 'alias_failed');
@@ -182,32 +238,20 @@ function postWalletChallenge(req, res) {
   res.json({ ok: true, message, expiresAt });           // no secret is returned: the
 }                                                       // challenge is meant to be public
 
-// Is `address` a SIGNATURE-VERIFIED wallet linked to `playerKey`?
-// This is the gate every payout passes through. It checks BOTH the player's own link
-// list and the reverse index, and requires `verified` on each: for a bad/unverified
-// state any one of the two disagreeing must refuse, so it fails closed.
-export async function isWalletVerifiedFor(playerKey, address) {
-  const doc = getDocByKey(String(playerKey || ''));
-  if (!doc) return false;                       // invalid key or unknown player
-  const norm = normSolana(address);
-  if (!norm) return false;
-  const idHash = linkIdHash('solana', norm);
-  const inDoc = Array.isArray(doc.links)
-    && doc.links.some((l) => l && l.kind === 'solana' && l.idHash === idHash && l.verified === true);
-  if (!inDoc) return false;
-  const rec = await readLink(idHash);
-  return Boolean(rec && rec.primaryKey === String(playerKey) && rec.verified === true);
-}
-
 // GET /identity/status?token=... — what this token owns (never mints, never writes).
+// The wallet half is read back from the ONE authority (server/walletStore.js); this
+// module keeps no copy of a wallet link, so there is nothing here to drift.
 function getStatus(req, res) {
   const token = String(req.query.token || '');
   if (!TOKEN_RE.test(token)) return fail(res, 400, 'bad_token');
   const doc = getDocByKey(docKeyFor(token));
+  const links = publicLinks(doc);
+  const rec = verifiedWalletRecordFor(deviceKey(token));
+  if (rec) links.push({ kind: 'solana', addedAt: rec.addedAt, verified: true });
   const chars = doc
-    ? Object.entries(doc.chars).map(([lower, rec]) => (rec && typeof rec.name === 'string' && rec.name) || lower)
+    ? Object.entries(doc.chars).map(([lower, rec2]) => (rec2 && typeof rec2.name === 'string' && rec2.name) || lower)
     : [];
-  res.json({ ok: true, links: publicLinks(doc), chars });
+  res.json({ ok: true, links, chars });
 }
 
 // Sweep tmp files a crash may have left in the link index dir.
