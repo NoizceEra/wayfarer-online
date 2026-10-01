@@ -3,8 +3,8 @@ import { STAT_IDS, MAX_STAT, SKILL_MAX, CLASS_CHANGE_LEVEL, emptyAlloc, retroPro
 import { gearById, SLOTS } from '../data/gear.js';
 import { matById } from '../data/materials.js';
 
-const PROFILE_KEY = 'wayfarer.profile.v1';
-const HERO_KEY = 'wayfarer.hero.v1';
+export const PROFILE_KEY = 'wayfarer.profile.v1';
+export const HERO_KEY = 'wayfarer.hero.v1';
 const PROGRESS_PREFIX = 'wayfarer.progress.v1.';
 export const BAG_SIZE = 30;
 
@@ -16,7 +16,10 @@ export function saveProfile(p) { localStorage.setItem(PROFILE_KEY, JSON.stringif
 export function loadHero() {
   try { return JSON.parse(localStorage.getItem(HERO_KEY)) || null; } catch { return null; }
 }
-export function saveHero(h) { localStorage.setItem(HERO_KEY, JSON.stringify(h)); }
+// Hero-look save hooks (core/slots.js mirrors the saved hero into the active character slot).
+const heroHooks = new Set();
+export function onHeroSaved(fn) { heroHooks.add(fn); return () => heroHooks.delete(fn); }
+export function saveHero(h) { localStorage.setItem(HERO_KEY, JSON.stringify(h)); heroHooks.forEach((fn) => { try { fn(h); } catch { /* ignore */ } }); }
 export function clearHero() { localStorage.removeItem(HERO_KEY); }
 
 // Gear state with safe defaults for any old/partial/corrupt save:
