@@ -11,6 +11,24 @@ const int = (v, lo, hi, d) => { const n = Math.floor(Number(v)); return Number.i
 const jsonSize = (o) => { try { return JSON.stringify(o).length; } catch { return Infinity; } };
 const str = (v, max) => (typeof v === 'string' ? v.slice(0, max) : null);
 
+import { ENEMY_REWARDS } from './rewards.js';
+
+// Per-enemy-type lifetime kill counts, as reported by the client and therefore
+// untrusted: unknown ids are dropped, counts are bounded ints, and a missing map is
+// simply "no kills". The relay cannot observe which enemy died, so crediting per type
+// (each at its own value and plausibility cap, from server/rewards.js) is what keeps a
+// forged counter from turning into free gold.
+function sanitizeKills(k) {
+  const out = Object.create(null);
+  if (!k || typeof k !== 'object') return out;
+  for (const id of Object.keys(k)) {
+    if (!ENEMY_REWARDS[id]) continue;
+    const n = int(k[id], 0, 1e9, 0);
+    if (n > 0) out[id] = n;
+  }
+  return out;
+}
+
 export const CAPS = {
   LEVEL_MAX: 99,
   GOLD_MAX: 9_999_999,
@@ -22,15 +40,12 @@ export const CAPS = {
   levelPerSec: 1 / 20,
   // Gold is earned ONLY by killing enemies. A time-based allowance (goldBase +
   // dt*goldPerSec) used to live here and was free money for any client that simply
-  // stayed connected and saved on a loop: an idle client went 0 -> 12,846 gold
-  // across 8 saves, and it was the only unbounded path into the economy
-  // (docs/audit/dupes.md: save-gold-rate-farm). Kills are client-reported, so they
-  // are bounded instead: a client may claim only the kills it could plausibly have
-  // made since its last save, valued at the per-kill ceiling published by
-  // server/rewards.js (mirrors the client's ENEMY_TABLE gold ranges).
-  GOLD_PER_KILL: 12,
-  KILLS_PER_SEC: 1,
-  KILLS_BURST: 8,
+  // stayed connected and saved on a loop: an idle client went 0 -> 12,846 gold across
+  // 8 saves (docs/audit/dupes.md: save-gold-rate-farm). Nothing accrues with time now.
+  // Per-kill values and plausibility caps live in server/rewards.js, one entry per
+  // enemy type, because a single flat per-kill figure is wrong in both directions:
+  // too low clamps an honest boss kill (the roster's biggest pays 650), too high lets
+  // a forged counter mint boss money off trash kills.
 };
 
 export function sanitizeProgress(p) {
@@ -40,8 +55,8 @@ export function sanitizeProgress(p) {
     level: int(p.level, 1, CAPS.LEVEL_MAX, 1),
     xp: int(p.xp, 0, 1e9, 0),
     xpNext: int(p.xpNext, 1, 1e9, 100),
-    // Monotonic lifetime kill count. The only source of gold (see CAPS above).
-    kills: int(p.kills, 0, 1e9, 0),
+    // Per-enemy-type lifetime kill counts {enemyId: count}. The ONLY source of gold.
+    kills: sanitizeKills(p.kills),
     gold: int(p.gold, 0, CAPS.GOLD_MAX, 0),
     potions: int(p.potions, 0, 99, 0),
     maxHp: int(p.maxHp, 1, 1e6, 100), maxMp: int(p.maxMp, 0, 1e6, 30), atk: int(p.atk, 0, 1e6, 10),
@@ -86,17 +101,27 @@ export function validateSave(prev, progress, now = Date.now()) {
   const dt = Math.max(0, (now - (base.savedAt || now)) / 1000);
   const maxLevel = base.level + 1 + Math.floor(dt * CAPS.levelPerSec);
   if (p.level > maxLevel) { clamped.push(`level ${p.level}>${maxLevel}`); p.level = maxLevel; }
-  // Gold is credited per kill and nothing else. Zero kills since the last save means
-  // zero gold may be added, which is what makes idle accumulation impossible. A drop
-  // in the counter is not negative credit (claimed floors at 0), so a client cannot
-  // bank kills by rewinding, and the burst+rate cap bounds a forged counter.
-  const claimed = Math.max(0, (p.kills | 0) - (pp?.kills | 0));
-  const maxKills = CAPS.KILLS_BURST + Math.floor(dt * CAPS.KILLS_PER_SEC);
-  const credited = Math.min(claimed, maxKills);
-  const maxGold = base.gold + credited * CAPS.GOLD_PER_KILL;
+  // Gold is credited per kill and nothing else: zero new kills means zero gold may be
+  // added, which is what makes idle accumulation impossible. Each type is credited
+  // separately at its own value and capped by its own plausibility bound, so a boss
+  // kill is worth a boss's gold while a forged 20-boss claim credits one. A lower
+  // count than last time floors at 0, so kills cannot be banked by rewinding.
+  const prevKills = pp?.kills || {};
+  let creditedGold = 0;
+  const overCap = [];
+  for (const id of Object.keys(p.kills)) {
+    const r = ENEMY_REWARDS[id];
+    const claimed = Math.max(0, p.kills[id] - (prevKills[id] | 0));
+    if (!claimed) continue;
+    const cap = r.cap.burst + Math.floor(dt * r.cap.perSec);
+    const credited = Math.min(claimed, cap);
+    creditedGold += credited * r.gold[1];
+    if (credited < claimed) overCap.push(`${id} ${claimed}->${credited}`);
+  }
+  const maxGold = base.gold + creditedGold;
   if (p.gold > maxGold) {
-    const over = claimed > credited ? `, ${claimed - credited} of ${claimed} kills over cap` : '';
-    clamped.push(`gold ${p.gold}>${maxGold} (credited ${credited} kills${over})`);
+    const why = overCap.length ? ` (kills over cap: ${overCap.join(', ')})` : (creditedGold ? '' : ' (no kills credited)');
+    clamped.push(`gold ${p.gold}>${maxGold}${why}`);
     p.gold = maxGold;
   }
   return { rec: p, clamped };
