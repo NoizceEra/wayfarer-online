@@ -15,6 +15,8 @@ import { fileURLToPath } from 'url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const out = path.join(root, 'server', 'shared', 'item_ids.json');
+// The client bundle can't import from server/ (Vercel doesn't upload it), so keep an identical copy in src/data.
+const outClient = path.join(root, 'src', 'data', 'item_ids.json');
 
 const { GEAR } = await import(path.join(root, 'src/data/gear.js'));
 const { ITEMS } = await import(path.join(root, 'src/data/items.js'));
@@ -36,11 +38,14 @@ const doc = {
 const json = `${JSON.stringify(doc, null, 1)}\n`;
 
 if (process.argv.includes('--check')) {
-  const cur = fs.existsSync(out) ? fs.readFileSync(out, 'utf8') : '';
-  if (cur !== json) { console.error(`${path.relative(root, out)} is stale: run node tools/export_item_ids.mjs`); process.exit(1); }
+  for (const f of [out, outClient]) {
+    const cur = fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : '';
+    if (cur !== json) { console.error(`${path.relative(root, f)} is stale: run node tools/export_item_ids.mjs`); process.exit(1); }
+  }
   console.log('item_ids.json up to date');
 } else {
   fs.mkdirSync(path.dirname(out), { recursive: true });
   fs.writeFileSync(out, json);
+  fs.writeFileSync(outClient, json);
   console.log(`wrote ${path.relative(root, out)}: ${Object.keys(gear).length} gear, ${doc.items.length} items, ${doc.mats.length} mats`);
 }
