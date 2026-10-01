@@ -1,6 +1,8 @@
 import { input } from '../core/input.js';
 import { settings, UI_SCALES, DEFAULT_SETTINGS } from '../core/settings.js';
 import { audio } from '../systems/audio.js';
+import { profileId, exportBackup } from '../core/slots.js';
+import { NEWS } from '../data/news.js';
 
 // Pause menu (Esc / START / HUD menu button) with three pages:
 //   main     – resume, settings, controls, help, palette, leave
@@ -77,8 +79,11 @@ export class PauseMenu {
     this.c?.destroy();
     this.items = [];
     const { w: VW, h: VH } = s.view();
-    const pw = this.page === 'controls' ? Math.min(VW - 16, VW >= 640 ? 600 : 380) : Math.min(VW - 16, 300);
-    const ph = this.page === 'main' ? 300 : Math.min(VH - 16, this.page === 'controls' ? 470 : 380);
+    const pw = this.page === 'controls' ? Math.min(VW - 16, VW >= 640 ? 600 : 380)
+      : this.page === 'news' ? Math.min(VW - 16, 520)
+        : this.page === 'community' ? Math.min(VW - 16, 460)
+          : Math.min(VW - 16, 300);
+    const ph = this.page === 'main' ? 340 : Math.min(VH - 16, this.page === 'controls' || this.page === 'news' ? 470 : 380);
     this.c = s.add.container(Math.round(VW / 2), Math.round(VH / 2)).setDepth(200);
     this.pw = pw; this.ph = ph;
     // body swallows clicks so they never reach the world / HUD below
@@ -87,6 +92,8 @@ export class PauseMenu {
     this.add(f.setInteractive()); this.add(n);
     if (this.page === 'main') this.buildMain(pw, ph);
     else if (this.page === 'settings') this.buildSettings(pw, ph);
+    else if (this.page === 'news') this.buildNews(pw, ph);
+    else if (this.page === 'community') this.buildCommunity(pw, ph);
     else this.buildControls(pw, ph);
     this.focus = Math.min(this.focus, Math.max(0, this.items.length - 1));
     this.drawFocus();
@@ -103,11 +110,73 @@ export class PauseMenu {
       ['Settings', () => this.goto('settings')],
       ['Controls / rebind keys', () => this.goto('controls')],
       [`Help & hotkeys [${input.labelFor('help')}]`, () => h.help()],
+      ["What's new (patch notes)", () => this.goto('news')],
+      ['Community & backup code', () => this.goto('community')],
       ['Cycle Game Boy palette', () => h.cyclePalette()],
       [h.leaveLabel(), () => h.leave()],
     ];
     rows.forEach(([label, cb], i) => this.button(0, -ph / 2 + 58 + i * 34, 220, 26, label, cb, { size: 10 }));
     this.footer(h.modeText(), ph);
+  }
+
+  // Patch notes, straight from src/data/news.js (same list the title screen shows).
+  buildNews(pw, ph) {
+    const s = this.scene;
+    this.title("WHAT'S NEW", ph);
+    const limit = ph / 2 - 46;
+    let y = -ph / 2 + 46;
+    for (const block of NEWS) {
+      if (y > limit) break;
+      this.add(s.add.text(-pw / 2 + 16, y, `${block.date} · ${block.title}`, T(11, '#ffe07a', { fontStyle: 'bold' })).setOrigin(0, 0.5));
+      y += 17;
+      for (const line of block.items) {
+        if (y > limit) break;
+        const t = this.add(s.add.text(-pw / 2 + 24, y, `· ${line}`, T(9, '#e6f2c0', { wordWrap: { width: pw - 48 } })).setOrigin(0, 0.5));
+        y += Math.max(13, t.height + 4);
+      }
+      y += 8;
+    }
+    const by = ph / 2 - 30;
+    this.button(-60, by, 108, 22, 'BACK', () => this.goto('main'), { size: 9 });
+    this.button(60, by, 108, 22, 'HELP', () => { this.close(); this.hooks.help?.(); }, { size: 9 });
+    this.msgT = this.footer('Also on the title screen under "What\'s new".', ph, '#8a9a70');
+  }
+
+  // Plain-language account / community page: no account needed, backup code, socials.
+  buildCommunity(pw, ph) {
+    const s = this.scene;
+    this.title('COMMUNITY & BACKUP CODE', ph);
+    const X = -pw / 2 + 16;
+    let y = -ph / 2 + 44;
+    const line = (txt, size = 9, color = '#e6f2c0') => {
+      const t = this.add(s.add.text(X, y, txt, T(size, color, { wordWrap: { width: pw - 32 } })).setOrigin(0, 0.5));
+      y += Math.max(13, t.height + 3);
+      return t;
+    };
+    line('You are playing as a guest. No account, no sign-up — ever.', 10, '#fff6d8');
+    line(`This device: ${profileId()}`, 9, '#9bbc0f');
+    y += 2;
+    line('Save a BACKUP CODE so your heroes follow you to another device:', 9, '#e6f2c0');
+    const code = exportBackup();
+    const shown = code.length > 46 ? `${code.slice(0, 46)}…` : code;
+    this.add(s.add.rectangle(0, y + 8, pw - 32, 26, 0x120c06, 1).setStrokeStyle(1, 0x8a5a2b));
+    this.add(s.add.text(X + 4, y + 8, shown, T(8, '#ffe0a0')).setOrigin(0, 0.5));
+    y += 32;
+    this.button(X + 68, y, 128, 20, 'COPY BACKUP CODE', async () => {
+      let ok = false;
+      try { await navigator.clipboard.writeText(code); ok = true; } catch { ok = false; }
+      this.say(ok ? 'Backup code copied — keep it private.' : 'Could not copy — use Heroes on the title screen.');
+    }, { size: 8 });
+    y += 24;
+    line('Restore it on another device: Heroes (title screen) › Backup code › paste.', 8, '#8a9a70');
+    y += 6;
+    line('FOLLOW THE GAME', 9, '#ffd84a');
+    this.button(X + 76, y, 148, 20, 'X: @Wayfarer_Online', () => { try { window.open('https://x.com/Wayfarer_Online', '_blank', 'noopener,noreferrer'); } catch { /* popup blocked */ } }, { size: 8 });
+    this.button(X + 240, y, 140, 20, 'DISCORD: coming soon', () => this.say('Discord invite lands with the next update.'), { size: 8, color: 0x7a7a52 });
+    y += 26;
+    this.button(-60, ph / 2 - 30, 108, 22, 'BACK', () => this.goto('main'), { size: 9 });
+    this.msgT = this.footer('Your heroes live on this device — the backup code is all you need to carry them.', ph, '#8a9a70');
+    void y;
   }
 
   buildSettings(pw, ph) {

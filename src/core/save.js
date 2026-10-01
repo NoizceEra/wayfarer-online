@@ -124,6 +124,8 @@ export function normalizeExtras(raw) {
     counters: cleanMap(r.counters),
     visited: flagMap(r.visited),
     lore: flagMap(r.lore),
+    // first-run tour dismissed/completed for this hero (see src/ui/OnboardingPanel.js)
+    onboarded: r.onboarded ? 1 : 0,
     buyback: Array.isArray(r.buyback) ? r.buyback.filter((b) => b && typeof b.id === 'string').slice(0, 10).map((b) => ({ kind: b.kind === 'mat' ? 'mat' : 'gear', id: b.id, n: Math.max(1, Math.floor(b.n) || 1), price: Math.max(0, Math.floor(b.price) || 0) })) : [],
     quests: q ? {
       active: isObj(q.active) ? q.active : {},
