@@ -6,7 +6,7 @@ import { WebSocketTransport } from '@colyseus/ws-transport';
 import { CFG } from './config.js';
 import { log } from './log.js';
 import { initStore, flushAll, storeStats, stopStore } from './store.js';
-import { WayfarerRoom, LIVE_ROOMS, STATS, setSocialModule } from './WayfarerRoom.js';
+import { WayfarerRoom, LIVE_ROOMS, STATS, setSocialModule, addRoomModule } from './WayfarerRoom.js';
 
 // Wayfarer relay: public persistent world shards + private co-op rooms,
 // area-authority enemy sync, AOI/delta replication, file-backed saves.
@@ -20,8 +20,17 @@ try { social = await import('./social.js'); } catch (e) {
   if (e?.code !== 'ERR_MODULE_NOT_FOUND') log.error('social.js failed to load', { err: e.message });
 }
 if (social) { setSocialModule(social); log.info('social module loaded'); }
+// Optional economy module (trade / market / mail / persisted guilds), same hook
+// shape plus init(), flush(), beforeSave(). See server/economy.js.
+let economy = null;
+try { economy = await import('./economy.js'); } catch (e) {
+  if (e?.code !== 'ERR_MODULE_NOT_FOUND') log.error('economy.js failed to load', { err: e.message });
+}
 
 initStore();
+if (economy) {
+  try { economy.init?.(); addRoomModule(economy); log.info('economy module loaded'); } catch (e) { log.error('economy init failed', { err: e.message }); economy = null; }
+}
 
 const app = express();
 app.use(cors({ origin: CFG.CORS_ORIGIN === '*' ? true : CFG.CORS_ORIGIN.split(',') }));
@@ -52,6 +61,7 @@ app.get('/rooms/:code', async (req, res) => {
   } catch (e) { res.status(500).json({ error: 'lookup_failed' }); }
 });
 try { social?.routes?.(app); } catch (e) { log.error('social.routes failed', { err: e.message }); }
+try { economy?.routes?.(app); } catch (e) { log.error('economy.routes failed', { err: e.message }); }
 
 const httpServer = http.createServer(app);
 const gameServer = new Server({
@@ -69,6 +79,7 @@ gameServer.onShutdown(async () => {
   shuttingDown = true;
   log.info('shutdown: flushing store');
   await flushAll();
+  try { economy?.stop?.(); } catch (e) { log.error('economy flush failed', { err: e.message }); }
   stopStore();
   log.info('shutdown complete');
 });
