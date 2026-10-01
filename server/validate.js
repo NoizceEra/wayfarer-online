@@ -20,8 +20,17 @@ export const CAPS = {
   freshGold: 0,
   // a level every 20s of wall time + 1 is far above any legit pace
   levelPerSec: 1 / 20,
-  // generous: quest rewards / boss / selling a bag of epics
-  goldBase: 1500, goldPerSec: 60,
+  // Gold is earned ONLY by killing enemies. A time-based allowance (goldBase +
+  // dt*goldPerSec) used to live here and was free money for any client that simply
+  // stayed connected and saved on a loop: an idle client went 0 -> 12,846 gold
+  // across 8 saves, and it was the only unbounded path into the economy
+  // (docs/audit/dupes.md: save-gold-rate-farm). Kills are client-reported, so they
+  // are bounded instead: a client may claim only the kills it could plausibly have
+  // made since its last save, valued at the per-kill ceiling published by
+  // server/rewards.js (mirrors the client's ENEMY_TABLE gold ranges).
+  GOLD_PER_KILL: 12,
+  KILLS_PER_SEC: 1,
+  KILLS_BURST: 8,
 };
 
 export function sanitizeProgress(p) {
@@ -31,6 +40,8 @@ export function sanitizeProgress(p) {
     level: int(p.level, 1, CAPS.LEVEL_MAX, 1),
     xp: int(p.xp, 0, 1e9, 0),
     xpNext: int(p.xpNext, 1, 1e9, 100),
+    // Monotonic lifetime kill count. The only source of gold (see CAPS above).
+    kills: int(p.kills, 0, 1e9, 0),
     gold: int(p.gold, 0, CAPS.GOLD_MAX, 0),
     potions: int(p.potions, 0, 99, 0),
     maxHp: int(p.maxHp, 1, 1e6, 100), maxMp: int(p.maxMp, 0, 1e6, 30), atk: int(p.atk, 0, 1e6, 10),
@@ -75,8 +86,19 @@ export function validateSave(prev, progress, now = Date.now()) {
   const dt = Math.max(0, (now - (base.savedAt || now)) / 1000);
   const maxLevel = base.level + 1 + Math.floor(dt * CAPS.levelPerSec);
   if (p.level > maxLevel) { clamped.push(`level ${p.level}>${maxLevel}`); p.level = maxLevel; }
-  const maxGold = base.gold + CAPS.goldBase + Math.floor(dt * CAPS.goldPerSec);
-  if (p.gold > maxGold) { clamped.push(`gold ${p.gold}>${maxGold}`); p.gold = maxGold; }
+  // Gold is credited per kill and nothing else. Zero kills since the last save means
+  // zero gold may be added, which is what makes idle accumulation impossible. A drop
+  // in the counter is not negative credit (claimed floors at 0), so a client cannot
+  // bank kills by rewinding, and the burst+rate cap bounds a forged counter.
+  const claimed = Math.max(0, (p.kills | 0) - (pp?.kills | 0));
+  const maxKills = CAPS.KILLS_BURST + Math.floor(dt * CAPS.KILLS_PER_SEC);
+  const credited = Math.min(claimed, maxKills);
+  const maxGold = base.gold + credited * CAPS.GOLD_PER_KILL;
+  if (p.gold > maxGold) {
+    const over = claimed > credited ? `, ${claimed - credited} of ${claimed} kills over cap` : '';
+    clamped.push(`gold ${p.gold}>${maxGold} (credited ${credited} kills${over})`);
+    p.gold = maxGold;
+  }
   return { rec: p, clamped };
 }
 
