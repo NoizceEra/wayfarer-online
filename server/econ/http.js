@@ -8,20 +8,28 @@
 //   * Every response carries `econ`, the flag block, so a client never has to guess why a
 //     call was refused.
 //
-// GATES
+// GATES — the token layer is OPT-IN, so the ORDER matters: a device with no wallet is
+// told it may LINK one (wallet_not_linked, framed as an invitation) before it is ever
+// told the economy is switched off or the chain is unconfigured. A refusal a player
+// cannot act on reads as an error; an invitation to opt in does not.
 //   GET  /econ/rates     always answers (public rate sheet: read-only, chain-free, and the
 //                        one endpoint that must work before the economy is switched on).
-//   POST /econ/balance   always answers — it reads the local ledger, never the chain.
+//   POST /econ/balance   always answers — it reads the local ledger and the local link
+//                        state, never the chain. It reports `walletLinked`, `address`,
+//                        `short` and `pendingOnLinkRaw` at the TOP level so the client's
+//                        marker/panel can tell a linked wallet from an unlinked one.
 //   POST /econ/history   always answers, same reason.
-//   POST /econ/stake     requires ECON_ENABLED (moves value in the ledger; no RPC).
-//   POST /econ/unstake   requires ECON_ENABLED (moves value in the ledger; no RPC).
-//   POST /econ/claim     requires ECON_ENABLED *and* the chain config, because a claim is
-//                        the one call that exists to move tokens on-chain. Unconfigured,
-//                        it refuses 503 econ_unconfigured naming what is missing.
+//   POST /econ/stake     wallet link -> ECON_ENABLED (moves value in the ledger; no RPC).
+//   POST /econ/unstake   wallet link -> ECON_ENABLED (moves value in the ledger; no RPC).
+//   POST /econ/claim     wallet link -> ECON_ENABLED *and* the chain config, because a
+//                        claim is the one call that exists to move tokens on-chain.
+//                        Unconfigured, it refuses 503 econ_unconfigured naming what is
+//                        missing.
 //
-// The claim DESTINATION is resolved server-side from the device's signature-verified wallet
-// link (ops -> wallet.js). No request field can name an address. The relay still dry-runs
-// unless PAYOUTS_ENABLED === 'true', which is payouts.js's rule and is not touched here.
+// The claim DESTINATION is resolved server-side from the device's signature-verified
+// wallet link through the ONE authority (walletStore.verifiedWalletFor). No request
+// field can name an address. The relay still dry-runs unless PAYOUTS_ENABLED === 'true',
+// which is payouts.js's rule and is not touched here.
 
 import express from 'express';
 import { log } from '../log.js';
@@ -68,6 +76,14 @@ export function routes(app) {
     if (!needToken) return { ip, b };
     if (typeof b.token !== 'string' || !TOKEN_RE.test(b.token)) { fail(res, 400, 'bad_token'); return null; }
     return { ip, b, dk: deviceKey(b.token) };
+  };
+  /** The OPT-IN gate: value-moving calls need a signature-verified wallet link. */
+  const needWallet = (res, dk) => {
+    if (ops.linkedWallet(dk) !== null) return true;
+    // NEVER framed as an error or a missed opportunity: the whole game runs on gold
+    // without a wallet, and this call is simply not available yet.
+    fail(res, 403, 'wallet_not_linked', { message: ops.WALLET_OPT_IN, optIn: true });
+    return false;
   };
   /** ECON_ENABLED gate for anything that moves value. */
   const needEnabled = (res) => {
@@ -131,6 +147,7 @@ export function routes(app) {
   // ── POST /econ/stake {token, tierId} ──────────────────────────────────────
   app.post('/econ/stake', json, wrap((req, res) => {
     const ctx = pre(req, res); if (!ctx) return;
+    if (!needWallet(res, ctx.dk)) return;
     if (!needEnabled(res)) return;
     if (limited('action', ctx.dk)) return fail(res, 429, 'rate_limited');
     let r;
@@ -143,6 +160,7 @@ export function routes(app) {
   // ── POST /econ/unstake {token} ────────────────────────────────────────────
   app.post('/econ/unstake', json, wrap((req, res) => {
     const ctx = pre(req, res); if (!ctx) return;
+    if (!needWallet(res, ctx.dk)) return;
     if (!needEnabled(res)) return;
     if (limited('action', ctx.dk)) return fail(res, 429, 'rate_limited');
     const r = ops.unstakeNow(ctx.dk);
@@ -155,6 +173,7 @@ export function routes(app) {
   // idempotency key so a client that times out can retry the SAME claim safely.
   app.post('/econ/claim', json, wrap(async (req, res) => {
     const ctx = pre(req, res); if (!ctx) return;
+    if (!needWallet(res, ctx.dk)) return;
     if (!needChain(res)) return;
     if (limited('action', ctx.dk)) return fail(res, 429, 'rate_limited');
     const r = await ops.claimFor(ctx.dk, ctx.dk, { claimId: ctx.b.claimId });
@@ -164,7 +183,7 @@ export function routes(app) {
     delete out.chainReady;
     if (r.error === 'dry_run') return res.status(200).json({ ...out, econ: flagsPublic() });
     if (r.ok) return res.json({ ...out, balance: ops.balanceFor(ctx.dk), econ: flagsPublic() });
-    const status = r.error === 'already_paid' || r.error === 'no_verified_wallet' || r.error === 'insufficient'
+    const status = r.error === 'already_paid' || r.error === 'wallet_not_linked' || r.error === 'insufficient'
       ? 409
       : r.error === 'rate_limited' ? 429
         : r.error === 'internal' ? 500 : 400;

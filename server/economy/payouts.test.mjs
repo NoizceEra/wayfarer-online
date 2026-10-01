@@ -86,6 +86,11 @@ console.log('\n3. input and balance gates');
 }
 
 console.log('\n4. the FLOAT CAP (the blast radius from a stolen relay key)');
+// The float is an ON-CHAIN read, so it is a SIGNING-PATH gate only: a dry run never
+// touches the network (see payouts.js). Enable payouts for this section so the float
+// gates are actually reached; every case below refuses BEFORE the debit, and the
+// injected sendImpl is never called, so no balance moves.
+process.env.PAYOUTS_ENABLED = 'true';
 {
   const r = await P.claim({ playerKey: PLAYER, walletAddress: WALLET, amountRaw: 10 * M, claimId: 'claim_fcap_0001' },
     deps({ floatBalanceImpl: async () => 50_000 * M }));
@@ -104,6 +109,7 @@ console.log('\n4. the FLOAT CAP (the blast radius from a stolen relay key)');
     deps({ floatBalanceImpl: async () => { throw new Error('rpc down'); } }));
   ok('an unreadable float refuses rather than assuming a balance', r.ok === false && /float_unreadable/.test(r.reason), r.reason);
 }
+delete process.env.PAYOUTS_ENABLED;
 
 console.log('\n5. the happy path');
 process.env.PAYOUTS_ENABLED = 'true';

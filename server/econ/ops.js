@@ -12,19 +12,31 @@
 //     credited, so no argument combination can pay past the lifetime budget.
 //   * UNKNOWN INPUT THROWS. An unknown tierId is a programming/input error, never a silent
 //     fallback to 'none' — a typo that defaulted would pay the wrong rate forever.
-//   * THE DESTINATION IS NEVER A REQUEST FIELD. A claim resolves the wallet from
-//     server/wallet.js (the single verified-wallet authority, docs/BLOCKCHAIN_V1.md §3.5)
-//     and payouts.js re-verifies it against the signature-proven link (identity.js) before
-//     anything is signed. A caller cannot name an address.
+//   * THE DESTINATION IS NEVER A REQUEST FIELD. A claim resolves the wallet from the ONE
+//     signature-verified authority — `verifiedWalletFor` in server/walletStore.js
+//     (docs/BLOCKCHAIN_V1.md §3.5) — and payouts.js re-verifies it before anything is
+//     signed. A caller cannot name an address, and an unverified/legacy link resolves to
+//     null so it can never be one.
+//   * THE TOKEN LAYER IS OPT-IN. Until a device has a signature-verified wallet link:
+//     a boss kill still pays GOLD and adds NO WAYFARER ledger entry, stake / unstake /
+//     claim refuse with `wallet_not_linked` (framed as an invitation, never an error),
+//     and the only trace of the token layer is `pendingOnLinkRaw` — what the device
+//     WOULD have been owed, recorded and reported, never paid (pending.js).
 //   * DRY RUN BY DEFAULT. payouts.claim() moves nothing unless PAYOUTS_ENABLED === 'true'.
 //     This module never sets it, and passes no deps in production.
 
 import { log } from '../log.js';
 import { deviceKey } from '../store.js';
+import { shortAddr } from '../validate.js';
 import { apply, balancesOf, hasApplied, history as ledgerHistory } from '../economy/ledger.js';
 import { claim as payoutsClaim, makeClaimId } from '../economy/payouts.js';
 import { STAKE_TIERS, TIER_IDS, BUDGET_TOTAL_RAW, lockExpiry, returnFor } from '../economy/stakeMath.js';
 import { ENEMY_REWARDS } from '../rewards.js';
+// THE single signature-verified wallet authority (server/walletStore.js). There is
+// exactly one, it is workstream B's, and nothing here builds a second one. An absent or
+// unverified link resolves to null, so every gate below fails closed.
+import { verifiedWalletFor } from '../walletStore.js';
+import { pendingFor, recordSaveAccomplishments } from './pending.js';
 import { econEnabled, chainReady, missingChainConfig, payoutsEnabled } from './config.js';
 import * as state from './state.js';
 
@@ -50,17 +62,43 @@ export function tierSpec(tierId) {
 
 export const budgetRemainingRaw = () => Math.max(0, BUDGET_TOTAL_RAW - state.budgetSpentRaw());
 
+// The OPT-IN copy. The token layer is a bonus, never a gate on play: this line is the
+// same one the HTTP surface returns, so ops and HTTP can never disagree about the tone.
+export const WALLET_OPT_IN = 'Link a wallet to enable crypto rewards - the whole game runs on gold without one.';
+
 const publicStake = (s) => (s ? { tierId: s.tierId, amountRaw: s.amountRaw, lockedAtMs: s.lockedAtMs, lockUntilMs: s.lockUntilMs } : null);
+
+// ── the wallet-link gate (THE authority, never a second lookup) ─────────────
+/**
+ * The signature-verified wallet address for this device, or null. Everything in this
+ * module that has anything to do with WAYFARER asks THIS question and nothing else
+ * (docs/BLOCKCHAIN_V1.md §3.5): an unlinked device, an unverified record and a legacy
+ * on-disk link all come back null, because `verifiedWalletFor` fails closed on all
+ * three. `deps.verifiedWalletImpl` exists ONLY so a test can stand in for the authority.
+ */
+export function linkedWallet(deviceKeyStr, deps = {}) {
+  if (typeof deps.verifiedWalletImpl === 'function') {
+    try { return deps.verifiedWalletImpl(deviceKeyStr) || null; } catch { return null; }
+  }
+  try { return verifiedWalletFor(String(deviceKeyStr || '')) || null; } catch { return null; }
+}
 
 // ── reads ───────────────────────────────────────────────────────────────────
 /**
  * The balance sheet a client is allowed to see. `wayfarer` is the LIQUID balance: a locked
  * stake has already been debited out of it (reason 'stake_lock'), so the liquid balance is
  * exactly what is claimable, and a stake can never be claimed while it is locked.
+ *
+ * THE TOKEN LAYER IS OPT-IN. Until a signature-verified wallet link exists this is a
+ * plain GOLD balance sheet: `walletLinked:false`, `address:null`, and the only trace of
+ * the token layer is `pendingOnLinkRaw` — a recording of what the device would have been
+ * owed, which is REPORTED and never paid. Reading your own state is never an error.
  */
 export function balanceFor(playerKey) {
   const b = balancesOf(playerKey) || { gold: 0, wayfarer: 0 };
   const stake = state.stakeOf(playerKey);
+  const address = linkedWallet(playerKey);
+  const pending = pendingFor(playerKey);
   return {
     ok: true,
     gold: b.gold,
@@ -70,6 +108,14 @@ export function balanceFor(playerKey) {
     lockUntilMs: stake ? stake.lockUntilMs : 0,
     claimableRaw: b.wayfarer,
     stake: publicStake(stake),
+    // Top-level, so the client's marker/panel can tell a linked wallet from an unlinked
+    // one without digging into `econ`. Display-only; never a credential.
+    walletLinked: address !== null,
+    address,
+    short: address ? shortAddr(address) : null,
+    // What this device would be owed if it linked a wallet NOW. Recorded, reported,
+    // never paid (see pending.js).
+    pendingOnLinkRaw: pending.pendingOnLinkRaw,
   };
 }
 
@@ -84,8 +130,13 @@ export function historyFor(playerKey, limit = 50) {
  * One stake per player; release it before re-locking. Returns a refusal object rather than
  * throwing for "normal" refusals, and THROWS for an unknown tier.
  */
-export function stakeNow(playerKey, tierId, nowMs = Date.now()) {
+export function stakeNow(playerKey, tierId, nowMs = Date.now(), deps = {}) {
   const spec = tierSpec(tierId);                       // throws, never defaults
+  // OPT-IN GATE: no signature-verified wallet link means the token layer does not exist
+  // for this device yet. This is NOT an error and NOT a missed opportunity.
+  if (!linkedWallet(playerKey, deps)) {
+    return { ok: false, error: 'wallet_not_linked', message: WALLET_OPT_IN, address: null };
+  }
   if (spec.minLockRaw <= 0) {
     return { ok: false, error: 'no_lock_required', message: `tier '${tierId}' locks nothing` };
   }
@@ -118,7 +169,10 @@ export function stakeNow(playerKey, tierId, nowMs = Date.now()) {
  * holding span, capped by the remaining lifetime budget; `effectiveYear1Bps` on the rate
  * sheet is the rate this actually pays over a one-year hold.
  */
-export function unstakeNow(playerKey, nowMs = Date.now()) {
+export function unstakeNow(playerKey, nowMs = Date.now(), deps = {}) {
+  if (!linkedWallet(playerKey, deps)) {
+    return { ok: false, error: 'wallet_not_linked', message: WALLET_OPT_IN, address: null };
+  }
   const stake = state.stakeOf(playerKey);
   if (!stake) return { ok: false, error: 'not_staked' };
   const spec = tierSpec(stake.tierId);                 // a stored bad tier is a bug, not a default
@@ -189,12 +243,20 @@ export function unstakeNow(playerKey, nowMs = Date.now()) {
  * The credit is ALSO plausibility-capped exactly like gold in validate.js
  * (burst + perSec * elapsed), so a forged counter cannot mint bosses.
  *
- * @returns {{ok:boolean, creditedRaw:number, byType:object, skipped:string[]}}
+ * @returns {{ok:boolean, linked:boolean, creditedRaw:number, pendingRaw:number, byType:object, skipped:string[]}}
  */
-export function creditKills(playerKey, kills, nowMs = Date.now(), { enabled = econEnabled() } = {}) {
-  const out = { ok: true, creditedRaw: 0, byType: {}, skipped: [] };
+export function creditKills(playerKey, kills, nowMs = Date.now(), { enabled = econEnabled(), linked } = {}) {
+  const out = { ok: true, linked: false, creditedRaw: 0, pendingRaw: 0, byType: {}, skipped: [] };
   if (!enabled) { out.ok = false; out.skipped.push('econ_disabled'); return out; }
   if (!kills || typeof kills !== 'object') { out.ok = false; out.skipped.push('no_kills'); return out; }
+
+  // THE OPT-IN GATE (docs/BLOCKCHAIN_V1.md part 2): the WAYFARER side of a kill exists
+  // ONLY for a device with a signature-verified wallet link. Gold was already credited
+  // by validate.js's clamp and is untouched here. With no link this writes NO ledger
+  // entry at all (not even a zero-amount one), logs nothing and errors nothing — it
+  // records what the kill WOULD have been worth and returns.
+  const isLinked = linked === undefined ? linkedWallet(playerKey) !== null : !!linked;
+  out.linked = isLinked;
 
   const prev = state.combatOf(playerKey);
   const credited = { ...prev.credited };
@@ -215,6 +277,16 @@ export function creditKills(playerKey, kills, nowMs = Date.now(), { enabled = ec
 
     const amountRaw = allowed * spec.crypto * CRYPTO_UNIT_RAW;
     const nextCount = already + allowed;
+
+    if (!isLinked) {
+      // UNLINKED: nothing enters the ledger. The count still advances so a replayed save
+      // cannot record the same kill twice, and the value lands in the retroactive record.
+      credited[type] = nextCount;
+      out.pendingRaw += amountRaw;
+      out.byType[type] = (out.byType[type] || 0) + amountRaw;
+      continue;
+    }
+
     const res = apply(playerKey, {
       id: `combat:${type}:${playerKey}:${nextCount}`,
       reason: 'combat', resource: 'wayfarer', amount: amountRaw,
@@ -230,6 +302,7 @@ export function creditKills(playerKey, kills, nowMs = Date.now(), { enabled = ec
     }
   }
   state.putCombat(playerKey, { credited, savedAtMs: nowMs });
+  if (out.pendingRaw > 0) state.addPendingRaw(playerKey, out.pendingRaw);
   return out;
 }
 
@@ -237,43 +310,58 @@ export function creditKills(playerKey, kills, nowMs = Date.now(), { enabled = ec
 export function creditKillsForSave(player, info, nowMs = Date.now()) {
   const token = player?.token;
   if (typeof token !== 'string' || !token) return null;
-  const kills = info?.rec?.kills;
-  if (!kills || typeof kills !== 'object') return null;
   const playerKey = stateKeyFor(token);
   if (!playerKey) return null;
-  return creditKills(playerKey, kills, nowMs);
+
+  // RETROACTIVE HOOK (part 3). While this device has NO signature-verified wallet,
+  // record the one-time accomplishments of this save and what its kills would have been
+  // worth. Recorded and reported; NEVER paid. Once a wallet is linked the live credit
+  // below takes over, so there is nothing retroactive left to keep.
+  let pending = null;
+  if (linkedWallet(playerKey) === null) {
+    const rec = recordSaveAccomplishments(playerKey, info?.rec, info?.raw, nowMs);
+    pending = { recorded: rec.added };
+  }
+
+  const kills = info?.rec?.kills;
+  if (!kills || typeof kills !== 'object') {
+    return pending ? { ok: true, linked: false, creditedRaw: 0, pendingRaw: 0, byType: {}, skipped: [], pending } : null;
+  }
+  const out = creditKills(playerKey, kills, nowMs);
+  if (pending) out.pending = pending;
+  return out;
 }
 
 // ── claim ───────────────────────────────────────────────────────────────────
-// The verified-wallet authority is server/walletStore.js (the module that OWNS the links map,
-// written only after an Ed25519 signature verifies) + server/wallet.js (which mounts the
-// routes). docs/BLOCKCHAIN_V1.md §3.5: any payout path must resolve through that one authority.
-// Imported LAZILY so this module still loads if the wallet layer is absent: an absent
-// authority resolves to "no verified wallet", and a claim then fails closed.
-let walletMod = null;
-let walletTried = false;
-async function defaultAuthority() {
-  if (!walletTried) {
-    walletTried = true;
-    try {
-      const store = await import('../walletStore.js');   // owns `links`
-      walletMod = store?.links ? store : await import('../wallet.js');
-    } catch (e) { walletMod = null; log.warn('econ: wallet authority unavailable; claims will refuse', { err: e.message }); }
-  }
-  return walletMod;
-}
+// THE ONE AUTHORITY. The destination is resolved through server/walletStore.js
+// `verifiedWalletFor` — the same function `balanceFor` and the wallet routes use — and
+// through nothing else (docs/BLOCKCHAIN_V1.md §3.5). An unlinked device, an unverified
+// record and a legacy on-disk link all resolve to null, so a claim fails closed.
 
-/** Resolve the destination for a DEVICE from the client-supplied... nothing. Server-side only. */
+/**
+ * Resolve the destination for a DEVICE, server-side only — no request field can name an
+ * address. `deps.verifiedWalletImpl` / `deps.walletAuthorityImpl` exist ONLY so a test
+ * can stand in for the authority; production passes nothing and reads the real module.
+ */
 export async function resolveWalletForDevice(deviceKeyStr, deps = {}) {
-  // deps.walletAuthorityImpl is a PROVIDER (async or sync) so a test can stand in for the
-  // wallet module; production always uses the lazy import of server/wallet.js.
-  const impl = deps.walletAuthorityImpl || defaultAuthority;
-  const authority = typeof impl === 'function' ? await impl() : impl;
-  const link = authority?.links?.byDevice?.[deviceKeyStr];
-  const addr = typeof link?.addr === 'string' ? link.addr : null;
-  if (!addr || !VERIFIED_WALLET.test(addr)) return null;
-  const at = Number.isSafeInteger(link.at) ? link.at : null;
-  return { address: addr, source: 'wallet.js', linkedAt: at };
+  let addr = null;
+  try {
+    if (typeof deps.verifiedWalletImpl === 'function') {
+      addr = await deps.verifiedWalletImpl(deviceKeyStr);
+    } else if (deps.walletAuthorityImpl !== undefined) {
+      const authority = typeof deps.walletAuthorityImpl === 'function' ? await deps.walletAuthorityImpl() : deps.walletAuthorityImpl;
+      if (authority && typeof authority.verifiedWalletFor === 'function') addr = await authority.verifiedWalletFor(deviceKeyStr);
+    } else {
+      addr = linkedWallet(deviceKeyStr);
+    }
+  } catch (e) {
+    log.warn('econ: verified-wallet lookup failed; refusing', { err: e.message });
+    return null;
+  }
+  // Defence in depth on top of the authority's own answer: never treat a non-address as
+  // a destination, whatever a stand-in returns.
+  if (typeof addr !== 'string' || !VERIFIED_WALLET.test(addr)) return null;
+  return { address: addr, source: 'walletStore.verifiedWalletFor', linkedAt: null };
 }
 
 /**
@@ -292,9 +380,11 @@ export async function claimFor(playerKey, deviceKeyStr, { claimId } = {}, deps =
   try { wallet = await resolveWalletForDevice(deviceKeyStr, deps); }
   catch (e) { return { ok: false, error: 'wallet_lookup_failed', message: e.message }; }
   if (!wallet) {
+    // OPT-IN, never an error and never a missed opportunity: the whole game runs on gold
+    // without a wallet. The code is the one the client's panel/marker already knows.
     return {
-      ok: false, error: 'no_verified_wallet',
-      message: 'No signature-verified wallet is linked to this device. Link one with /wallet/challenge + /wallet/link first.',
+      ok: false, error: 'wallet_not_linked', message: WALLET_OPT_IN, address: null,
+      reason: 'wallet_not_linked',
     };
   }
 

@@ -14,7 +14,13 @@
 //     replay of an old save must compute a delta of zero, not pay the boss again.
 //
 //   DATA_DIR/econ/state.json
-//     { version, budgetSpentRaw, stakes: { <playerKey>: {...} }, combat: { <playerKey>: {...} } }
+//     { version, budgetSpentRaw, stakes: { <playerKey>: {...} }, combat: { <playerKey>: {...} },
+//       pending: { <playerKey>: { earnedRaw, accomplishments: { <id>: at } } } }
+//
+// `pending` is the RETROACTIVE HOOK (docs/BLOCKCHAIN_V1.md, part 3): what a device that
+// has never linked a wallet would have been owed. It is RECORDED and REPORTED, never
+// paid, and it is what stops a player who plays 40 hours before linking from losing
+// everything they did.
 //
 // Writes are atomic (tmp + fsync + rename) and write-behind on CFG.SAVE_FLUSH_MS, matching
 // store.js / ledger.js, and flushed synchronously on stop(). playerKey is the sha256
@@ -35,7 +41,7 @@ let dirty = false;
 let timer = null;
 let seq = 0;
 
-const blank = () => ({ version: VERSION, budgetSpentRaw: 0, stakes: {}, combat: {} });
+const blank = () => ({ version: VERSION, budgetSpentRaw: 0, stakes: {}, combat: {}, pending: {} });
 const intOr0 = (v) => (Number.isSafeInteger(v) && v >= 0 ? v : 0);
 
 function readFile() {
@@ -61,6 +67,14 @@ function readFile() {
       if (/^[A-Za-z0-9_]{1,32}$/.test(t) && Number.isSafeInteger(n) && n >= 0) credited[t] = n;
     }
     d.combat[k] = { credited, savedAtMs: Number.isSafeInteger(v.savedAtMs) ? v.savedAtMs : 0 };
+  }
+  for (const [k, v] of Object.entries(parsed.pending && typeof parsed.pending === 'object' ? parsed.pending : {})) {
+    if (!KEY_RE.test(k) || !v || typeof v !== 'object') continue;
+    const accomplishments = {};
+    for (const [id, at] of Object.entries(v.accomplishments && typeof v.accomplishments === 'object' ? v.accomplishments : {})) {
+      if (/^[A-Za-z0-9_:.-]{1,80}$/.test(id)) accomplishments[id] = Number.isSafeInteger(at) && at > 0 ? at : 0;
+    }
+    d.pending[k] = { earnedRaw: intOr0(v.earnedRaw), accomplishments };
   }
   return d;
 }
@@ -143,7 +157,46 @@ export function putCombat(playerKey, rec) {
 
 export function stateStats() {
   const d = ensure();
-  return { stakes: Object.keys(d.stakes).length, tracked: Object.keys(d.combat).length, budgetSpentRaw: d.budgetSpentRaw, dirty };
+  return { stakes: Object.keys(d.stakes).length, tracked: Object.keys(d.combat).length, trackedPending: Object.keys(d.pending).length, budgetSpentRaw: d.budgetSpentRaw, dirty };
+}
+
+// ── pending-on-link (the retroactive hook, never paid) ──────────────────────
+export function pendingOf(playerKey) {
+  if (!KEY_RE.test(String(playerKey || ''))) return { earnedRaw: 0, accomplishments: {} };
+  const p = ensure().pending[String(playerKey)];
+  return p ? { earnedRaw: p.earnedRaw, accomplishments: { ...p.accomplishments } } : { earnedRaw: 0, accomplishments: {} };
+}
+function ensurePending(playerKey) {
+  const d = ensure();
+  const k = String(playerKey);
+  if (!d.pending[k]) d.pending[k] = { earnedRaw: 0, accomplishments: {} };
+  return d.pending[k];
+}
+/** Add to the would-be (never paid) balance of an UNLINKED device. */
+export function addPendingRaw(playerKey, raw) {
+  if (!Number.isSafeInteger(raw) || raw <= 0) return pendingOf(playerKey).earnedRaw;
+  const p = ensurePending(playerKey);
+  p.earnedRaw += raw;
+  dirty = true;
+  return p.earnedRaw;
+}
+/**
+ * Record one-time accomplishments (first boss kills, dungeon clears, achievements,
+ * bestiary / codex entries). Returns the number NEWLY recorded, so the caller can
+ * tell whether anything changed. Idempotent by id.
+ */
+export function recordAccomplishments(playerKey, ids, nowMs = Date.now()) {
+  if (!KEY_RE.test(String(playerKey || '')) || !Array.isArray(ids) || !ids.length) return 0;
+  const p = ensurePending(playerKey);
+  let added = 0;
+  for (const id of ids) {
+    if (typeof id !== 'string' || !/^[A-Za-z0-9_:.-]{1,80}$/.test(id)) continue;
+    if (p.accomplishments[id]) continue;
+    p.accomplishments[id] = nowMs;
+    added++;
+  }
+  if (added) dirty = true;
+  return added;
 }
 
 /** Test-only: drop in-memory state so a fresh process is simulated. */

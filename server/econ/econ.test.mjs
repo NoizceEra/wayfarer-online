@@ -41,7 +41,8 @@ const econHttp = await import('./http.js');
 const cfg = await import('./config.js');
 const SM = await import('../economy/stakeMath.js');
 const rates = await import('../economy/rates.js');
-const { b58encode } = await import('../validate.js');
+const { b58encode, shortAddr } = await import('../validate.js');
+const walletStore = await import('../walletStore.js');   // WS-B's ONE verified-wallet authority
 
 // ── tiny harness (same final-line convention as server/economy/*.test.mjs) ──
 let pass = 0; let fail = 0;
@@ -55,8 +56,19 @@ const TOKEN = crypto.randomBytes(18).toString('base64url');       // 24 chars, e
 ok('token shape matches TOKEN_RE and deviceKey', /^[A-Za-z0-9_-]{16,64}$/.test(TOKEN), TOKEN);
 const DK = ops.stateKeyFor(TOKEN);
 const WALLET = b58encode(crypto.randomBytes(32));                 // syntactically valid base58 pubkey
+const WALLET2 = b58encode(crypto.randomBytes(32));                // DK2's own wallet (one wallet per device)
+const WALLET3 = b58encode(crypto.randomBytes(32));                // DK3's own wallet
 const DAY = 86_400_000;
 const TOK = 10 ** 6;
+
+// The REAL devnet mint (SPL, 6 decimals, supply 1e9) — never wrapped SOL, which is not
+// an SPL mint. Nothing in this suite touches the chain: the dry run is network-free by
+// design (payouts.js) and the signing path injects mintCheckImpl.
+const MINT_DEVNET = '8q4tDsGTD1J2xNzpm4YVCY1QEpXGwMDhE3BkCdCd5xWg';
+const fakeMintCheck = async () => ({ ok: true, decimals: 6 });
+// The ONE legitimate way a test gives a device a signature-verified link: the same write
+// path the authority itself uses (walletStore.linkVerifiedWallet), never a hand-built record.
+const linkWallet = (dk, addr = WALLET) => walletStore.linkVerifiedWallet(dk, addr);
 
 // ── the surface, over a real socket ──
 const app = express();
@@ -110,11 +122,45 @@ ok('bad token refused 400', r.status === 400 && r.body.error === 'bad_token', r.
 r = await post('/econ/history', { token: TOKEN, limit: 9999 });
 ok('bad limit refused 400', r.status === 400 && r.body.error === 'bad_limit', r.body);
 
-// ── D. disabled refuses everything that moves value ─────────────────────────
-console.log('\nD. ECON_ENABLED off refuses value-moving calls');
+// ── C2. the OPT-IN read shape: an unlinked device sees NO token layer ───────
+console.log('\nC2. unlinked /econ/balance: gold-only, top-level link fields, nothing on the token layer');
+r = await post('/econ/balance', { token: TOKEN });
+ok('200 for an unlinked device (reading your own state is never a 4xx)', r.status === 200, r.status);
+ok('walletLinked:false at the TOP level', r.body.walletLinked === false, r.body.walletLinked);
+ok('address:null and short:null at the TOP level', r.body.address === null && r.body.short === null, { address: r.body.address, short: r.body.short });
+ok('the link fields are NOT nested inside econ (the client reads them at the top)',
+  !('walletLinked' in (r.body.econ || {})) && !('address' in (r.body.econ || {})), Object.keys(r.body.econ || {}));
+ok('wayfarer is exactly 0 and pendingOnLinkRaw is present',
+  r.body.wayfarer === 0 && typeof r.body.pendingOnLinkRaw === 'number' && r.body.pendingOnLinkRaw === 0,
+  { wayfarer: r.body.wayfarer, pendingOnLinkRaw: r.body.pendingOnLinkRaw });
+ok('the opt-in copy is an invitation, not an error', /^Link a wallet/.test(ops.WALLET_OPT_IN) && /gold/.test(ops.WALLET_OPT_IN), ops.WALLET_OPT_IN);
+
+// ── C3. the gate, asserted BEFORE any link exists ───────────────────────────
+console.log('\nC3. an UNLINKED device is refused every value-moving call with wallet_not_linked');
 for (const [p, body] of [['/econ/stake', { token: TOKEN, tierId: 't1' }], ['/econ/unstake', { token: TOKEN }], ['/econ/claim', { token: TOKEN }]]) {
   const res = await post(p, body);
-  ok(`${p} -> 403 econ_disabled`, res.status === 403 && res.body.error === 'econ_disabled', { status: res.status, body: res.body });
+  ok(`${p} -> 403 wallet_not_linked (opt-in copy)`,
+    res.status === 403 && res.body.error === 'wallet_not_linked' && res.body.optIn === true
+      && res.body.message === ops.WALLET_OPT_IN,
+    { status: res.status, error: res.body.error, message: res.body.message });
+}
+r = await post('/econ/balance', { token: TOKEN });
+ok('a refused stake/unstake/claim wrote NO token balance and NO ledger entry',
+  r.body.wayfarer === 0 && r.body.stakeTier === 'none' && (ledger.history(DK, 20) || []).length === 0,
+  { wayfarer: r.body.wayfarer, entries: (ledger.history(DK, 20) || []).map((e) => e.reason) });
+
+// ── D. disabled refuses everything that moves value (the LINK now exists) ───
+console.log('\nD. a LINKED device with ECON_ENABLED off is refused econ_disabled');
+const linkRes = linkWallet(DK);
+ok('fixture: the device holds a signature-verified link (linkVerifiedWallet)', linkRes.ok === true, linkRes);
+ok('the ONE authority confirms it', walletStore.verifiedWalletFor(DK) === WALLET, walletStore.verifiedWalletFor(DK));
+r = await post('/econ/balance', { token: TOKEN });
+ok('linked /econ/balance -> walletLinked:true + address + short at the TOP level',
+  r.status === 200 && r.body.walletLinked === true && r.body.address === WALLET && r.body.short === shortAddr(WALLET),
+  { status: r.status, walletLinked: r.body.walletLinked, address: r.body.address, short: r.body.short });
+for (const [p, body] of [['/econ/stake', { token: TOKEN, tierId: 't1' }], ['/econ/unstake', { token: TOKEN }], ['/econ/claim', { token: TOKEN }]]) {
+  const res = await post(p, body);
+  ok(`${p} -> 403 econ_disabled`, res.status === 403 && res.body.error === 'econ_disabled', { status: res.status, error: res.body.error });
 }
 
 // ── E. enabled but chain unconfigured ───────────────────────────────────────
@@ -132,7 +178,7 @@ ok('stake reaches the ledger (no chain needed) -> insufficient, not a config err
 
 // ── F. configured: stake / unstake / balance ────────────────────────────────
 console.log('\nF. configured: stake and unstake through the real ledger');
-process.env.WAYFARER_MINT = 'So11111111111111111111111111111111111111112';
+process.env.WAYFARER_MINT = MINT_DEVNET;
 const OTHER_RPC = ['CHAIN_RPC_URL', 'SOLANA_RPC_URL', 'SOLANA_RPC_URLS'];
 for (const k of OTHER_RPC) delete process.env[k];
 process.env.CHAIN_RPC_URLS = 'https://example.invalid';
@@ -201,9 +247,13 @@ ok('principal returned as well', un.balances.wayfarer > 2_000 * TOK, un.balances
 
 // ── I. claim: refusal, dry run, idempotency ─────────────────────────────────
 console.log('\nI. claim: unverified link refuses, default is dry-run, the claim id is idempotent');
-const fakeAuthority = () => ({ links: { byDevice: { [DK]: { addr: WALLET, at: 1 } } } });
+const fakeAuthority = () => ({
+  links: { byDevice: { [DK]: { addr: WALLET, at: 1 } } },
+  verifiedWalletFor: (dk) => (dk === DK ? WALLET : null),   // the authority's ONE question
+});
 const noWallet = await ops.claimFor(DK, DK, { claimId: 'econ_test_nolink_1' }, { walletAuthorityImpl: () => ({ links: { byDevice: {} } }) });
-ok('absent wallet link -> no_verified_wallet', noWallet.ok === false && noWallet.error === 'no_verified_wallet', noWallet);
+ok('absent wallet link -> wallet_not_linked (opt-in copy)', noWallet.ok === false && noWallet.error === 'wallet_not_linked'
+  && noWallet.message === ops.WALLET_OPT_IN, noWallet);
 const unverified = await ops.claimFor(DK, DK, { claimId: 'econ_test_unverified_1' }, {
   walletAuthorityImpl: fakeAuthority,
   payoutDeps: { verifierImpl: async () => false },   // identity.js does not know this link
@@ -213,11 +263,15 @@ ok('address present in wallet.js but NOT signature-verified -> wallet_not_verifi
 
 let sends = 0;
 const fakeSend = async () => { sends++; return { signature: `sig${sends}` }; };
+// A DRY RUN MUST NEVER TOUCH THE NETWORK. This call deliberately injects NO mintCheckImpl
+// and NO live RPC (CHAIN_RPC_URLS is https://example.invalid above): if the dry-run path
+// reached the on-chain mint gate the answer would be `mint_unverifiable`, not `dry_run`.
 const dry = await ops.claimFor(DK, DK, { claimId: 'econ_test_dry_1' }, {
   walletAuthorityImpl: fakeAuthority,
   payoutDeps: { verifierImpl: async () => true, sendImpl: fakeSend, floatBalanceImpl: async () => null },
 });
 ok('PAYOUTS_ENABLED unset -> dry_run, nothing signed', dry.ok === false && dry.error === 'dry_run' && dry.dryRun === true, dry);
+ok('the dry run is NETWORK-FREE (no mintCheckImpl, dead RPC, still dry_run)', dry.error === 'dry_run', dry.error);
 ok('dry run moved no money and sent nothing', sends === 0 && dry.amountRaw === 2_000 * TOK + un.released.emissionRaw, { sends, amountRaw: dry.amountRaw });
 ok('destination came from the server-side link, not the request', dry.destination === WALLET, dry.destination);
 
@@ -225,7 +279,7 @@ const balBeforeClaim = ledger.balancesOf(DK).wayfarer;
 process.env.PAYOUTS_ENABLED = 'true';
 const payDeps = {
   walletAuthorityImpl: fakeAuthority,
-  payoutDeps: { verifierImpl: async () => true, sendImpl: fakeSend, floatBalanceImpl: async () => 10_000_000_000 },
+  payoutDeps: { verifierImpl: async () => true, sendImpl: fakeSend, floatBalanceImpl: async () => 10_000_000_000, mintCheckImpl: fakeMintCheck },
 };
 const paid1 = await ops.claimFor(DK, DK, { claimId: 'econ_test_claim_1' }, payDeps);
 ok('PAYOUTS_ENABLED=true signs and pays', paid1.ok === true && paid1.signature === 'sig1' && sends === 1, paid1);
@@ -238,30 +292,76 @@ ok('exactly one claim debit in the journal for that id', claimEntries.length ===
 ledger.apply(DK, { id: 'admin:test:seed:claim2', reason: 'admin', resource: 'wayfarer', amount: 100 * TOK, meta: { why: 'test fixture' } });
 const paid3 = await ops.claimFor(DK, DK, { claimId: 'econ_test_claim_2' }, payDeps);
 ok('a DIFFERENT claim id pays again (keyed on the id, not a global latch)', paid3.ok === true && sends === 2, { paid3, sends });
+// The ON-CHAIN gate stays ABSOLUTE on the signing path. The dry run is the ONLY path
+// that skips it (asserted network-free above); anything that SIGNS must verify the mint.
+const balBeforeMint = ledger.balancesOf(DK).wayfarer;
+ledger.apply(DK, { id: 'admin:test:seed:mintgate', reason: 'admin', resource: 'wayfarer', amount: 10 * TOK, meta: { why: 'test fixture' } });
+const balBeforeMint2 = ledger.balancesOf(DK).wayfarer;
+const mintRej = await ops.claimFor(DK, DK, { claimId: 'econ_test_mint_reject_1' }, {
+  walletAuthorityImpl: fakeAuthority,
+  payoutDeps: {
+    verifierImpl: async () => true, sendImpl: fakeSend, floatBalanceImpl: async () => 10_000_000_000,
+    mintCheckImpl: async () => ({ ok: false, reason: 'mint not found on-chain' }),
+  },
+});
+ok('a mint that fails ON-CHAIN verification refuses on the signing path (mint_rejected)',
+  mintRej.ok === false && mintRej.error === 'mint_rejected' && sends === 2, { error: mintRej.error, sends });
+ok('the refused payout moved nothing and signed nothing',
+  ledger.balancesOf(DK).wayfarer === balBeforeMint2 && sends === 2, { before: balBeforeMint2, after: ledger.balancesOf(DK).wayfarer, sends });
 r = await post('/econ/claim', { token: TOKEN, claimId: 'bad id!' });
 ok('malformed claimId refused 400', r.status === 400 && r.body.error === 'bad_claim_id', { status: r.status, body: r.body });
 delete process.env.PAYOUTS_ENABLED;
 
-// ── J. per-kill combat credit ───────────────────────────────────────────────
-console.log('\nJ. kill credit: bosses only, replayed saves cannot double-pay, forged counts are capped');
+// ── J. per-kill combat credit: OPT-IN, bosses only, replay-proof, capped ────
+console.log('\nJ. kill credit: an UNLINKED device records pending and writes NO ledger entry');
 const TOKEN2 = crypto.randomBytes(18).toString('base64url');
 const DK2 = ops.stateKeyFor(TOKEN2);
 const n0 = Date.now();
-const kr = ops.creditKills(DK2, { forgelord: 1, fieldmouse: 5, nosuchenemy: 3 }, n0);
-ok('boss kill credits 20 WAYFARER (rewards.js crypto=20), trash mobs pay nothing',
-  kr.ok === true && kr.creditedRaw === 20 * TOK && Object.keys(kr.byType).join(',') === 'forgelord', kr);
-ok('unknown enemy id ignored', kr.skipped.length === 0, kr.skipped);
-ok('ledger holds it', ledger.balancesOf(DK2).wayfarer === 20 * TOK, ledger.balancesOf(DK2));
-const kr2 = ops.creditKills(DK2, { forgelord: 1, fieldmouse: 5, nosuchenemy: 3 }, n0 + 1000);
-ok('REPLAY of the same save credits nothing', kr2.ok === true && kr2.creditedRaw === 0, kr2);
-ok('replayed save left the balance alone', ledger.balancesOf(DK2).wayfarer === 20 * TOK, ledger.balancesOf(DK2));
-const kr3 = ops.creditKills(DK2, { forgelord: 50 }, n0 + 2000);
-ok('forged 50-boss claim capped to the plausibility bound (burst 1)', kr3.creditedRaw === 20 * TOK && kr3.skipped.includes('forgelord:capped'), kr3);
-ok('combat entries carry reason "combat" and a cumulative-count id',
-  (ledger.history(DK2, 20) || []).filter((e) => e.reason === 'combat').every((e) => /^combat:forgelord:/.test(e.id)),
+const UNLINKED_SAVE = {
+  rec: { kills: { forgelord: 1, fieldmouse: 5, nosuchenemy: 3 } },
+  raw: { ext: { ach: { a1: true, a2: true }, bestiary: { redclaw: 1 }, codex: { gear: { g1: 1 }, mats: { m1: 1 } }, counters: { dungeons: 2 } } },
+};
+const kr = ops.creditKillsForSave({ token: TOKEN2, name: 'Test' }, UNLINKED_SAVE, n0);
+ok('unlinked boss kill credits NO WAYFARER (linked:false, creditedRaw 0)', kr.ok === true && kr.linked === false && kr.creditedRaw === 0, kr);
+ok('it records what the kill WOULD have been worth (forgelord = 20)',
+  kr.pendingRaw === 20 * TOK && Object.keys(kr.byType).join(',') === 'forgelord', kr);
+ok('the ledger holds NOTHING for the device', (ledger.balancesOf(DK2) || {}).wayfarer === 0, ledger.balancesOf(DK2));
+ok('NO combat ledger entry is written at all (not even a zero-amount one)',
+  (ledger.history(DK2, 20) || []).filter((e) => e.reason === 'combat').length === 0,
   (ledger.history(DK2, 20) || []).map((e) => e.id));
+ok('unknown enemy id and trash mobs are ignored, nothing skipped', kr.skipped.length === 0, kr.skipped);
+const pend = state.pendingOf(DK2);
+ok('ONE-TIME accomplishments are recorded server-side before any wallet exists',
+  ['boss:forgelord', 'dungeon:first', 'ach:a1', 'ach:a2', 'bestiary:redclaw', 'codex:gear:g1', 'codex:mats:m1']
+    .every((id) => Object.prototype.hasOwnProperty.call(pend.accomplishments, id)),
+  Object.keys(pend.accomplishments));
+// earned 20 + dungeon 15 + ach 5+5 + bestiary 1 + gear 1 + mats 1 = 48 WAYFARER
+const EXPECT_PENDING = 48 * TOK;
+r = await post('/econ/balance', { token: TOKEN2 });
+ok('the retroactive hook is EXPOSED as pendingOnLinkRaw and NEVER PAID',
+  r.body.pendingOnLinkRaw === EXPECT_PENDING && r.body.wayfarer === 0 && r.body.walletLinked === false,
+  { pendingOnLinkRaw: r.body.pendingOnLinkRaw, wayfarer: r.body.wayfarer, walletLinked: r.body.walletLinked });
+ok('pendingOnLinkRaw is report-only: the ledger is still empty',
+  (ledger.balancesOf(DK2) || {}).wayfarer === 0, ledger.balancesOf(DK2));
+const kr2 = ops.creditKills(DK2, { forgelord: 1, fieldmouse: 5, nosuchenemy: 3 }, n0 + 1000);
+ok('REPLAY of the same save records nothing new', kr2.creditedRaw === 0 && kr2.pendingRaw === 0, kr2);
+r = await post('/econ/balance', { token: TOKEN2 });
+ok('the replayed save left pendingOnLinkRaw alone', r.body.pendingOnLinkRaw === EXPECT_PENDING, r.body.pendingOnLinkRaw);
+const kr3 = ops.creditKills(DK2, { forgelord: 50 }, n0 + 2000);
+ok('forged 50-boss claim capped to the plausibility bound (burst 1)', kr3.pendingRaw === 20 * TOK && kr3.skipped.includes('forgelord:capped'), kr3);
+r = await post('/econ/balance', { token: TOKEN2 });
+ok('the forged claim inflated pendingOnLinkRaw by exactly one boss', r.body.pendingOnLinkRaw === EXPECT_PENDING + 20 * TOK, r.body.pendingOnLinkRaw);
+
+console.log('\nJ2. once the wallet IS linked, the same kill credits the ledger');
+const link2 = linkWallet(DK2, WALLET2);
+ok('fixture: DK2 now holds a verified wallet link', link2.ok === true, link2);
 const viaSave = ops.creditKillsForSave({ token: TOKEN2, name: 'Test' }, { rec: { kills: { redclaw: 1 } } }, n0 + 3000);
-ok('the character-save hook credits the boss crypto (redclaw=5)', viaSave.creditedRaw === 5 * TOK, viaSave);
+ok('the character-save hook credits the boss crypto to the ledger (redclaw=5)',
+  viaSave.linked === true && viaSave.creditedRaw === 5 * TOK && viaSave.pendingRaw === 0, viaSave);
+ok('the ledger now holds it', ledger.balancesOf(DK2).wayfarer === 5 * TOK, ledger.balancesOf(DK2));
+ok('combat entries carry reason "combat" and a cumulative-count id',
+  (ledger.history(DK2, 20) || []).filter((e) => e.reason === 'combat').every((e) => /^combat:redclaw:/.test(e.id)),
+  (ledger.history(DK2, 20) || []).map((e) => e.id));
 const exempt = ops.creditKills(ops.stateKeyFor(crypto.randomBytes(18).toString('base64url')), { forgelord: 1 }, n0, { enabled: false });
 ok('ECON_ENABLED off -> no combat credit at all', exempt.ok === false && exempt.creditedRaw === 0 && exempt.skipped.includes('econ_disabled'), exempt);
 
@@ -286,6 +386,8 @@ console.log('\nL. the shutdown hook (index.js awaits econ.stop()) flushes everyt
 const econIndex = await import('./index.js');
 const TOKEN3 = crypto.randomBytes(18).toString('base64url');
 const DK3 = ops.stateKeyFor(TOKEN3);
+linkWallet(DK3, WALLET3);                               // the stake path needs a verified link
+ok('L fixture: DK3 linked', walletStore.verifiedWalletFor(DK3) === WALLET3);
 ledger.apply(DK3, { id: 'admin:test:seed:shutdown', reason: 'admin', resource: 'wayfarer', amount: 1_500 * TOK, meta: { why: 'test fixture' } });
 const lStake = ops.stakeNow(DK3, 't1', Date.now());
 ok('L fixture: stake accepted (fresh docs, nothing on disk yet)', lStake.ok === true, lStake);
@@ -313,6 +415,23 @@ ok('rates report the empty budget', r.body.emission.budgetRemainingRaw === 0, r.
 ok('rate sheet still served while the budget is empty', r.status === 200 && r.body.rows.length === 4, r.status);
 ok('idle gold is reported off on the sheet', r.body.idleGold === false);
 ok('rates rows are the rates.js rows', JSON.stringify(r.body.rows) === JSON.stringify(rates.rateRows()));
+
+// ── M. FAIL CLOSED: a legacy on-disk link is NOT a link ─────────────────────
+console.log('\nM. a legacy on-disk link (an address with no signature proof) reports as NOT linked');
+const TOKEN4 = crypto.randomBytes(18).toString('base64url');
+const DK4 = ops.stateKeyFor(TOKEN4);
+const WALLET4 = b58encode(crypto.randomBytes(32));
+// The OLD on-disk shape: a device->addr record written before links were verified.
+walletStore.links.byDevice[DK4] = { addr: WALLET4, at: 1 };
+walletStore.links.byAddr[WALLET4] = { dk: DK4, at: 1 };
+ok('the ONE authority fails closed on a legacy record', walletStore.verifiedWalletFor(DK4) === null, walletStore.verifiedWalletFor(DK4));
+r = await post('/econ/balance', { token: TOKEN4 });
+ok('legacy link reports walletLinked:false and address:null at the top level',
+  r.body.walletLinked === false && r.body.address === null && r.body.short === null,
+  { walletLinked: r.body.walletLinked, address: r.body.address });
+r = await post('/econ/stake', { token: TOKEN4, tierId: 't1' });
+ok('a legacy link is refused wallet_not_linked (never a payout destination)',
+  r.status === 403 && r.body.error === 'wallet_not_linked', { status: r.status, error: r.body.error });
 
 // ── shutdown ────────────────────────────────────────────────────────────────
 await new Promise((r2) => srv.close(r2));
