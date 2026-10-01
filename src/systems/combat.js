@@ -69,7 +69,8 @@ export class Combat {
     kb.addCapture('TAB');
     input.registerAction({ id: 'dodge', label: 'Dodge roll', group: 'Combat', keys: ['ShiftLeft', 'ShiftRight'], gameplay: true });
     input.registerAction({ id: 'target', label: 'Cycle target', group: 'Combat', keys: ['Tab'], gameplay: true });
-    kb.on('keydown-SPACE', () => { if (!typing()) this.dodge(); }); // Space also rolls (dialogs use it to confirm first)
+    // Space also rolls (dialogs use it to confirm first) — never while a menu/help modal owns the keyboard
+    kb.on('keydown-SPACE', () => { if (!typing() && !input.modal) this.dodge(); });
     input.on('dodge', () => { this.dodge(); return true; }, { scene });
     input.on('target', () => { this.cycleTarget(); return true; }, { scene });
     scene.input.on('pointerdown', (ptr) => { if (ptr.button === 0 && !scene.chatOpen && !scene.uiLock && !scene.uiModal) this.pickTarget(ptr.worldX, ptr.worldY); });
@@ -318,12 +319,9 @@ export class Combat {
     if (s.chatOpen || !this.canAct() || now < this.rollUntil + 120) return;
     if (this.stamina < ROLL_COST) { this.floatText(p.x, p.y - 26, 'Tired', '#c8c8c8', 'small'); audio.play('error', 0.5); return; }
     this.stamina -= ROLL_COST; this.stamUsedAt = now;
-    const k = s.keys || {};
-    let vx = 0, vy = 0;
-    if (k.A?.isDown || k.LEFT?.isDown) vx -= 1;
-    if (k.D?.isDown || k.RIGHT?.isDown) vx += 1;
-    if (k.W?.isDown || k.UP?.isDown) vy -= 1;
-    if (k.S?.isDown || k.DOWN?.isDown) vy += 1;
+    // roll toward the held movement direction (rebindable keys + gamepad via core/input), else facing
+    const mv = input.axis();
+    let vx = mv.x, vy = mv.y;
     vx += s.touchInput?.x || 0; vy += s.touchInput?.y || 0;
     let len = Math.hypot(vx, vy);
     if (len < 0.15) { const a = s.facingAngle(); vx = Math.cos(a); vy = Math.sin(a); len = 1; }

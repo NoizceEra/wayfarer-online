@@ -25,7 +25,9 @@ function cvs(scene, key, w, h, draw, nearest = false) {
   const t = scene.textures.createCanvas(key, w, h);
   draw(t.getContext(), w, h);
   t.refresh();
-  if (nearest) t.setFilter(0);
+  // pixel shapes stay crisp; soft gradients (dot/disc/ring/streak/beam) must filter LINEAR or the global
+  // pixelArt NEAREST turns every scaled-up glow into a stair-stepped block. (FilterMode: 0 = LINEAR, 1 = NEAREST)
+  t.setFilter(nearest ? Phaser.Textures.FilterMode.NEAREST : Phaser.Textures.FilterMode.LINEAR);
 }
 function ensureTex(scene) {
   if (scene.textures.exists('vfx.bubble')) return;
@@ -303,7 +305,7 @@ const SK = {
   flare(scene, p) {
     setEl(scene, 'holy');
     windup(scene, p, 0xffc860, 120);
-    anim(scene, p.x, p.y - 4, 'fx.circleOrange', { scale: 3.6, blend: ADD, alpha: 0.9 });
+    anim(scene, p.x, p.y - 4, 'fx.circleOrange', { scale: 2, blend: ADD, alpha: 0.75 });
     sweepRing(scene, p.x, p.y, 62, 0xffd060, 460);
     decal(scene, p.x, p.y + 2, { r: 52, color: 0xffb040, blend: ADD, a: 0.4, ms: 1100 });
     burst(scene, p.x, p.y - 4, { n: 14, speed: [25, 70], up: 30, life: [500, 900], color: [0xffd860, 0xffffff, 0xff9a30], g: -20, size: [0.6, 1.1] });
@@ -470,7 +472,7 @@ const SK = {
     setEl(scene, 'holy');
     windup(scene, p, 0xfff0a0, 120);
     pillar(scene, p.x, p.y + 2, 0xfff0a0, 110, 34, 1100, 0.85);
-    anim(scene, p.x, p.y - 6, 'fx.circleWhite', { scale: 3, blend: ADD, alpha: 0.85 });
+    anim(scene, p.x, p.y - 6, 'fx.circleWhite', { scale: 2, blend: ADD, alpha: 0.75 });
     sweepRing(scene, p.x, p.y, 50, 0xfff0a0, 520);
     healCrosses(scene, p.x, p.y - 6, 0x7aff9a, 9, 20);
     burst(scene, p.x, p.y - 6, { n: 14, key: 'vfx.star', speed: [15, 50], up: 50, life: [600, 1000], color: [0xffffff, 0xffe880], g: -30, size: [0.6, 1.1], jx: 12 });
@@ -482,7 +484,7 @@ const SK = {
     windup(scene, p, 0xffe070, 140);
     const R = c.radius || 78;
     glow(scene, p.x, p.y - 6, { r: R * 0.9, color: 0xfff0b0, dur: 380, a: 0.8, from: 0.2 });
-    anim(scene, p.x, p.y - 8, 'fx.explosion', { scale: R / 38, tint: 0xffe8a0 });
+    anim(scene, p.x, p.y - 8, 'fx.explosion', { scale: Math.min(2, R / 38), tint: 0xffe8a0 });
     sweepRing(scene, p.x, p.y, R, 0xffe070, 520);
     ring(scene, p.x, p.y + 2, { r: R * 0.5, color: 0xffffff, dur: 340 });
     radial(scene, p.x, p.y - 6, 14, 14, R * 0.75, { color: 0xfff0a0, dur: 360, w: 1.6 });
@@ -579,7 +581,7 @@ const SK = {
       },
       onComplete: () => {
         f.destroy(); m && release(scene, m);
-        anim(scene, x, y - 10, 'fx.explosion', { scale: R / 34 });
+        anim(scene, x, y - 10, 'fx.explosion', { scale: Math.min(2, R / 34) });
         anim(scene, x, y - 6, 'fx.flam', { scale: R / 28 });
         sweepRing(scene, x, y, R, 0xff7a20, 480);
         glow(scene, x, y - 6, { r: R, color: 0xffb060, dur: 300, a: 0.9 });
@@ -644,7 +646,7 @@ const SK = {
     setEl(scene, 'phys');
     windup(scene, p, 0xdfe8f0, 40);
     const R = c.radius || 42;
-    anim(scene, p.x, p.y - 8, 'fx.circular', { scale: R / 16, tint: 0xffe8e8, blend: ADD });
+    anim(scene, p.x, p.y - 8, 'fx.circular', { scale: Math.min(2, R / 16), tint: 0xffe8e8, blend: ADD });
     anim(scene, p.x, p.y - 8, 'fx.slashDouble', { scale: R / 18, angle: 180, tint: 0xffd0d0 });
     // two spinning crescents
     for (let k = 0; k < 2; k++) {

@@ -514,12 +514,15 @@ export class WorldScene extends Phaser.Scene {
   }
 
   interact() {
-    if (this.areas?.interact()) return; // doors, signs, waystones, area/ambient NPCs
     let best = null, bd = CONFIG.interactRadius;
-    for (const n of this.npcs) {
-      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, n.x, n.y);
-      if (d < bd) { bd = d; best = n; }
+    if (!this.areas?.current) {
+      for (const n of this.npcs) {
+        const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, n.x, n.y);
+        if (d < bd) { bd = d; best = n; }
+      }
     }
+    // doors, signs, waystones, stations, area/ambient NPCs — unless a town NPC is closer
+    if (this.areas?.interact(best ? bd : 1e9)) return;
     if (best) {
       audio.play('npc');
       this.spawnFx(best.x, best.y - 20, 'fx.spark', 0.9);

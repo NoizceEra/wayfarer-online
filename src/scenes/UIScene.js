@@ -301,7 +301,8 @@ export class UIScene extends Phaser.Scene {
       input.addCloser({ id: 'pause-sub', priority: 850, isOpen: () => this.menu.isOpen && this.menu.page !== 'main', close: () => this.menu.goto('main') }),
       input.addCloser({ id: 'shop', priority: 450, isOpen: () => !!this.shop?.isOpen, close: () => this.shop.close() }),
       input.addCloser({ id: 'equip', priority: 400, isOpen: () => !!this.equip?.isOpen, close: () => this.equip.toggle(false) }),
-      input.addCloser({ id: 'pause', priority: 100, isOpen: () => this.menu.isOpen, close: () => this.menu.close() }),
+      // pause is drawn above every panel (it can be opened over one from the HUD II button), so it closes first
+      input.addCloser({ id: 'pause', priority: 800, isOpen: () => this.menu.isOpen, close: () => this.menu.close() }),
       input.on('menu', () => { this.menu.open('main'); return true; }),
       input.on('help', () => { this.help.toggle(); return true; }),
       input.on('chat', () => this.openChat()),
@@ -311,7 +312,7 @@ export class UIScene extends Phaser.Scene {
     );
     this.offs.push(
       input.addCloser({ id: 'social', priority: 950, isOpen: () => !!this.social?.anyOpen?.(), close: () => social.act('closeAll') }),
-      input.addCloser({ id: 'fishing', priority: 700, isOpen: () => !!this.fishing?.isOpen, close: () => {} }),
+      input.addCloser({ id: 'fishing', priority: 700, isOpen: () => !!this.fishing?.isOpen, close: () => this.fishing.end('cancel') }),
       input.addCloser({ id: 'journal', priority: 470, isOpen: () => !!this.journal?.isOpen, close: () => this.journal.close() }),
       input.addCloser({ id: 'craft', priority: 460, isOpen: () => !!this.craftPanel?.isOpen, close: () => this.craftPanel.close() }),
     );
@@ -525,8 +526,9 @@ export class UIScene extends Phaser.Scene {
   // HUD buttons (separate scene above this one): lift the UI scene while they are open.
   syncRaise() {
     if (!this.small) return;
-    const on = !!(this.journal?.isOpen || this.craftPanel?.isOpen);
-    if (on === this._raised) return;
+    // (bag / shop are full-screen on phones too: CHAR/SKILL buttons used to cover their header + HEAD slot)
+    const on = !!(this.journal?.isOpen || this.craftPanel?.isOpen || this.equip?.isOpen || this.shop?.isOpen);
+    if (on === !!this._raised) return;
     this._raised = on;
     if (on) this.scene.bringToTop();
     else { if (this.scene.get('character')) this.scene.bringToTop('character'); this.scene.bringToTop('overlay'); }
@@ -550,6 +552,7 @@ export class UIScene extends Phaser.Scene {
     const dtS = (delta || 16) / 1000;
     this.fishing?.update(dtS);
     this.craftPanel?.update();
+    this.syncRaise(); // no-op unless a full-screen panel opened/closed (phones)
     // Hotbar cooldown sweep
     const w   = this.world();
     const now = w?.time.now ?? 0;
