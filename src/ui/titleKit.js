@@ -2,7 +2,9 @@
 // with hover / pressed / keyboard-focus states, a geometric focus navigator (keyboard, d-pad,
 // Tab, mouse and touch all drive the same focus) and a DOM text entry for name / code fields
 // (real <input>: IME, paste, mobile soft keyboards and tab order all work).
+import Phaser from 'phaser';
 import { audio } from '../systems/audio.js';
+import { input, isTypingTarget } from '../core/input.js';
 
 export const C = {
   bg: 0x07140a, panel: 0x0a1c10, panelHi: 0x10281a, olive: 0x9bbc0f, oliveDk: 0x306230, oliveMid: 0x4e8a30,
@@ -19,6 +21,60 @@ export function txt(scene, parent, x, y, str, { size = 12, color = C.text, font 
   const t = scene.add.text(x, y, str, st).setOrigin(origin[0], origin[1]);
   parent?.add(t);
   return t;
+}
+
+export function ago(ts) {
+  const n = Number(ts);
+  if (!n) return '';
+  const s = Math.max(0, (Date.now() - n) / 1000);
+  if (s < 90) return 'just now';
+  if (s < 3600) return `${Math.round(s / 60)}m ago`;
+  if (s < 86400) return `${Math.round(s / 3600)}h ago`;
+  if (s < 86400 * 14) return `${Math.round(s / 86400)}d ago`;
+  try { return new Date(n).toLocaleDateString(); } catch { return ''; }
+}
+
+export async function copyText(s) {
+  try { await navigator.clipboard.writeText(String(s || '')); return true; } catch { /* fall through */ }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = String(s || '');
+    ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+    document.body.appendChild(ta); ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  } catch { return false; }
+}
+
+// Jacquard12 wordmark in a gold frame, with an optional shine sweep.
+export function addLogo(scene, parent, x, y, { size = 36, reduce = false, sub = 'a cozy open world' } = {}) {
+  const w = Math.min(460, Math.max(220, Math.round(size * 8.6)));
+  const h = Math.round(size + 28);
+  const g = scene.add.container(x, y);
+  parent?.add(g);
+  frame(scene, g, 0, 0, w, h, { fill: 0x08140c, alpha: 0.72 });
+  if (scene.textures.exists('title.glow')) {
+    const glow = scene.add.image(0, 0, 'title.glow').setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.22).setDisplaySize(w * 0.9, h * 1.4);
+    g.add(glow);
+  }
+  const title = txt(scene, g, 0, sub ? -6 : 0, 'WAYFARER ONLINE', {
+    size, font: FONT.title, color: C.gold_s, stroke: ['#1a1000', Math.max(3, Math.round(size / 10))],
+  });
+  title.setShadow(0, 2, '#000000', 4, false, true);
+  if (sub) txt(scene, g, 0, size * 0.38, sub, { size: Math.max(8, Math.round(size * 0.28)), font: FONT.body, color: C.muted });
+  const shine = scene.add.rectangle(-w / 2, 0, Math.max(10, size * 0.35), h - 10, 0xffffff, 0.16).setBlendMode(Phaser.BlendModes.ADD);
+  g.add(shine);
+  let t0 = 0;
+  const tick = (time) => {
+    if (!g.active || reduce) { shine.setVisible(false); return; }
+    t0 += 0.016;
+    const p = (t0 * 0.18) % 1.4 - 0.2;
+    shine.x = -w / 2 + p * w;
+    shine.setAlpha(0.08 + 0.12 * Math.sin(t0 * 2));
+  };
+  if (reduce) shine.setVisible(false);
+  return { g, title, shine, w, h, tick };
 }
 
 // Dark glass panel with an olive border, inner gold hairline and corner studs.
@@ -187,4 +243,78 @@ export class DomEntry {
     const el = this.el; this.cfg = silent ? null : this.cfg; this.cfg = null; this.el = null;
     if (el) { el.remove(); }
   }
+}
+
+// Canvas-mirrored text field. Click / Enter starts a real DOM <input> (see DomEntry).
+export function makeField(scene, parent, nav, entry, o) {
+  const { x, y, w, h } = o;
+  const add = (g) => { parent.add(g); return g; };
+  const it = {
+    id: o.id, ax: (o.ox || 0) + x, ay: (o.oy || 0) + y, w, h, kind: 'field',
+    enabled: o.enabled !== false, visible: true, hover: false, value: o.value || '',
+    onClick: () => it.edit(),
+  };
+  it.shadow = add(scene.add.rectangle(x + 2, y + 3, w, h, 0x000000, 0.35));
+  it.bg = add(scene.add.rectangle(x, y, w, h, 0x0c2212).setStrokeStyle(2, C.oliveDk));
+  it.text = txt(scene, parent, x - w / 2 + 10, y, it.value || o.placeholder || '', {
+    size: o.size || 13, origin: [0, 0.5], color: it.value ? C.textHi : C.dim,
+  });
+  it.cursor = txt(scene, parent, 0, y, '_', { size: o.size || 13, origin: [0, 0.5], color: C.gold_s });
+  it.cursor.setVisible(false);
+  it.setValue = (v) => {
+    it.value = String(v || '');
+    it.text.setText(it.value || o.placeholder || '');
+    it.text.setColor(it.value ? C.textHi : C.dim);
+    it.cursor.setX(it.text.x + it.text.displayWidth + 2);
+  };
+  it.edit = () => {
+    if (!it.enabled) return;
+    nav.setFocus(it, true);
+    entry.start({
+      value: it.value, max: o.max || 14, upper: !!o.upper, pattern: o.pattern, label: o.label || 'Text',
+      onChange: (v) => { it.setValue(v); o.onChange?.(v); },
+      onCommit: (v, dir) => { it.setValue(v); o.onCommit?.(v, dir); it.render(); },
+      onCancel: () => { o.onCancel?.(); it.render(); },
+    });
+    it.render();
+  };
+  it.render = () => {
+    const f = nav.focus === it, hot = it.hover || f || entry.active;
+    it.bg.setStrokeStyle(f ? 3 : 2, f ? C.gold : hot ? C.olive : C.oliveDk);
+    it.bg.setFillStyle(hot ? 0x14301a : 0x0c2212);
+    it.cursor.setVisible(f || entry.active);
+    it.cursor.setX(it.text.x + it.text.displayWidth + 2);
+  };
+  it.bg.setInteractive({ useHandCursor: true });
+  it.bg.on('pointerover', () => { it.hover = true; nav.setFocus(it, true); it.render(); });
+  it.bg.on('pointerout', () => { it.hover = false; it.render(); });
+  it.bg.on('pointerdown', () => it.edit());
+  nav.register(it);
+  it.render();
+  return it;
+}
+
+// Keyboard / gamepad / Tab all drive the same Nav. Esc/B closes when `isOpen()`.
+export function bindTitleNav(scene, nav, { isOpen, close } = {}) {
+  const prev = input.nav;
+  const api = {
+    move(d) { nav.move(d < 0 ? 'up' : 'down'); },
+    adjust(d) { nav.adjust(d); },
+    activate() { nav.activate(); },
+    back() { close?.(); },
+  };
+  input.nav = api;
+  input.addCloser({ id: `title-nav:${scene.scene.key}`, priority: 850, isOpen: () => !!isOpen?.(), close: () => close?.(), scene });
+  const onTab = (e) => {
+    if (e.key !== 'Tab' || isTypingTarget(e.target) || isTypingTarget(document.activeElement)) return;
+    if (!scene.scene.isActive()) return;
+    e.preventDefault();
+    nav.step(e.shiftKey ? -1 : 1);
+  };
+  window.addEventListener('keydown', onTab);
+  scene.events.once('shutdown', () => {
+    window.removeEventListener('keydown', onTab);
+    if (input.nav === api) input.nav = prev && prev !== api ? prev : null;
+  });
+  return api;
 }
