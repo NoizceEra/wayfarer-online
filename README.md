@@ -29,6 +29,26 @@ npm start             # ws://localhost:2567
 Set the client URL via `.env`: `VITE_SERVER_URL=ws://localhost:2567`
 (production: your Railway URL).
 
+## Smoke test
+
+`tools/smoke.mjs` is a headless regression check that plays with real key presses:
+title → creator → world → opens/closes every panel (I C K L U N H P O G, pause) → chat
+typing (no hotkey leaks) → combat (Tab, J chain, 1-4, Shift dodge, Q) → save → page reload →
+Continue, then verifies level/XP/gold/bag/stats/skills/position survived. It exits non-zero on any
+uncaught page error, `console.error` (relay-unreachable network noise is ignored), stuck panel,
+lost progress or NaN/undefined HUD text.
+
+```bash
+npx vite build
+node tools/smoke.mjs                                  # serves dist/ on :5499 by itself
+node tools/smoke.mjs --canvas --size 390x844 --touch  # canvas renderer, phone viewport
+node tools/smoke.mjs --url https://wayfarer-online.vercel.app/
+```
+
+Needs Playwright with Chromium (`npm i -D playwright && npx playwright install chromium`, or a
+global install; `PLAYWRIGHT_PATH=<dir containing playwright>` and `CHROMIUM_PATH=<browser binary>`
+override the lookup).
+
 ## Deploy
 
 - **Vercel (client):** import this folder, framework = Vite, build = `npm run build`, output = `dist`.
