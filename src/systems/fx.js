@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { CONFIG } from '../config.js';
 import { AREAS } from '../data/zones.js';
 import { makeRoads, roadDist } from '../world/ground.js';
+import { waterAt, onBridge } from '../world/waterways.js';
 import { audio } from './audio.js';
 import { settings, impl, QUALITY } from './fxSettings.js';
 import { ParticlePool } from './particles.js';
@@ -134,9 +135,10 @@ export class Fx {
       if (ly >= 28 * T) return 'wood';
       return (lx >= 38 * T || ly >= 24 * T) ? 'sand' : 'cobble';
     }
+    if (id !== 'dock' && waterAt(x, y) && !onBridge(x, y)) return 'water';
     if (id === 'woods') return 'leaf';
     if (id === 'ruins') return 'stone';
-    if (roadDist(this.roads, x, y) < 11) return 'dirt';
+    if (onBridge(x, y) || roadDist(this.roads, x, y) < 11) return 'dirt';
     if (id === 'town') return Math.hypot(x - this.spawn.x, y - this.spawn.y) < 86 ? 'cobble' : 'dirt';
     return 'grass';
   }
@@ -146,6 +148,7 @@ export class Fx {
     if (id === 'dock') { const o = AREAS.dock.origin; return y - o.y < 23 * T && x - o.x < 37 * T; }
     if (id === 'frost' || id === 'indoor' || id === 'desert') return false;
     if (x < 44 || y < 44 || x > this.W - 44 || y > this.H - 44) return false;
+    if (waterAt(x, y, 8) || onBridge(x, y, 12)) return false;
     if (id === 'town' && Math.hypot(x - this.spawn.x, y - this.spawn.y) < 70) return false; // cobbled plaza stays dry-looking
     return true;
   }

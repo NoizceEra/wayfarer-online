@@ -2,7 +2,9 @@ import Phaser from 'phaser';
 import { bus, Events } from '../core/events.js';
 import { net } from '../net/NetworkManager.js';
 import { PALETTES } from '../core/palette.js';
-import { ZONES } from '../data/zones.js';
+import { ZONES, PORTALS } from '../data/zones.js';
+import { LANDMARKS, BRIDGES } from '../data/worldLayout.js';
+import { waterAt, roadAt } from '../world/waterways.js';
 import { audio } from '../systems/audio.js';
 import { CONFIG } from '../config.js';
 import { makeHudIcons, HUD_ABILITY_ICON } from '../systems/hudIcons.js';
@@ -589,7 +591,7 @@ export class UIScene extends Phaser.Scene {
   // ── minimap ────────────────────────────────────────────────────────────────
   buildMinimap() {
     const MAP_T = 128;                     // world is 128x128 tiles
-    const COL = { water: '#2f6fb0', meadow: '#6cb850', woods: '#2f6b3a', town: '#d8c184', ruins: '#5f6f80' };
+    const COL = { water: '#2f6fb0', meadow: '#6cb850', woods: '#2f6b3a', town: '#d8c184', ruins: '#5f6f80', road: '#c4a06a' };
     const order = ['meadow', 'woods', 'ruins', 'town'];
     if (!this.textures.exists('hud.mapTerrain')) {
       const t = this.textures.createCanvas('hud.mapTerrain', MAP_T, MAP_T);
@@ -598,6 +600,25 @@ export class UIScene extends Phaser.Scene {
       for (const id of order) {
         const z = ZONES.find((q) => q.id === id); if (!z) continue;
         c.fillStyle = COL[id]; c.fillRect(z.rect.x, z.rect.y, z.rect.w, z.rect.h);
+      }
+      const TT = CONFIG.tile;
+      for (let ty = 0; ty < MAP_T; ty++) {
+        for (let tx = 0; tx < MAP_T; tx++) {
+          const px = tx * TT + 8, py = ty * TT + 8;
+          if (waterAt(px, py)) { c.fillStyle = COL.water; c.fillRect(tx, ty, 1, 1); }
+          else if (roadAt(px, py).e < 5) { c.fillStyle = COL.road; c.fillRect(tx, ty, 1, 1); }
+        }
+      }
+      c.fillStyle = '#8d6a3a';
+      for (const b of BRIDGES) c.fillRect(b.x - 2, b.y - 1, 4, 2);
+      const LM = { light: '#ffe8a0', mill: '#e8d8b0', tower: '#c8d0d8', camp: '#ff9a4a', shrine: '#fff0c0', troll: '#c09070' };
+      for (const m of LANDMARKS) {
+        c.fillStyle = LM[m.type] || '#fff';
+        c.fillRect(m.tx - 1, m.ty - 1, 3, 3);
+      }
+      for (const p of PORTALS) {
+        c.fillStyle = `#${p.color.toString(16).padStart(6, '0')}`;
+        c.fillRect(p.tile.x - 1, p.tile.y - 1, 3, 3);
       }
       t.refresh(); t.setFilter(0);
     }

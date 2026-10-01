@@ -3,6 +3,7 @@ import { CONFIG } from '../config.js';
 import { JOBS, ENEMY_TABLE } from '../data/jobs.js';
 import { ZONES, QUESTS, AREAS } from '../data/zones.js';
 import { buildOverworld, zoneAt } from '../world/overworld.js';
+import { waterAt, nearestDry } from '../world/waterways.js';
 import { ModularPlayer } from '../entities/ModularPlayer.js';
 import { Enemy } from '../entities/Enemy.js';
 import { bus, Events } from '../core/events.js';
@@ -67,6 +68,10 @@ export class WorldScene extends Phaser.Scene {
       this.player.applyProgression(saved.prog); // derived HP/MP/ATK come from stats now
       this.player.hp = this.player.effMaxHp(); this.player.mp = this.player.effMaxMp();
       this.player.setPosition(saved.x || spawn.x, saved.y || spawn.y);
+      if (waterAt(this.player.x, this.player.y, 6)) {
+        const d = nearestDry(this.player.x, this.player.y, 8);
+        this.player.setPosition(d.x, d.y);
+      }
       this.questState = saved.quest || { idx: 0, kills: {} };
       // gear state is normalised by loadProgress (old saves: chest/trinket migrate, unknown ids dropped)
       this.player.inventory = saved.inventory;
