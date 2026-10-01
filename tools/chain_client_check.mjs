@@ -215,7 +215,7 @@ const reply = (url) => {
   }
   if (p === '/econ/rates') return [200, { ok: true, enabled: true, rows: liveRows, taper: 'Returns taper: the effective rate halves every 180 days.' }];
   if (p === '/chain/status') return [200, { ok: true, enabled: true, configured: true, mint: '8q4tDsmint', cluster: 'devnet', rewardsWallet: 'RewardAddr111111111111111111111111111111', treasuryWallet: 'TreasAddr1111111111111111111111111111111', flags: { stake: true, claim: true, payouts: false, walletLink: true, dryRun: true }, minClaimRaw: 1_000_000 }];
-  if (p === '/econ/balance') return [200, { ok: true, balances: { gold: 1234, wayfarer: 2_000 * 10 ** 6 }, stake: { tierId: 't1', amountRaw: 1_000 * 10 ** 6, unlockAt: Date.now() + 3_600_000 }, linked: true, address: 'Ab3kAddr1111111111111111111111111111111111', short: 'Ab3k…9xQz' }];
+  if (p === '/econ/balance') return [200, { ok: true, balances: { gold: 1234, wayfarer: mode === 'unlinked' ? 0 : 2_000 * 10 ** 6, pendingOnLinkRaw: mode === 'unlinked' ? 25_000_000 : 0 }, stake: mode === 'unlinked' ? null : { tierId: 't1', amountRaw: 1_000 * 10 ** 6, unlockAt: Date.now() + 3_600_000 }, linked: mode !== 'unlinked', walletLinked: mode !== 'unlinked', address: mode === 'unlinked' ? null : 'Ab3kAddr1111111111111111111111111111111111', short: mode === 'unlinked' ? null : 'Ab3k…9xQz' }];
   if (p === '/econ/history') return [200, { ok: true, entries: [{ at: Date.now(), reason: 'combat', resource: 'wayfarer', amount: 5 * 10 ** 6, balanceAfter: 2_000 * 10 ** 6 }, { at: Date.now(), reason: 'fee', resource: 'gold', amount: -25 }] }];
   return [200, { ok: true, message: 'Recorded.' }];
 };
@@ -335,6 +335,30 @@ ok('no exported hook is a title/onboarding/auto-open entry point',
   !/Title|Onboard|Welcome|Boot|AutoOpen|FirstRun/i.test(exportedNames), exportedNames);
 ok('module never opens itself: no top-level panel construction', !/\n\s*new ChainPanel\(\)/.test(srcPanel.replace(/installChainPanel[\s\S]*$/, '')));
 ok('whole run produced zero console.error / console.warn', errs.length === 0 && warns.length === 0, [...errs, ...warns].join(' | '));
+
+// ── PLAY FIRST: the relay is live, but this device has NOT linked a wallet ────
+// The owner's rule: the token layer does not exist for a player until they connect
+// a wallet. This section is what makes that rule TESTED rather than merely claimed —
+// it is the exact state a brand-new player is in while the economy is fully live.
+section('relay live but NO wallet linked (play-first: the token layer is invisible)');
+mode = 'unlinked';
+await mod.chainNet.refresh();
+await settle();
+const ust = mod.chainNet.state;
+ok('the economy is enabled on this relay, yet this device reads unlinked', ust.enabled === true && ust.linked === false, JSON.stringify({ e: ust.enabled, l: ust.linked }));
+const hintUnlinked = mod.chainHint();
+ok('chainHint() returns NOTHING before a wallet is linked (no teaser, no locked icon, no hint)',
+  hintUnlinked.available === false && hintUnlinked.text === '' && !hintUnlinked.hint, JSON.stringify(hintUnlinked));
+ok('the retroactive hook reaches the client (pendingOnLinkRaw is carried through)', ust.balances.pendingOnLinkRaw === 25_000_000, JSON.stringify(ust.balances));
+let unlinkedRenderErr = null;
+try { for (const tab of ['rates', 'stake', 'claim', 'ledger']) { panel.tab = tab; panel.render(); } } catch (e) { unlinkedRenderErr = e; }
+ok('every tab renders unlinked without throwing', !unlinkedRenderErr, unlinkedRenderErr && (unlinkedRenderErr.stack || '').split('\n')[0]);
+panel.tab = 'claim'; panel.render();
+const ustText = textOf(document.body);
+ok('the claim tab shows what the player is ALREADY owed (the retroactive hook, made visible)',
+  /Already recorded for you/i.test(ustText) && /25[\s\S]{0,24}WAYFARER/.test(ustText), ustText.slice(0, 160));
+ok('that line appears only inside the panel the player opened — nothing on the HUD', mod.chainHint().available === false);
+ok('still no wallet panel auto-constructed for an unlinked device', panel.walletPanelInjected === null);
 
 console.error = realError; console.warn = realWarn;
 console.log(`\n==== ${pass} passed, ${fail} failed ====`);

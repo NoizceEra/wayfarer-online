@@ -24,13 +24,17 @@ import { net } from './NetworkManager.js';
 // so the panel — and the game around it — stays alive when the relay is
 // unreachable, the economy is off, or this browser has no device profile yet.
 //
-// ── the surface this client codes against (server/econ/**) ───────────────────
-//   GET  /econ/rates      -> { ok, enabled?, rows: [rateRow], taper? }
+// ── the surface this client codes against (verified against server/econ/**) ──
+//   GET  /econ/rates      -> { ok, enabled?, rows: [rateRow], taper?, emission? }
 //   GET  /chain/status    -> { ok, enabled?, configured?, mint?, cluster?,
 //                              rewardsWallet?, treasuryWallet?, payoutsEnabled?,
 //                              flags?{stake,claim,payouts,walletLink,dryRun} }
-//   POST /econ/balance    { token }              -> { ok, balances:{gold,wayfarer},
-//                              stake:{tierId,amountRaw,unlockAt}, linked, address, short }
+//   POST /econ/balance    { token }              -> { ok, gold, wayfarer, stakeTier,
+//                              lockedRaw, lockUntilMs, claimableRaw, stake,
+//                              walletLinked, address, short, pendingOnLinkRaw }
+//                              NOTE: the link fields are TOP-LEVEL on the wire, not
+//                              nested under `balances`. `pendingOnLinkRaw` is what the
+//                              device would be owed if it linked now (record-only).
 //   POST /econ/stake      { token, tier, amountRaw } -> { ok, ... }
 //   POST /econ/unstake    { token }              -> { ok, ... }
 //   POST /econ/claim      { token }              -> { ok, claimId?, amountRaw?, dryRun?, message? }
@@ -256,6 +260,13 @@ export function normBalance(data) {
     linked: bool(pick(d, 'linked', 'walletLinked'), !!address),
     address,
     short: str(pick(d, 'short', 'shortAddress')),
+    // What this device would be owed if it linked a wallet NOW. Recorded server-side
+    // from the moment the player starts playing (one-time accomplishments, first
+    // kills, first clears), so someone who plays for forty hours before linking is
+    // not punished for not having had a wallet. Report-only: it is never paid by
+    // reading it, and it is not a promise of value — the panel shows it so the
+    // opt-in has something honest to point at.
+    pendingOnLinkRaw: int(pick(b, 'pendingOnLinkRaw', 'pendingRaw', 'pendingOnLink')) ?? 0,
   };
 }
 
@@ -320,7 +331,7 @@ export class ChainNet {
       flags: { stake: true, claim: true, payouts: false, walletLink: true, dryRun: false },
       mint: '', cluster: '', rewardsWallet: '', treasuryWallet: '', minClaimRaw: null,
       rates: [], taper: '',
-      balances: { gold: 0, wayfarer: 0 }, stake: normStake({}),
+      balances: { gold: 0, wayfarer: 0, linked: false, address: null, short: '', pendingOnLinkRaw: 0 }, stake: normStake({}),
       linked: false, address: null, short: '',
       history: null, message: '', code: null, updatedAt: 0,
     };
@@ -377,7 +388,11 @@ export class ChainNet {
         minClaimRaw: status.minClaimRaw ?? this.state.minClaimRaw,
         rates: rt.ok ? normRates(rt.data) : this.state.rates,
         taper: (rt.ok && str(pick(rt.data, 'taper', 'taperNote'))) || status.taper || this.state.taper,
-        balances: bal ? { gold: bal.gold, wayfarer: bal.wayfarer } : this.state.balances,
+        // Carry the WHOLE normalized balance, not a hand-picked pair. Projecting only
+        // {gold, wayfarer} here silently discarded `linked`, `address`, `short` and
+        // `pendingOnLinkRaw` before the panel could ever see them — which is exactly
+        // why the HUD marker read every device as unlinked, including linked ones.
+        balances: bal || this.state.balances,
         stake: bal ? bal.stake : this.state.stake,
         linked: bal ? bal.linked : this.state.linked,
         address: bal ? (bal.address || this.state.address) : this.state.address,

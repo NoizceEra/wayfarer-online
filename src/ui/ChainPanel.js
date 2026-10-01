@@ -301,6 +301,15 @@ export class ChainPanel {
       b.appendChild(el('div', 'ch-row', `<span class="n">Payout wallet</span><span>${escapeHtml(addr || 'linked')}</span>`));
     } else {
       b.appendChild(el('div', 'ch-note', 'No wallet is linked to this device, so there is nowhere for a payout to go. Linking is optional, free, and never asked for until you open the Wallet panel.'));
+      // The retroactive hook, made visible. The relay has been recording what this
+      // device is owed from the moment the player started playing — so time spent
+      // before linking is not lost. Shown ONLY here, inside the panel the player
+      // deliberately opened: it is never hinted at in the world, the HUD or onboarding.
+      const pend = st.balances.pendingOnLinkRaw || 0;
+      if (!linked && pend > 0) {
+        b.appendChild(el('div', 'ch-row', `<span class="n">Already recorded for you</span><span class="ch-rate">${fmtTokens(pend)} WAYFARER</span>`));
+        b.appendChild(el('div', 'ch-dim', 'Counted from what you have already played, and it keeps counting. Nothing is paid until you choose to link a wallet — and nothing here changes how the game plays.'));
+      }
       const wrow = el('div', 'ec-row');
       const open = el('button', '', 'Open the Wallet panel');
       open.addEventListener('click', () => this.openWalletPanel());
@@ -378,7 +387,7 @@ export function chainHint() {
     // they have CONNECTED A WALLET. Before that this returns nothing at all — not
     // "disabled", not a teaser, not a locked icon, INVISIBLE — so the pre-wallet
     // experience is a complete, finished, gold-only game.
-    const linked = !!(st.balances && (st.balances.linked || st.balances.address));
+    const linked = !!(st.linked || st.balances?.linked || st.balances?.address);
     if (!linked) return { available: false, text: '', hint: '' };
     const available = !!(st.checked && st.reachable && st.enabled);
     if (!available) return { available: false, text: '', hint: 'The WAYFARER token economy is not available here.' };
