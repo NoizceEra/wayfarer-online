@@ -202,6 +202,16 @@ function makeSprites(scene) {
     g.addColorStop(0, 'rgba(255,248,180,1)'); g.addColorStop(1, 'rgba(255,230,120,0)');
     c.fillStyle = g; c.fillRect(0, 0, 4, 4);
   });
+  // shooting star: a 1px-proud streak with a bright head on the RIGHT (the angle is
+  // set per shot, so one texture covers every direction).
+  canvasTex(scene, 'title.streak', 20, 3, (c) => {
+    const g = c.createLinearGradient(0, 0, 20, 0);
+    g.addColorStop(0, 'rgba(255,255,255,0)');
+    g.addColorStop(0.6, 'rgba(214,236,255,0.45)');
+    g.addColorStop(1, 'rgba(255,255,255,1)');
+    c.fillStyle = g; c.fillRect(0, 1, 20, 1);
+    c.fillStyle = 'rgba(255,255,255,0.85)'; c.fillRect(19, 0, 1, 3);
+  });
   canvasTex(scene, 'title.vignette', 128, 128, (c) => {
     const g = c.createRadialGradient(64, 64, 34, 64, 64, 92);
     g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,10,4,0.75)');
@@ -328,6 +338,11 @@ export function addTitleBackdrop(scene, root, menu) {
   }
   let weather = { kind: null, until: 0, next: 12 + Math.random() * 10 };
 
+  // shooting stars — rare, night only, two pooled streaks that fade as they fall
+  const streaks = [];
+  if (!low) for (let i = 0; i < 2; i++) streaks.push({ img: add(scene.add.image(-99, -99, 'title.streak').setBlendMode(Phaser.BlendModes.ADD).setVisible(false)), on: false, x: 0, y: 0, vx: 0, vy: 0, life: 0 });
+  let streakT = 9 + Math.random() * 18;
+
   const vignette = add(scene.add.image(cx, cy, 'title.vignette').setDisplaySize(vw + 4, vh + 4));
 
   // ─── per-frame ────────────────────────────────────────────────────────
@@ -432,6 +447,29 @@ export function addTitleBackdrop(scene, root, menu) {
             b.img.setPosition(bx, by).setVisible(true).setTexture(Math.floor(t * 5 + i) % 2 ? 'title.bird1' : 'title.bird0').setAlpha(b.vis ?? 1);
           });
           if (flock.x - 4 * 11 * sr > left + vw) { flock = null; birds.forEach((b) => b.img.setVisible(false)); }
+        }
+      }
+      // shooting stars (night only)
+      if (streaks.length) {
+        streakT -= dt;
+        if (streakT <= 0) {
+          streakT = 14 + Math.random() * 26;
+          const s = streaks.find((x) => !x.on);
+          if (s && tod.star > 0.55) {
+            const sp = (110 + Math.random() * 90) * sr;
+            s.on = true; s.life = 0.85 + Math.random() * 0.5;
+            s.x = left + vw * (0.1 + Math.random() * 0.85); s.y = top + skyH * (0.04 + Math.random() * 0.34);
+            s.vx = -sp * (0.7 + Math.random() * 0.4); s.vy = sp * (0.35 + Math.random() * 0.3);
+            s.img.setPosition(s.x, s.y).setVisible(true).setAlpha(tod.star)
+              .setScale(sr * (0.7 + Math.random() * 0.5))
+              .setAngle(Math.atan2(s.vy, s.vx) * (180 / Math.PI));
+          }
+        }
+        for (const s of streaks) {
+          if (!s.on) continue;
+          s.x += s.vx * dt; s.y += s.vy * dt; s.life -= dt;
+          s.img.setPosition(s.x, s.y).setAlpha(clamp01(s.life * 1.3) * clamp01(tod.star));
+          if (s.life <= 0 || s.x < left - 40 || s.y > top + skyH + 24) { s.on = false; s.img.setVisible(false); }
         }
       }
       // walkers

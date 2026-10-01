@@ -84,7 +84,7 @@ export class ProfileScene extends Phaser.Scene {
     const slots = listSlots();
     const linked = !!(wallet.state.linked || wallet.state.connected);
     const pid = profileId();
-    txt(this, this.root, W / 2, 56, `${linked ? 'Wallet linked' : 'Guest'}  ·  ${pid}`, { size: 10, color: C.muted });
+    txt(this, this.root, W / 2, 56, `${linked ? 'Wallet linked' : 'No wallet needed'}  ·  ${pid}`, { size: 10, color: C.muted });
 
     const wide = W >= 560 && H < 620;
     const cardW = wide ? Math.min(180, (W - 48) / 3) : Math.min(320, W - 32);
@@ -97,7 +97,7 @@ export class ProfileScene extends Phaser.Scene {
 
     const by = H - 56;
     makeButton(this, this.root, this.nav, {
-      id: 'backup', x: W / 2 - 70, y: by, w: 128, h: 26, label: 'Backup code', kind: 'ghost', size: 9,
+      id: 'backup', x: W / 2 - 70, y: by, w: 128, h: 26, label: 'Keep your hero', kind: 'ghost', size: 9,
       onClick: () => this.goPage('backup'),
     });
     makeButton(this, this.root, this.nav, {
@@ -203,17 +203,17 @@ export class ProfileScene extends Phaser.Scene {
   }
 
   buildBackup(W, H) {
-    const { pw, cx, top, bot } = this.modal(W, H, 'BACKUP CODE');
+    const { pw, cx, top, bot } = this.modal(W, H, 'KEEP YOUR HERO');
     const pid = profileId();
-    txt(this, this.root, cx, top + 44, `Device ${pid}. Copy the code to move heroes. Restore replaces local saves.`, {
-      size: 10, font: FONT.body, color: C.muted, wrap: pw - 32,
+    txt(this, this.root, cx, top + 44, `Device ${pid}. No account, no wallet — save this travel code and your hero follows you to another device. Restoring a code replaces the saves on this device.`, {
+      size: 10, font: FONT.body, color: C.muted, wrap: pw - 32, lineSpacing: 3,
     });
     const code = exportBackup();
     const shown = `${code.slice(0, 28)}…`;
     frame(this, this.root, cx, top + 88, Math.min(pw - 24, 420), 36, { gold: true, stud: false, alpha: 0.9 });
     txt(this, this.root, cx, top + 88, shown, { size: 9, color: C.textHi, wrap: Math.min(pw - 36, 400) });
     makeButton(this, this.root, this.nav, {
-      id: 'copy', x: cx, y: top + 128, w: 200, h: 28, label: 'Copy backup code', kind: 'primary', size: 10,
+      id: 'copy', x: cx, y: top + 128, w: 200, h: 28, label: 'Copy travel code', kind: 'primary', size: 10,
       onClick: async () => { const ok = await copyText(code); this.say(ok ? 'Copied. Keep it private.' : 'Could not copy — select it yourself.'); },
     });
     makeButton(this, this.root, this.nav, {
@@ -222,11 +222,11 @@ export class ProfileScene extends Phaser.Scene {
     });
     makeField(this, this.root, this.nav, this.entry, {
       id: 'paste', x: cx, y: top + 204, w: Math.min(pw - 40, 380), h: 28, value: '', max: 8000,
-      placeholder: 'Paste a backup code to restore', label: 'Backup code',
+      placeholder: 'Paste a travel code to bring heroes here', label: 'Travel code',
       onCommit: (v) => this.restore(v),
     });
     makeButton(this, this.root, this.nav, {
-      id: 'restore', x: cx, y: bot - 58, w: 220, h: 30, label: 'Restore backup', kind: 'normal', size: 10,
+      id: 'restore', x: cx, y: bot - 58, w: 220, h: 30, label: 'Bring my heroes here', kind: 'normal', size: 10,
       onClick: () => {
         const v = this.nav.items.find((i) => i.id === 'paste')?.value || '';
         this.restore(v);
