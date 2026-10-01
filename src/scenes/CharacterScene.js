@@ -3,6 +3,7 @@ import { bus, Events } from '../core/events.js';
 import { audio } from '../systems/audio.js';
 import { ADVANCED } from '../data/jobs.js';
 import { input } from '../core/input.js';
+import { HUD_ABILITY_ICON } from '../systems/hudIcons.js';
 import { settings, uiZoomFor } from '../core/settings.js';
 import {
   STAT_IDS, STAT_INFO, MAX_LEVEL, MAX_STAT, SKILL_MAX, CLASS_CHANGE_LEVEL,
@@ -127,7 +128,8 @@ export class CharacterScene extends Phaser.Scene {
       const x = W / 2 - (adv.abilities.length * (S + gap) - gap) / 2 + i * (S + gap) + S / 2;
       const bg = this.add.rectangle(x, y, S, S, 0x2a1d10, 0.92).setStrokeStyle(2, 0x9bbc0f).setDepth(120);
       const items = [bg];
-      if (this.textures.exists(ab.icon)) items.push(this.add.image(x, y, ab.icon).setScale((S - 10) / 24).setDepth(121));
+      const ik = this.skillIcon(ab);
+      if (ik) items.push(this.add.image(x, y, ik).setScale((S - 10) / 16).setDepth(121));
       items.push(this.add.text(x, y - S / 2 + 2, input.labelFor(`skill${ab.key}`), T(8, '#9bbc0f')).setOrigin(0.5, 0).setDepth(122));
       const lv = p.skillLv(ab.id);
       const lvT = this.add.text(x + S / 2 - 3, y + S / 2 - 3, lv ? `L${lv}` : '--', T(7, lv ? '#ffe8a0' : '#ff9d8a')).setOrigin(1, 1).setDepth(122);
@@ -334,8 +336,8 @@ export class CharacterScene extends Phaser.Scene {
       const lv = p.skillLv(ab.id);
       const isAdv = !p.job.abilities.some((a) => a.id === ab.id);
       this.put(this.add.rectangle(0, ry, pw - 20, rh, 0x000000, 0.3).setStrokeStyle(1, isAdv ? 0xf4c542 : 0x3a2a14));
-      const icon = ab.icon || this.iconFor(ab.id);
-      if (icon && this.textures.exists(icon)) this.put(this.add.image(L + 36, ry, icon).setScale(1.5));
+      const icon = this.skillIcon(ab);
+      if (icon) this.put(this.add.image(L + 36, ry, icon).setScale(1.5));
       this.put(this.add.text(L + 62, ry - rh / 2 + 6, `[${ab.key}] ${ab.name}`, T(10, isAdv ? '#ffe07a' : '#fff8e0', { fontStyle: 'bold' })));
       this.put(this.add.text(L + 62, ry - rh / 2 + 20, ab.desc, T(8, '#b8c890', { wordWrap: { width: pw - 150 } })));
       const cdNow = ab.cd * skillCdMul(Math.max(1, lv));
@@ -357,7 +359,12 @@ export class CharacterScene extends Phaser.Scene {
     }
   }
 
-  iconFor(id) { const M = { slash: 'icon.slash', flare: 'icon.flare', dash: 'icon.dash', camp: 'icon.camp', shot: 'icon.shot', volley: 'icon.volley', snare: 'icon.snare', bolt: 'icon.bolt', burst: 'icon.burst', blink: 'icon.blink', ward: 'icon.ward', stab: 'icon.stab', fan: 'icon.fan', smoke: 'icon.smoke' }; return M[id]; }
+  // Skill icons are the procedural 16px `hud.<name>` textures (systems/hudIcons.js).
+  // Ability data names them `icon.<name>`, a key that is never loaded, so map it.
+  skillIcon(ab) {
+    const cands = [ab.icon, ab.icon && ab.icon.replace(/^icon\./, 'hud.'), HUD_ABILITY_ICON[ab.id] && `hud.${HUD_ABILITY_ICON[ab.id]}`];
+    return cands.find((k) => k && this.textures.exists(k)) || null;
+  }
 
   // ── class-change modal ──────────────────────────────────────────────────────
   showClassModal() {
@@ -405,7 +412,8 @@ export class CharacterScene extends Phaser.Scene {
       if (mods) { add(this.add.text(x, ty, mods, T(8, '#aed6f1', { wordWrap: { width: cw - 16 }, align: 'center' })).setOrigin(0.5, 0)); ty += 18; }
       add(this.add.text(x, ty, 'SKILLS', T(8, '#9bbc0f')).setOrigin(0.5, 0)); ty += 14;
       for (const ab of a.abilities) {
-        if (this.textures.exists(ab.icon)) add(this.add.image(x - cw / 2 + 18, ty + 12, ab.icon).setScale(1));
+        const ik = this.skillIcon(ab);
+        if (ik) add(this.add.image(x - cw / 2 + 18, ty + 12, ik).setScale(1));
         add(this.add.text(x - cw / 2 + 34, ty, `[${ab.key}] ${ab.name}`, T(8, '#fff8e0', { fontStyle: 'bold' })));
         add(this.add.text(x - cw / 2 + 34, ty + 11, ab.desc, T(7, '#b8c890', { wordWrap: { width: cw - 44 } })));
         ty += 34;

@@ -216,6 +216,7 @@ export class CreatorScene extends Phaser.Scene {
           sz -= 1;
           vText.setFontSize(sz);
         }
+        if (vText.width > valW) vText.setText(name); // phones: drop the (i/n) counter rather than clip the name
         refreshMeta();
       };
 
@@ -293,6 +294,7 @@ export class CreatorScene extends Phaser.Scene {
       const t = this.add.text(rightX + PAD + i * tabW + tabW / 2, panelTop + PAD + 2 + TAB_H / 2, n, {
         fontSize: '11px', color: '#b9a060', fontFamily: '"Silkscreen", "Jersey 10", monospace', backgroundColor: '#2a2210', padding: { x: 4, y: 4 },
       }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+      for (let fs = 11; t.width > tabW - 8 && fs > 7; fs -= 1) t.setFontSize(fs - 1); // "WARDROBE" clipped on phones
       t.setFixedSize(tabW - 6, 22); t.setAlign('center');
       t.on('pointerdown', () => { audio.play('ui', 0.6); showTab(n); });
       tabBtns[n] = t;

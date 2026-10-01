@@ -220,6 +220,8 @@ export class NetworkManager {
   }
   send(type, payload) {
     if (!this.connected) return false;
+    // socket already closing (network drop, before onLeave fires): don't send, the browser logs an error per call
+    if (this.room.connection && this.room.connection.isOpen === false) return false;
     try { this.room.send(type, payload); return true; } catch { return false; }
   }
 

@@ -341,12 +341,14 @@ export class AreaManager {
   onUse(id) { return !!this.scene.quests?.onInteract(id); }
 
   // — per-frame —
-  interact() {
+  // maxD: distance of the nearest town NPC (WorldScene) — a closer NPC wins, so a
+  // crafting station / sign beside a shopkeeper never steals their E press.
+  interact(maxD = 1e9) {
     const s = this.scene;
     if (s.uiLock || s.time.now < (s.uiLockUntil || 0) || this.busy) return true; // swallow while a dialog/transition is up
     const p = s.player;
     const here = this.current ? this.current.id : null;
-    let best = null, bd = 1e9;
+    let best = null, bd = maxD;
     for (const i of this.interacts) {
       if (i.area !== here) continue;
       const d = Phaser.Math.Distance.Between(p.x, p.y, i.x, i.y);
@@ -385,14 +387,20 @@ export class AreaManager {
       if (d < t.r && this.armed && !p.dead) { t.onEnter(); return; }
     }
     if (!this.armed && !nearTrig) this.armed = true;
-    // prompt for nearest interactable
-    let lab = '', bd = 1e9;
+    // prompt for nearest interactable (unless a town NPC is closer: WorldScene shows that bubble)
+    let lab = '', bd = here ? 1e9 : this._nearestNpc(p);
     for (const i of this.interacts) {
       if (i.area !== here) continue;
       const d = Phaser.Math.Distance.Between(p.x, p.y, i.x, i.y);
       if (d < i.r && d < bd) { bd = d; lab = i.label; }
     }
     this._setPrompt(lab ? `E  ${lab}` : '');
+  }
+
+  _nearestNpc(p) {
+    let bd = 1e9;
+    for (const n of this.scene.npcs || []) { const d = Phaser.Math.Distance.Between(p.x, p.y, n.x, n.y); if (d < CONFIG.interactRadius && d < bd) bd = d; }
+    return bd;
   }
 
   _setPrompt(t) {
