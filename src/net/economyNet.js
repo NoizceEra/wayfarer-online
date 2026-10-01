@@ -2,7 +2,7 @@ import { net } from './NetworkManager.js';
 import { bus, Events } from '../core/events.js';
 import { loadProgress, saveProgress, BAG_SIZE } from '../core/save.js';
 import { gearById } from '../data/gear.js';
-import ITEM_IDS from '../../server/shared/item_ids.json';
+import ITEM_IDS from '../data/item_ids.json'; // copy of server/shared/item_ids.json (Vercel doesn't upload server/); see tools/export_item_ids.mjs
 
 // Client side of the player economy (server/economy.js): trade, market board,
 // mail, persisted guilds. The server's copy of the character is authoritative
