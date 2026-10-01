@@ -21,6 +21,15 @@ try { social = await import('./social.js'); } catch (e) {
 }
 if (social) { setSocialModule(social); log.info('social module loaded'); }
 
+// Identity module (guest-first, link-later): recovery-code / wallet links and
+// multi-device `continue`. Optional in the same additive way as social.js — if
+// server/identity.js is missing the relay behaves exactly as before.
+let identity = null;
+try { identity = await import('./identity.js'); } catch (e) {
+  if (e?.code !== 'ERR_MODULE_NOT_FOUND') log.error('identity.js failed to load', { err: e.message });
+}
+if (identity) log.info('identity module loaded');
+
 initStore();
 
 const app = express();
@@ -52,6 +61,8 @@ app.get('/rooms/:code', async (req, res) => {
   } catch (e) { res.status(500).json({ error: 'lookup_failed' }); }
 });
 try { social?.routes?.(app); } catch (e) { log.error('social.routes failed', { err: e.message }); }
+// JSON identity endpoints: /identity/link, /identity/continue, /identity/status
+try { identity?.routes?.(app); } catch (e) { log.error('identity.routes failed', { err: e.message }); }
 
 const httpServer = http.createServer(app);
 const gameServer = new Server({

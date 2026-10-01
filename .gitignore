@@ -8,3 +8,9 @@ dist/
 .omc/
 tools/_gen/
 server/data/
+
+# PRIVATE KEY MATERIAL — must never be committed. Token mint/authority keypairs,
+# treasury/rewards wallets, and launch receipts live here.
+server/keys/
+server/token/keys/
+*.keypair.json

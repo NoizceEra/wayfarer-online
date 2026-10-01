@@ -19,6 +19,11 @@ import { installNetStatus } from './netStatus.js';
 //   net.on(type, fn) -> off()   handlers survive reconnects
 //   net.send(type, payload)     unknown types are relayed to the room by the server
 const DEVICE_KEY = 'wayfarer.device.v1';
+// Identity feature: set when this device mints a BRAND-NEW anonymous token, so
+// the title screen knows it should offer a recovery code once. Identity is
+// 'anon' | 'linked' — unrelated to the transport 'guest' mode of co-op joins.
+const FRESH_KEY = 'wayfarer.device.fresh.v1';
+export { DEVICE_KEY, FRESH_KEY };
 const CONSENTED = 4000;
 
 function deviceToken() {
@@ -28,6 +33,7 @@ function deviceToken() {
       const a = new Uint8Array(18); (globalThis.crypto || window.crypto).getRandomValues(a);
       t = Array.from(a, (b) => 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'[b & 63]).join('');
       localStorage.setItem(DEVICE_KEY, t);
+      try { localStorage.setItem(FRESH_KEY, '1'); } catch { /* private mode */ }
     }
     return t;
   } catch { return null; }
@@ -67,6 +73,22 @@ export class NetworkManager {
     return this.authority.get(areaKey(areaId)) === this.sessionId;
   }
   authorityOf(areaId) { return this.authority.get(areaKey(areaId)) || null; }
+
+  // ─── identity (anon device token) ──────────────────────────────────
+  // Plumbing only: identity/token bookkeeping. The join handshake shapes are
+  // untouched — a token minted by POST /identity/continue is adopted here and the
+  // next join restores that account's characters through the normal handshake.
+  // `useToken` is called after a recovery-code continue; it writes the SAME
+  // localStorage key deviceToken() reads, so a later reload keeps the account.
+  useToken(token) {
+    if (!/^[A-Za-z0-9_-]{16,64}$/.test(String(token || ''))) return false;
+    this.token = String(token);
+    try {
+      localStorage.setItem(DEVICE_KEY, this.token);
+      localStorage.removeItem(FRESH_KEY);   // this device now continues an existing account
+    } catch { /* private mode: session-only, still fine */ }
+    return true;
+  }
 
   setStatus(status) {
     this.status = status;
