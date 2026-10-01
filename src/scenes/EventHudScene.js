@@ -21,7 +21,7 @@ export class EventHudScene extends Phaser.Scene {
     if (!we || !w.sys.isActive()) { this.lines.forEach((t) => t.setVisible(false)); this.bossName.setVisible(false); this.bossHp.setVisible(false); return; }
     const W = this.scale.width, small = W < 560;
     const hud = we.hud;
-    let y = small ? 58 : 34;
+    let y = small ? 62 : 50;
     this.lines.forEach((t, i) => {
       const L = hud.lines[i];
       if (!L) { t.setVisible(false); return; }

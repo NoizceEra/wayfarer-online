@@ -319,6 +319,7 @@ export class WorldEvents {
 
   // ——— kills ———
   onKill(k) {
+    if (k?.boss) bus.emit(Events.ACH_EVENT, { k: 'bosskill', id: k.typeId });
     if (!k || k.areaId) return;
     const b = this.boss;
     if (b && !b.over && k.typeId === WORLD_BOSS.type) {
@@ -379,9 +380,9 @@ export class WorldEvents {
     const b = this.boss;
     let bossBar = null;
     if (b && !b.over && b.e?.active) {
-      const e = b.e;
+      const e = b.e; const showBar = this.overworld();
       lines.push({ text: `WORLD BOSS  ${WORLD_BOSS.name}  ${fmt(b.ev.end - now)}${where(b.arena.at)}`, color: '#ff8a6a' });
-      bossBar = { name: `${WORLD_BOSS.name}  Lv${e.level}`, hp: Math.max(0, e.hp), max: e.maxHp, engaged: !!e.engaged, phase: e.phase || 1 };
+      if (showBar) bossBar = { name: `${WORLD_BOSS.name}  Lv${e.level}`, hp: Math.max(0, e.hp), max: e.maxHp, engaged: !!e.engaged, phase: e.phase || 1 };
     } else if (sch.nextBoss && !this.override) lines.push({ text: `Next world boss in ${fmt(sch.nextBoss.start - now)}`, color: '#8a94a0' });
     this.hud = { lines, boss: bossBar };
   }
