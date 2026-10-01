@@ -9,6 +9,7 @@ import { BUILDERS } from './areaBuilders.js';
 import { EXTRA_BUILDERS } from './areaBuildersExtra.js';
 import { HOLLOW_BUILDER } from './dungeons.js';
 import { populateArea } from './townfolk.js';
+import { waterAt } from './waterways.js';
 
 Object.assign(BUILDERS, EXTRA_BUILDERS, HOLLOW_BUILDER); // desert / marsh / caverns / Hollow Depths (world expansion)
 const T = CONFIG.tile;
@@ -425,8 +426,12 @@ export class AreaManager {
     };
     if (w.wait > 0) { w.wait -= dt; n.body.setVelocity(0, 0); setAnim('idle'); n.setDepth(n.y); return; }
     if (w.tx === null) {
-      const a = Math.random() * Math.PI * 2, d = 12 + Math.random() * w.r;
-      w.tx = w.home.x + Math.cos(a) * d; w.ty = w.home.y + Math.sin(a) * d; w.t = 0;
+      w.tx = w.home.x; w.ty = w.home.y; w.t = 0;
+      for (let k = 0; k < 8; k++) {
+        const a = Math.random() * Math.PI * 2, d = 12 + Math.random() * w.r;
+        const tx = w.home.x + Math.cos(a) * d, ty = w.home.y + Math.sin(a) * d;
+        if (n.areaId || !waterAt(tx, ty, 8)) { w.tx = tx; w.ty = ty; break; }
+      }
     }
     const dx = w.tx - n.x, dy = w.ty - n.y, d = Math.hypot(dx, dy);
     w.t += dt;

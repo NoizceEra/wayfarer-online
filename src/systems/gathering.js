@@ -16,6 +16,7 @@ import { addMat } from './pack.js';
 import { NPC_SPOTS } from '../data/quests.js';
 import { STATION_SPOTS } from './crafting.js';
 import { EXTRA_NODE_TYPES, EXTRA_FISH, EXTRA_AREA_PLAN } from '../data/gatherExtra.js';
+import { waterAt, onBridge, network, riverPoint, riverHalfWidth } from '../world/waterways.js';
 
 const T = CONFIG.tile;
 
@@ -264,11 +265,13 @@ export function placeGatherNodes(scene, area, b) {
     // ponds: solid water + fishing spot
     PONDS.forEach((p) => {
       const x = p.tx * T + 8, y = p.ty * T + 8;
+      if (waterAt(x, y, 8)) return;
       drawPond(scene, x, y);
       const wall = scene.add.rectangle(x, y + 2, 44, 20, 0xffffff, 0);
       scene.areas.over.solids.add(wall);
       g.addNode('pond', x, y + 2, null);
     });
+    placeRiverFish(g, avoid);
     for (const [nodeKey, count, zone] of OVERWORLD_PLAN) {
       let placed = 0;
       for (let tries = 0; tries < count * 40 && placed < count; tries++) {
@@ -276,6 +279,7 @@ export function placeGatherNodes(scene, area, b) {
         const tx = z.x + 1 + Math.floor(rnd() * (z.w - 2)), ty = z.y + 1 + Math.floor(rnd() * (z.h - 2));
         if (zoneAt(tx, ty, ZONES).id !== zone) continue;
         const x = tx * T + 8 + (rnd() - 0.5) * 6, y = ty * T + 8 + (rnd() - 0.5) * 6;
+        if (waterAt(x, y, 8) || onBridge(x, y, 12)) continue;
         if (rects.some((r) => x > r.x && x < r.r && y > r.y && y < r.b)) continue;
         if (!free(x, y, 16)) continue;
         g.addNode(nodeKey, x, y, null);
@@ -300,6 +304,25 @@ export function placeGatherNodes(scene, area, b) {
       g.addNode(nodeKey, x, y, area.id);
       avoid.push({ x, y, r: 0 });
       placed++;
+    }
+  }
+}
+
+function placeRiverFish(g, avoid) {
+  const rivers = network().rivers;
+  for (let i = 0; i < rivers.length; i++) {
+    const r = rivers[i];
+    for (let s = 140; s < r.len - 140; s += 220) {
+      const [x, y, tx, ty] = riverPoint(i, s);
+      if (onBridge(x, y, 56)) continue;
+      const nx = -ty, ny = tx, hw = riverHalfWidth(i, s);
+      const side = ((s / 220) | 0) % 2 ? 1 : -1;
+      const px = x + nx * (hw + 12) * side, py = y + ny * (hw + 12) * side;
+      if (px < 48 || py < 48 || px > 2000 || py > 2000) continue;
+      if (waterAt(px, py, 4) || onBridge(px, py, 16)) continue;
+      if (avoid.some((a) => Math.hypot(a.x - px, a.y - py) < 28 + (a.r || 0))) continue;
+      g.addNode('pond', px, py, null);
+      avoid.push({ x: px, y: py, r: 20 });
     }
   }
 }

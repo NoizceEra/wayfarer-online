@@ -4,6 +4,7 @@ import { ENEMY_TABLE } from '../data/jobs.js';
 import { RANKS, CON, conOf, rollMobLevel, scaleForLevel } from '../data/combatMath.js';
 import { StatusSet } from '../systems/status.js';
 import { hitReact, deathFx } from '../systems/skillVfx.js';
+import { waterAt } from '../world/waterways.js';
 
 const FONT = '"Silkscreen", monospace';
 
@@ -193,7 +194,8 @@ export class Enemy extends Phaser.GameObjects.Container {
           this.wanderAt = now + 1600 + Math.random() * 2800;
           if (Math.random() < 0.35) { this.wx = null; break; }
           const a = Math.random() * Math.PI * 2, r = 8 + Math.random() * 34;
-          this.wx = this.home.x + Math.cos(a) * r; this.wy = this.home.y + Math.sin(a) * r;
+          const wx = this.home.x + Math.cos(a) * r, wy = this.home.y + Math.sin(a) * r;
+          if (this.areaId || !waterAt(wx, wy, 8)) { this.wx = wx; this.wy = wy; } else this.wx = null;
         }
         if (this.wx != null) {
           const wx = this.wx - this.x, wy = this.wy - this.y, wd = Math.hypot(wx, wy);
