@@ -374,6 +374,12 @@ function statusLine(st) {
 export function chainHint() {
   try {
     const st = chainNet.state;
+    // PLAY FIRST (owner rule): the token surface does not exist for a player until
+    // they have CONNECTED A WALLET. Before that this returns nothing at all — not
+    // "disabled", not a teaser, not a locked icon, INVISIBLE — so the pre-wallet
+    // experience is a complete, finished, gold-only game.
+    const linked = !!(st.balances && (st.balances.linked || st.balances.address));
+    if (!linked) return { available: false, text: '', hint: '' };
     const available = !!(st.checked && st.reachable && st.enabled);
     if (!available) return { available: false, text: '', hint: 'The WAYFARER token economy is not available here.' };
     const key = input.labelFor('chain');
