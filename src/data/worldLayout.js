@@ -6,8 +6,8 @@
 export const ROADS = [
   // town E-W road: west to the Emberdeep descent, east through Mosswood to the lighthouse trail
   { id: 'east', kind: 'main', pts: [[37.75, 64], [51.5, 64], [64, 64], [76.5, 64], [84.6, 63.1], [90, 61.6], [94, 61.2], [97, 59.2], [101.5, 54.6]] },
-  // town N-S road: north to Hollow Depths, south through the ruins
-  { id: 'ns', kind: 'main', pts: [[64, 24], [63, 30], [65, 36], [64, 43.4], [64, 54], [64, 64], [64, 75.3], [62.1, 81.6], [57.1, 85.9], [49.6, 89.6]] },
+  // town N-S road: north to Hollow Depths gate, south through the ruins
+  { id: 'ns', kind: 'main', pts: [[64, 21], [64, 24], [63, 30], [65, 36], [64, 43.4], [64, 54], [64, 64], [64, 75.3], [62.1, 81.6], [57.1, 85.9], [49.6, 89.6]] },
   // Harbour road (cobbled) from the east road to the Harbour Gate
   { id: 'harbour', kind: 'cobble', pts: [[84.6, 63.1], [85.6, 65.8], [87.5, 67.2], [90, 67.4], [92.5, 68.6], [95, 73], [97, 80], [99, 88], [101, 94], [104, 98.8]] },
   // Sunscorch Gate
@@ -25,7 +25,7 @@ export const ROADS = [
   // Northway: Frostpeak -> Hollow
   { id: 'northway', kind: 'main', pts: [[24, 26], [34, 25], [44, 23.5], [54, 24.5], [63, 26]] },
   // Mosswood trail to the north-coast lighthouse
-  { id: 'lighthouse', kind: 'main', pts: [[101.5, 54.6], [103, 46], [106, 36], [108, 26], [111, 16.5], [112.6, 11.4]] },
+  { id: 'lighthouse', kind: 'main', pts: [[101.5, 54.6], [103, 46], [106, 36], [108, 26], [111, 16.5], [112.6, 11.4], [113.2, 10.2], [115.4, 8.2]] },
   // woods -> desert link
   { id: 'woodsdesert', kind: 'main', pts: [[101.5, 54.6], [104, 63], [103, 72], [101, 80.2]] },
   // tracks to landmarks

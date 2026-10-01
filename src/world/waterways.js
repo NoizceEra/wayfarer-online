@@ -144,7 +144,7 @@ export function riverAt(x, y, out = RIV_RES) {
 }
 
 // North-coast bay (Lookout Mara's lighthouse stands on the headland at x~1860)
-const BAY_X0 = 1380;
+export const BAY_X0 = 1380;
 export const LIGHTHOUSE = { x: 1861, y: 114 };
 export function shoreY(x) {
   if (x < BAY_X0 - 60) return 24;

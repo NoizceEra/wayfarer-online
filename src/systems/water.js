@@ -3,6 +3,7 @@ import { CONFIG } from '../config.js';
 import { AREAS } from '../data/zones.js';
 import { hash2 } from '../world/ground.js';
 import { settings } from './fxSettings.js';
+import { network, riverPoint, riverHalfWidth, onBridge, BAY_X0, shoreY } from '../world/waterways.js';
 
 // Animated water without per-frame canvas redraws:
 //  - two scrolling "glint" tileSprites (ADD) over every water surface (dock bay,
@@ -74,7 +75,23 @@ export class Water {
     // overworld water rim (24 px wide, see overworld.js)
     const rim = [[0, 0, W, 24], [0, H - 24, W, 24], [0, 24, 24, H - 48], [W - 24, 24, 24, H - 48]];
     for (const [x, y, w, h] of rim) this.addShimmer(x, y, w, h, -7.9, 'over');
+    this.addRiverShimmer();
     // glints sparkling on ice etc. use the shared particle pool (ambient.js)
+  }
+
+  addRiverShimmer() {
+    const N = network();
+    for (let i = 0; i < N.rivers.length; i++) {
+      const r = N.rivers[i];
+      for (let s = 0; s < r.len; s += 72) {
+        const [x, y] = riverPoint(i, s);
+        if (onBridge(x, y, 28)) continue;
+        const hw = riverHalfWidth(i, s) + 6;
+        this.addShimmer(x - hw, y - hw * 0.7, hw * 2, hw * 1.4, -7.85, 'over');
+      }
+    }
+    const bayW = 2048 - BAY_X0, bayH = Math.max(40, shoreY(2040) + 12);
+    this.addShimmer(BAY_X0 - 20, 0, bayW + 20, bayH, -7.85, 'over');
   }
 
   addShimmer(x, y, w, h, depth, region) {
