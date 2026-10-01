@@ -5,6 +5,8 @@ import { bus, Events } from '../core/events.js';
 import { audio } from '../systems/audio.js';
 import { addTitleBackdrop } from '../systems/titleBackdrop.js';
 import { setupMenuCamera } from '../core/display.js';
+import { wallet } from '../core/wallet.js';
+import { WalletPanel } from '../ui/WalletPanel.js';
 
 // Title screen — pixel-art Game Boy aesthetic.
 // Fonts: Jacquard12 (display title), Silkscreen (buttons/labels), PixelifySans (body/hints).
@@ -40,6 +42,11 @@ export class TitleScene extends Phaser.Scene {
 
     this.build();
 
+    // Optional wallet chip — never auto-connects, never required to play.
+    this.walletPanel = new WalletPanel();
+    this.walletPanel.mountTitleChip();
+    wallet.restore();
+
     // Native listener: Phaser's generic 'keydown' fired several times per press
     // for us (repeated letters while typing), so text entry uses the DOM event.
     this.domKey = (ev) => { if (!ev.repeat || this.editing) this.onKey(ev); };
@@ -47,6 +54,7 @@ export class TitleScene extends Phaser.Scene {
     this.events.once('shutdown', () => {
       window.removeEventListener('keydown', this.domKey);
       if (this.rebuildTimer) this.rebuildTimer.remove(false);
+      this.walletPanel?.destroy();
     });
     bus.emit(Events.SYSTEM, 'title');
   }

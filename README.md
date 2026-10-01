@@ -49,6 +49,14 @@ Needs Playwright with Chromium (`npm i -D playwright && npx playwright install c
 global install; `PLAYWRIGHT_PATH=<dir containing playwright>` and `CHROMIUM_PATH=<browser binary>`
 override the lookup).
 
+Wallet link + Wayfarer Marks (off-chain cosmetics, optional wallet, no on-chain txs):
+
+```bash
+node tools/test_wallet_marks.mjs
+```
+
+See [docs/EARN_AND_COMPLIANCE.md](docs/EARN_AND_COMPLIANCE.md). Hotkey **Z** opens Marks (shop / board / optional wallet). The game is fully playable with no wallet installed.
+
 ## Deploy
 
 - **Vercel (client):** import this folder, framework = Vite, build = `npm run build`, output = `dist`.
@@ -65,7 +73,7 @@ override the lookup).
 - Gear data: `src/data/gear.js` (80 items, 4 rarities, `getEquipBonuses(equipped)` → str/agi/vit/int/dex/luk/atk/def/hp/mp/spd); worn art `src/systems/wearArt.js`, icons `src/systems/iconArt.js`
 - Quests: talk to NPCs with a gold `!` (new quest) or `?` (turn-in) overhead; notice board in town posts daily bounties. Journal: L (Active / Available / Done / Lore / Bestiary / Codex / Feats; track up to 3, 8 active max). Data: `src/data/quests.js`, engine `src/systems/questSystem.js`
 - Gathering: E at herbs, berry bushes, logs, ore/bone/crystal veins and fishing ripples (timing mini-game); nodes respawn. Crafting: U or E at a campfire / anvil / alchemy table (recipes in `src/systems/crafting.js`, materials in `src/data/materials.js`). Vendors buy materials and junk, keep a buy-back list and restock every 10 minutes
-- Minimap: M · Sound: P · Chat: Enter · Pause: Esc · Touch: stick + ATK/SKL/E/Q/BAG buttons
+- Minimap: M · Sound: P · Chat: Enter · Pause: Esc · Wayfarer Marks: Z · Touch: stick + ATK/SKL/E/Q/BAG buttons
 - Progress (level/XP/gold/gear/position/quest) autosaves every 10s + on exit — Continue resumes it
 
 ## Gear

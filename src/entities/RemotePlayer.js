@@ -24,6 +24,7 @@ export class RemotePlayer extends Phaser.GameObjects.Container {
     this.avatar.noDust = true;
     this.avatar.shadow.setScale(1.4, 1);
     this.label = scene.add.text(0, -28, name, { fontFamily: '"Silkscreen", monospace', fontSize: '8px', color: '#fff', backgroundColor: '#00000088' }).setOrigin(0.5);
+    this.marksLook = null;
     this.add([this.label]);
     this.setDepth(9);
     this.buf = new SnapBuffer();
@@ -48,7 +49,19 @@ export class RemotePlayer extends Phaser.GameObjects.Container {
     if (a === this.area) return;
     this.area = a; this.buf.clear(); this.placed = false;
   }
-  setDisconnected(dc) { this.dc = !!dc; this.label.setText(dc ? `${this.rname} (lag)` : this.rname); }
+  setDisconnected(dc) { this.dc = !!dc; this.redrawLabel(); }
+
+  applyLook(look) { this.marksLook = look && typeof look === 'object' ? look : null; this.redrawLabel(); }
+  redrawLabel(socialText, socialColor) {
+    const look = this.marksLook || {};
+    const base = socialText || (this.dc ? `${this.rname} (lag)` : this.rname);
+    const text = look.title ? `${base} · ${look.title}` : base;
+    this.label.setText(text);
+    this.label.setColor(look.color || socialColor || '#fff');
+    this.label.setBackgroundColor(look.bg || '#00000088');
+    if (look.frame) this.label.setStroke(look.frame, 3);
+    else this.label.setStroke('#000', 0);
+  }
 
   // legacy direct set (old 'input' messages)
   remoteSet(x, y, facing, hp) {
