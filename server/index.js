@@ -34,6 +34,15 @@ try { wallet = await import('./wallet.js'); } catch (e) {
   if (e?.code !== 'ERR_MODULE_NOT_FOUND') log.error('wallet.js failed to load', { err: e.message });
 }
 
+// Identity module (guest-first, link-later): recovery-code / wallet links and
+// multi-device `continue`. Optional in the same additive way as social.js — if
+// server/identity.js is missing the relay behaves exactly as before.
+let identity = null;
+try { identity = await import('./identity.js'); } catch (e) {
+  if (e?.code !== 'ERR_MODULE_NOT_FOUND') log.error('identity.js failed to load', { err: e.message });
+}
+if (identity) log.info('identity module loaded');
+
 initStore();
 if (economy) {
   try { economy.init?.(); addRoomModule(economy); log.info('economy module loaded'); } catch (e) { log.error('economy init failed', { err: e.message }); economy = null; }
@@ -73,6 +82,8 @@ app.get('/rooms/:code', async (req, res) => {
 try { social?.routes?.(app); } catch (e) { log.error('social.routes failed', { err: e.message }); }
 try { economy?.routes?.(app); } catch (e) { log.error('economy.routes failed', { err: e.message }); }
 try { wallet?.routes?.(app); } catch (e) { log.error('wallet.routes failed', { err: e.message }); }
+// JSON identity endpoints: /identity/link, /identity/continue, /identity/status
+try { identity?.routes?.(app); } catch (e) { log.error('identity.routes failed', { err: e.message }); }
 
 const httpServer = http.createServer(app);
 const gameServer = new Server({

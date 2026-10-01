@@ -426,10 +426,30 @@ class Social {
   }
   onDuelEnd(m) {
     if (!this.duel) return;
-    const reason = m?.reason === 'death' ? `${this.duel.peerName} won the duel.` : m?.reason === 'left' ? `${this.duel.peerName} left — duel over.` : 'Duel over.';
+    const peer = this.duel.peerName;
+    // reason 'death': the client that reported it is the one that fell. Our own death path
+    // clears this.duel before the relay can echo back, so a live duel here means we survived
+    // (the relay's `by` names the fallen client explicitly when supplied — don't depend on it).
+    const lost = m?.reason === 'death' && !!m.by && m.by === this.id;
+    const reason = m?.reason === 'death'
+      ? (lost ? `You were defeated by ${peer}. Duel lost.` : `You won the duel — ${peer} fell!`)
+      : m?.reason === 'left' ? `${peer} left — duel over.` : 'Duel over.';
     this.duel = null;
     this.system(reason);
     bus.emit(Events.SOCIAL_ROSTER, this.players());
+  }
+  // Called from the death path (WorldScene.onDeath) when a dueling hero falls: report the loss
+  // so the duel ends for BOTH sides (reason 'death' — "first to fall loses"). Idempotent: the
+  // local duel ref is cleared before the send, so a repeated death callback is a no-op and
+  // /duel is unblocked immediately.
+  duelDeath() {
+    const d = this.duel;
+    if (!d) return false;
+    this.duel = null;
+    net.send('duel-end', { reason: 'death' });
+    this.system(`You were defeated by ${d.peerName}. Duel lost.`);
+    bus.emit(Events.SOCIAL_ROSTER, this.players());
+    return true;
   }
   endDuel(reason = 'ended') {
     if (!this.duel) return;

@@ -62,6 +62,20 @@ export function saveProgress(name, p, opts = {}) {
 }
 export function clearProgress(name) { localStorage.removeItem(progressKey(name)); }
 
+// Identity feature: character names that have progress on THIS device/browser.
+// Used by the title screen to report what a recovery-code continue restored
+// (the authoritative list still comes from the relay character store on join).
+export function listLocalCharacters() {
+  const names = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(PROGRESS_PREFIX)) names.push(k.slice(PROGRESS_PREFIX.length));
+    }
+  } catch { /* private mode */ }
+  return names;
+}
+
 // RPG progression ({alloc, statPoints, skillPoints, skills, adv}) stored under
 // progress.prog. Old saves have none -> retroProg() grants the points the
 // character would have earned by its level. Anything malformed falls back to

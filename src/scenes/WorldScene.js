@@ -60,6 +60,9 @@ export class WorldScene extends Phaser.Scene {
     this.uiLock = false; this.uiLockUntil = 0; this.transitioning = false; // set by OverlayScene / AreaManager
 
     this.player = new ModularPlayer(this, spawn.x, spawn.y, this.heroData);
+    // Self nameplate (same look as remote labels, gold-tinted for "you").
+    this.selfTag = this.add.text(spawn.x, spawn.y - 26, '', { fontFamily: '"Silkscreen", monospace', fontSize: '8px', color: '#ffe8a0', backgroundColor: '#00000088' }).setOrigin(0.5).setDepth(11);
+    this._selfTagText = '';
     // Restore solo/guest-local progress (level, gold, pos, quest)
     const saved = loadProgress(this.pname);
     if (saved && saved.job === this.player.job.id) {
@@ -582,6 +585,7 @@ export class WorldScene extends Phaser.Scene {
 
   // Ghost fade, 5% XP / gold penalty, respawn at the nearest attuned waystone (systems/combat.js).
   onDeath() {
+    if (social.duel) social.endDuel('death'); // falling ends the duel
     this.combat.onPlayerDeath();
   }
 
@@ -595,6 +599,15 @@ export class WorldScene extends Phaser.Scene {
     for (const n of this.npcs || []) add(n, n.list?.[2]);
     this.sync?.remotes?.forEach((r) => add(r, r.label));
     const placed = [];
+    // Self tag lives in world space (not container-local like the rest), so
+    // it gets its own fade/position handling below — but it still reserves
+    // its slot first so nearby labels stack away from the hero.
+    if (this.selfTag?.active && this.player && !this.player.dead) {
+      const want = `${this.pname} Lv${this.player.level ?? 1}`;
+      if (want !== this._selfTagText) { this._selfTagText = want; this.selfTag.setText(want); }
+      placed.push({ x: me.x, y: me.y - 26 });
+      this.selfTag.setVisible(true).setPosition(me.x, me.y - 26).setDepth(me.y + 0.2);
+    } else this.selfTag?.setVisible(false);
     items.sort((a, b) => a.c.y - b.c.y);
     for (const it of items) {
       const d = Math.hypot(it.c.x - me.x, it.c.y - me.y);

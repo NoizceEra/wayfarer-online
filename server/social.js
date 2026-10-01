@@ -280,7 +280,9 @@ export function installSocial(room) {
   const endDuel = (sid, reason) => {
     const d = inDuel(sid); if (!d) return false;
     room.social.duels.delete(duelKey(d.a, d.b));
-    for (const s of [d.a, d.b]) clientById(room, s)?.send('duel-end', { a: d.a, b: d.b, reason: reason || '' });
+    // `by` = the client that triggered the end (the one who fell / yielded / left), so each
+    // duelist can tell "I won" from "I lost" instead of both reading the same line.
+    for (const s of [d.a, d.b]) clientById(room, s)?.send('duel-end', { a: d.a, b: d.b, reason: reason || '', by: sid });
     return true;
   };
   room.onMessage('duel-end', (client, m) => { endDuel(client.sessionId, m?.reason || 'ended'); });
