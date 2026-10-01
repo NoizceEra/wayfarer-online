@@ -13,6 +13,9 @@
  *   supplyFixed     true only when the mint authority is renounced
  *   authorityNote   plain-language explanation of the authority state
  *   decimalsOk      true only when the ON-CHAIN decimals equal REQUIRED_DECIMALS (6)
+ *   tokenProgram    the mint's owning program, verbatim (the chain's `owner` field)
+ *   tokenProgramName 'spl-token' | 'token-2022' | null — which standard backs the mint
+ *   knownTokenProgram true only for a program the relay's payout path can sign on
  *   reason          present only when reachable is false
  *
  * The rules it obeys:
@@ -57,6 +60,9 @@ function blank(now, cfg) {
     decimalsOk: false,
     authorityNote: null,
     requiredDecimals: REQUIRED_DECIMALS,
+    tokenProgram: null,          // the mint's on-chain owning program (verbatim)
+    tokenProgramName: null,      // 'spl-token' | 'token-2022' | null
+    knownTokenProgram: false,    // true only for a program the relay can pay on
   };
 }
 
@@ -99,6 +105,13 @@ async function probe(now) {
     authorityNote: m.authorityNote,
     decimalsOk,
     requiredDecimals: REQUIRED_DECIMALS,
+    // WHICH TOKEN STANDARD the mint is. From the chain's `owner` field only: pump.fun's
+    // current `create_v2` mints on Token-2022, its legacy `create` on SPL Token, and
+    // payout code (settlement.js) derives the ATA under whichever this is. Reported
+    // verbatim so an operator can see which standard they got.
+    tokenProgram: m.ownerProgram,
+    tokenProgramName: m.programName,
+    knownTokenProgram: !!m.tokenProgram,
   };
 }
 
@@ -166,8 +179,12 @@ export function bootNotice() {
       log.info('chain: mint verified on-chain', {
         mint: s.mint, cluster: s.cluster, decimals: s.decimals, supply: s.supply,
         decimalsOk: s.decimalsOk, mintAuthority: s.mintAuthority, freezeAuthority: s.freezeAuthority,
-        supplyFixed: s.supplyFixed,
+        supplyFixed: s.supplyFixed, tokenProgram: s.tokenProgram, tokenProgramName: s.tokenProgramName,
       });
+      if (!s.knownTokenProgram) {
+        log.warn('chain: mint is NOT owned by a token program the relay can pay on — every payout will refuse',
+          { ownerProgram: s.tokenProgram, expected: 'spl-token or token-2022' });
+      }
       if (!s.decimalsOk) {
         log.warn('chain: mint decimals are NOT 6 — every money path will refuse',
           { onChain: s.decimals, required: REQUIRED_DECIMALS });

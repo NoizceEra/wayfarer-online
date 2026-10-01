@@ -30,7 +30,7 @@ delete process.env.PAYOUTS_ENABLED;
 delete process.env.SETTLE_MAX_RAW;
 
 const S = await import('./settlement.js');
-const { settlementConfig, settleClaim, payoutWalletRaw, clearSettlements, settlementHistory } = S;
+const { settlementConfig, settleClaim, payoutWalletRaw, clearSettlements, settlementHistory, selectTokenProgram } = S;
 const L = await import('../economy/ledger.js');
 const P = await import('../economy/payouts.js');
 const { linkVerifiedWallet, verifiedWalletFor, verifiedWalletRecordFor, deviceWithVerifiedWallet, links, initWalletStore, stopWalletStore } = await import('../walletStore.js');
@@ -46,13 +46,18 @@ const MINT = '8q4tDsGTD1J2xNzpm4YVCY1QEpXGwMDhE3BkCdCd5xWg';    // devnet mint, 
 const WALLET = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 const OTHER_WALLET = 'So11111111111111111111111111111111111111112';
 const M = 1_000_000;
+const LEGACY_PROGRAM = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+const TOKEN_2022_PROGRAM = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb';
+const NOT_A_TOKEN_PROGRAM = '11111111111111111111111111111111';   // the System program
 
 // deps.mintVerifyImpl must return the VERIFIED ON-CHAIN MINT FACTS (what
 // assertMintUsable returns) and throw to reject — the same contract as the default.
 const okMint = async () => ({ ok: true, decimals: 6, mint: MINT, cluster: 'devnet', mintAuthority: null, freezeAuthority: null, supply: '1000000000000000', supplyFixed: true });
 const richWallet = async () => 5_000 * M;
-const fakeRpc = (decimals) => async () => ({
-  value: { data: { parsed: { type: 'mint', info: { decimals, supply: '100', mintAuthority: null, freezeAuthority: null, isInitialized: true } } } },
+// A real getAccountInfo (jsonParsed) always carries the account's `owner` — the mint's
+// token program. The fake must mirror that, because the money path now reads it.
+const fakeRpc = (decimals, owner = LEGACY_PROGRAM) => async () => ({
+  value: { owner, data: { parsed: { type: 'mint', info: { decimals, supply: '100', mintAuthority: null, freezeAuthority: null, isInitialized: true } } } },
 });
 
 console.log('\n1. unconfigured: nothing can be settled');
@@ -98,6 +103,46 @@ console.log('\n3. THE DECIMALS HARD RULE — a non-6 mint refuses at the money p
     deps: { sendImpl: async () => ({ signature: 'sig-dec6' }), balanceImpl: richWallet, rpcCall: fakeRpc(6) },
   });
   ok('the same code path accepts a 6-decimal mint (control)', good.ok === true && good.reason === 'settled', JSON.stringify(good));
+}
+
+console.log('\n3b. THE TOKEN PROGRAM — read from the chain, both standards, fail closed');
+{
+  delete process.env.CHAIN_TOKEN_PROGRAM;
+  clearSettlements();
+  // (a) selectTokenProgram: the chain's owning program decides, and only two are payable.
+  const legacy = selectTokenProgram({ ownerProgram: LEGACY_PROGRAM });
+  ok('the legacy SPL Token program is payable', legacy.name === 'spl-token' && legacy.standard === 'legacy', JSON.stringify(legacy));
+  const t22 = selectTokenProgram({ ownerProgram: TOKEN_2022_PROGRAM });
+  ok('the Token-2022 program is payable (pump.fun create_v2)', t22.name === 'token-2022' && t22.standard === 'token-2022', JSON.stringify(t22));
+  let refusedUnknown = null;
+  try { selectTokenProgram({ ownerProgram: NOT_A_TOKEN_PROGRAM }); } catch (e) { refusedUnknown = e; }
+  ok('an unknown owning program is refused (fail closed)', !!refusedUnknown && /not a token program/.test(refusedUnknown.message), refusedUnknown && refusedUnknown.message);
+  let refusedMissing = null;
+  try { selectTokenProgram({ ownerProgram: null }); } catch (e) { refusedMissing = e; }
+  ok('a missing/unknown owner cannot be assumed to be legacy', !!refusedMissing, refusedMissing && refusedMissing.message);
+  // The config escape hatch is an EXPECTATION that must agree with the chain.
+  let mismatch = null;
+  try { selectTokenProgram({ ownerProgram: LEGACY_PROGRAM, configured: TOKEN_2022_PROGRAM }); } catch (e) { mismatch = e; }
+  ok('CHAIN_TOKEN_PROGRAM disagreeing with the chain is refused', !!mismatch && /disagrees with the chain/.test(mismatch.message), mismatch && mismatch.message);
+  ok('CHAIN_TOKEN_PROGRAM agreeing with the chain is allowed',
+    selectTokenProgram({ ownerProgram: TOKEN_2022_PROGRAM, configured: TOKEN_2022_PROGRAM }).id === TOKEN_2022_PROGRAM);
+
+  // (b) the money path reads it via the REAL verifier (only rpcCall is faked).
+  let sent22 = 0;
+  const good22 = await settleClaim({
+    claimId: 'claim_t2022_001', destination: WALLET, amountRaw: 10 * M,
+    deps: { sendImpl: async () => { sent22++; return { signature: 'sig-t2022' }; }, balanceImpl: richWallet, rpcCall: fakeRpc(6, TOKEN_2022_PROGRAM) },
+  });
+  ok('a Token-2022 mint settles and the chosen program is recorded', good22.ok === true && good22.tokenProgram === TOKEN_2022_PROGRAM, JSON.stringify(good22.tokenProgram));
+  let sentUnk = 0;
+  const unknown = await settleClaim({
+    claimId: 'claim_unkprog_1', destination: WALLET, amountRaw: 10 * M,
+    deps: { sendImpl: async () => { sentUnk++; return { signature: 'never' }; }, balanceImpl: richWallet, rpcCall: fakeRpc(6, NOT_A_TOKEN_PROGRAM) },
+  });
+  ok('a mint owned by a NON-token program is refused before signing', unknown.reason === 'mint_rejected', unknown.reason);
+  ok('the refusal names the owning program', /not a token program/.test(unknown.error || ''), unknown.error);
+  ok('NOTHING was signed for the unrecognised program', sentUnk === 0);
+  ok('and nothing for a program-mismatched config either', sent22 === 1);
 }
 
 console.log('\n4. THE HARD CEILING — never more than the paying wallet actually holds');

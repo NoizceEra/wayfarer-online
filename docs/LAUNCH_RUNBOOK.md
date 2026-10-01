@@ -95,9 +95,14 @@ node server/token/verify-launch.mjs \
 
 What it does: reads the mint off-chain and asserts the things that break the economy if wrong.
 
-- **HARD (NO-GO, exit 1):** owner program is the SPL Token Program; `decimals === 6`; supply is
+- **HARD (NO-GO, exit 1):** owner program is a token program the relay can pay on; `decimals === 6`; supply is
   exactly `1,000,000,000 * 10^6`; the account is initialised. A wrong `decimals` is called out
   because every raw amount in the economy would then be off by orders of magnitude.
+  > **UPDATE (this workstream).** This check used to require the LEGACY SPL Token Program and
+  > treat Token-2022 as a NO-GO. That was wrong: pump.fun's current standard, `create_v2`, mints
+  > a **Token-2022** coin (decimals 6, native metadata), and the relay's payout path now selects
+  > the token program from the mint's on-chain owner. BOTH legacy SPL Token and Token-2022 are
+  > accepted; any OTHER owning program is still a NO-GO. `program` is reported verbatim.
 - **RISK (blocks on mainnet by default):** the mint authority is held by something that is
   neither burned (`null`) nor pump.fun's `mint-authority` PDA
   (`TSLvdd1pWpHVjahSpsvCXUbgwsL3JAcvokwaKt1eokM`) — that holder could inflate supply; and a
@@ -280,7 +285,8 @@ with `isMutable = false` at creation, and `verify-launch.mjs` records that fact.
 ever needed it is a pump.fun/platform action, not ours — and it would require the Metaplex CLI,
 which is deliberately **not** a dependency of this repo. (Token-2022's
 `spl-token initialize-metadata` cannot be used either: it only works on a Token-2022 mint
-created with `--enable-metadata`, and a pump.fun `$WAYFARER` is a standard SPL mint.)
+created with `--enable-metadata`, and pump.fun owns the metadata for a `$WAYFARER` mint — a
+`create_v2` coin IS Token-2022, but its metadata is pump.fun's, not ours to re-initialize.)
 
 ---
 
