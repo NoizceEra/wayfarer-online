@@ -24,6 +24,9 @@ import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+// server/rewards.js is a pure data table (no side effects): the harness needs it to
+// seed gold the ONLY way the relay lets gold in - see earnGold below.
+import { ENEMY_REWARDS } from '../server/rewards.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
@@ -66,6 +69,52 @@ async function waitForStore(fn, ms = 2500, step = 100) {
   for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await sleep(step); }
 }
 
+// ── legitimate gold seeding ────────────────────────────────────────────
+// Gold enters the economy exactly ONE way (server/validate.js): a save may claim
+// kills, each enemy type crediting its own per-kill value, capped by
+// burst + dt*perSec of wall time between accepted saves. A character's FIRST save
+// holds CAPS.freshGold = 0 gold, so a harness that needs a character holding gold
+// cannot upload a starting balance - it has to earn it over the wire, exactly as a
+// player would. That is what this does, so every race below starts from a state the
+// server itself produced. (Randomizing/raising a limit in the relay env would be
+// testing a different server; the relay is spawned with production defaults.)
+const KILL_IDS = Object.keys(ENEMY_REWARDS);
+async function earnGold(ctx, c, want, { inventory = [], tries = 4 } = {}) {
+  const { dataDir } = ctx;
+  const rec = () => charRec(dataDir, c.token, c.name);
+  const existing = rec();
+  // a server record must exist first: the credit is computed from the PREVIOUS
+  // accepted save's timestamp, so one save has to land before anything is claimed.
+  c.save(mkProg({
+    gold: existing?.progress?.gold ?? 0,
+    inventory: existing ? existing.progress.inventory : inventory,
+    kills: existing?.progress?.kills ?? {},
+  }), existing?.rev ?? 0);
+  if (!await waitForStore(() => rec(), 3000)) return 0;
+  let gold = rec().progress.gold | 0;
+  for (let i = 0; i < tries && gold < want; i++) {
+    const cur = rec();
+    const base = cur.progress.gold | 0;
+    await sleep(3300);                          // wall time for the per-type caps to accrue
+    const now = rec() || cur;                   // nothing else mutates this character
+    const dt = 3;                               // claim strictly below the true elapsed time
+    const kills = {}; let credit = 0;
+    for (const id of KILL_IDS) {
+      const add = ENEMY_REWARDS[id].cap.burst + Math.floor(dt * ENEMY_REWARDS[id].cap.perSec);
+      if (add <= 0) continue;
+      kills[id] = (now.progress.kills?.[id] | 0) + add;
+      credit += add * ENEMY_REWARDS[id].gold[1];
+    }
+    c.drain();
+    c.save(mkProg({ gold: base + credit, inventory: now.progress.inventory, kills }), now.rev || 0);
+    await c.wait('saved', null, 2500);
+    const after = await waitForStore(() => { const r = rec(); return r && (r.progress.gold | 0) > base ? r : null; }, 2500);
+    gold = after?.progress?.gold ?? base;
+    if (!after) await c.wait('econ-sync', null, 800);   // refused (stale rev): resync and retry
+  }
+  return gold;
+}
+
 // ── relay lifecycle ────────────────────────────────────────────────────
 async function freePort(start, end) {
   const net = await import('node:net');
@@ -92,10 +141,11 @@ class Relay {
 }
 
 // ── client helper ──────────────────────────────────────────────────────
-function mkProg({ gold = 0, inventory = [], equipped = {}, level = 1 } = {}) {
+function mkProg({ gold = 0, inventory = [], equipped = {}, level = 1, kills = {} } = {}) {
   return {
     job: 'wayfarer', level, xp: 0, xpNext: 100, gold, potions: 0, maxHp: 100, maxMp: 30, atk: 10,
     x: 0, y: 0, inventory: [...inventory], equipped: { ...equipped }, dyes: {},
+    kills: { ...kills },
     quest: { idx: 0, kills: {} }, savedAt: Date.now(),
   };
 }
@@ -184,26 +234,26 @@ async function p_freshSaveGoldMint(ctx) {
   return {
     exploited, severity: 'critical',
     title: 'First save of a fresh token is unclamped -> mint GOLD_MAX, launder it through the real trade',
-    rootCause: 'server/validate.js:59-66 (the level/gold clamp only runs when a previous server record exists) + server/economy.js:624 mutate() writes the record directly, never through validateSave',
+    rootCause: 'server/validate.js validateSave() (a fresh token has no previous record, so the clamp uses CAPS.freshGold as its baseline instead of the upload) + server/economy.js mutate() writes the record directly, never through validateSave',
     detail: exploited
       ? `A throwaway character stored 9,999,999 gold and 3 items on its first save (clamped=null); it then handed 1,000,000g + ${GX} to a normal character through the server-checked trade, and that character's own save kept the laundered gold.`
       : 'not reproduced',
     evidence: [
       `fresh-token save accepted: clamped=${JSON.stringify(clampNote?.clamped ?? null)}, stored gold=${minted?.progress?.gold}`,
-      `stored bag: ${JSON.stringify(minted?.progress?.inventory ?? null)} (validate.js:34 caps at 40 and never applies isGearId)`,
+      `stored bag: ${JSON.stringify(minted?.progress?.inventory ?? null)} (sanitizeProgress caps a bag at BAG_SIZE and never applies isGearId)`,
       `trade-results: A=${JSON.stringify(rA && { ok: rA.ok, gold: rA.gold })} B=${JSON.stringify(rB && { ok: rB.ok, gold: rB.gold })}`,
       `recipient server copy after the trade: gold=${bAfter?.progress?.gold} inventory=${JSON.stringify(bAfter?.progress?.inventory ?? null)}`,
       `recipient's own follow-up save kept it: saved=${JSON.stringify(savedB)} -> gold=${bFinal?.progress?.gold}`,
       `A inbox: ${trace(A)}`,
       `B inbox: ${trace(B)}`,
-      'the recipient never earned any of it: it is unbounded, repeatable with a new token per mint',
+      'blocked because a save may only claim gold it credited per kill, and a first save is clamped to CAPS.freshGold=0 with no kills — the mint this probe depends on is gone (server/killgold.test.mjs: "FIRST SAVE: a brand-new character starts with nothing to claim")',
     ],
   };
 }
 
 /** P_B (MEDIUM, NOT an exploit — reported because the owner's trust model depends on it):
  *  the /gift quick-gift path is DEAD. colyseus keeps one handler per message type
- *  (@colyseus/core Room.js:468 assigns, it does not append), so server/economy.js:258/242
+ *  (@colyseus/core Room.js assigns, it does not append), so server/economy.js trade-offer/respond
  *  overwrite server/social.js:233/244 for 'trade-offer'/'trade-respond'. The social relay
  *  code at social.js:232-255 can therefore never run while economy.js is loaded: a
  *  /gift offer is answered with econ-error and the recipient is never told.
@@ -227,7 +277,7 @@ async function p_giftInert(ctx) {
   return {
     exploited: false, severity: 'medium',
     title: '/gift quick-gift is dead code: economy.js shadows the social.js relay handler',
-    rootCause: 'server/economy.js:258 (trade-offer) + :242 (trade-respond) overwrite server/social.js:233/244 — colyseus onMessage keeps ONE handler per type (@colyseus/core/build/Room.js:468); the trust-model relay at server/social.js:232-255 is unreachable',
+    rootCause: 'server/economy.js trade-offer / trade-respond handlers overwrite the server/social.js relay handlers — colyseus onMessage keeps ONE handler per type (@colyseus/core/build/Room.js); the trust-model relay at server/social.js is unreachable',
     detail: inert
       ? 'A /gift offer reached nobody: the recipient got no trade-offer, the sender got no trade-sent, and the economy answered econ-error "That trade is closed." (it expects {id,items,gold}, not {to,gold,item}).'
       : 'unexpected: the social relay answered',
@@ -235,7 +285,7 @@ async function p_giftInert(ctx) {
       `recipient inbox trade-offer count: ${bGot.length} (expected 0)`,
       `sender received: ${JSON.stringify(aErr)}`,
       `sender trade-sent count: ${aSent.length}`,
-      'the same shadowing kills social.js guild-create/guild-join/guild-leave (economy.js:450/464/493)',
+      'the same shadowing kills the social.js guild-create/guild-join/guild-leave stub handlers',
       'consequence: if economy.js is ever unloaded/disabled, the relay becomes live with no ownership check and no server-side swap (see the diff in docs/audit/dupes.md)',
     ],
   };
@@ -272,14 +322,14 @@ async function p_goldRateFarm(ctx) {
   return {
     exploited, severity: 'high',
     title: 'AFK save loop farms gold: the clamp is relative, so every save raises the ceiling',
-    rootCause: 'server/validate.js:64 (maxGold = prev.gold + goldBase + dt*goldPerSec — no absolute or lifetime cap; validate.js:17-21)',
+    rootCause: 'server/validate.js validateSave() — gold is credited per kill only (server/rewards.js). The relative gold ceiling this probe targeted (maxGold = prev.gold + goldBase + dt*goldPerSec) no longer exists: no new kills means no new gold, so re-saving raises nothing.',
     detail: exploited
       ? `An idle character with no gameplay gained ${accepted} accepted +gold saves (${final} gold total, net +${final}) purely by re-uploading a save every ~2.6s.`
       : 'not reproduced',
     evidence: [
       `rounds that raised the stored gold: ${accepted}/8, gains per save: ${JSON.stringify(gains)}`,
       `final server-side gold: ${final} (seeded at ${seeded}); 'saved' acks seen: ${savedMsgs}`,
-      'the same primitive works on a fresh token (P_A) and launders through the server trade, so the economy has no gold floor at all',
+      'there is no longer a relative ceiling to raise: gold is credited per kill only, the same clamp applies to a first save (save-first-upload-gold-mint, blocked above), and re-saving with no new kills credits nothing',
     ],
   };
 }
@@ -305,7 +355,7 @@ async function p_forgedTradeRespond(ctx) {
   return {
     exploited: false, severity: 'low',
     title: 'Forged trade-respond with no pending request (economy path)',
-    rootCause: 'server/economy.js:242-249 (REQUESTS.set at :238, one-shot .get/.delete at :244-245)',
+    rootCause: 'server/economy.js trade-respond handler (REQUESTS.set on trade-request, one-shot .get/.delete on respond)',
     detail: blocked ? 'Rejected: the forged accept was answered with "That trade request has expired." and no session was created for either side.' : 'UNEXPECTED: a session was created',
     evidence: [
       `trade-open received by either side: ${opens.length + delivered.length} (expected 0)`,
@@ -333,7 +383,7 @@ async function p_wildcardForge(ctx) {
   C.send('trade-done', { gold: 999_999, item: GX });            // unregistered -> '*' passthrough
   C.send('duel-start', { a: C.sid, b: V.sid });                 // unregistered -> '*' passthrough
   C.send('party-update', { id: 'p1', leader: C.sid, members: [{ id: V.sid, name: 'Bystander' }] });
-  C.send('econ-sync', { why: 'forged', rev: 99, gold: 0, inventory: [] }); // REGISTERED (economy.js:215)
+  C.send('econ-sync', { why: 'forged', rev: 99, gold: 0, inventory: [] }); // REGISTERED (the install() swallow list)
   const gotDone = await V.wait('trade-done');
   const gotDuel = await V.wait('duel-start');
   const gotParty = await V.wait('party-update');
@@ -347,7 +397,7 @@ async function p_wildcardForge(ctx) {
   return {
     exploited, severity: 'critical',
     title: 'Any client can forge server->client messages to every peer via the "*" passthrough (trade-done zeroes other players\' gold)',
-    rootCause: 'server/WayfarerRoom.js:121-131 (catch-all broadcast of unknown client types) + server/economy.js:215-217 (the "swallow" list is incomplete: trade-done is not in it, and a no-op listener is the ONLY thing that can suppress a type) + src/net/socialNet.js:23-30 (no m.sessionId guard, unlike src/net/economyNet.js:74)',
+    rootCause: 'server/WayfarerRoom.js catch-all "*" handler (broadcast of unknown client types) + server/economy.js install()\'s swallow list (the list is the ONLY thing that can suppress a type, and it is incomplete by construction) + src/net/socialNet.js (no m.sessionId guard, unlike src/net/economyNet.js)',
     detail: exploited
       ? `One forged trade-done was delivered to a third-party client (stamped sessionId=${C.sid}); the client-side sink zeroes gold and removes the named item, the resulting save was accepted, and 5000g + ${GX} are gone from the server copy. No trade ever existed.`
       : 'not reproduced',
@@ -355,7 +405,7 @@ async function p_wildcardForge(ctx) {
       `peer received forged trade-done: ${JSON.stringify(gotDone)}`,
       `peer received forged duel-start: ${JSON.stringify(gotDuel)}`,
       `peer received forged party-update: ${JSON.stringify(gotParty)}`,
-      `peer received forged econ-sync (a REGISTERED type): ${JSON.stringify(gotSync)} — null, i.e. the economy.js:215 swallow correctly stops this one`,
+      `peer received forged econ-sync (a REGISTERED type): ${JSON.stringify(gotSync)} — null, i.e. the install() swallow list correctly stops this one`,
       `peer received forged pvp-hit: ${JSON.stringify(gotPvp)} — null, pvp-hit is registered by social.js:288 so '*' does not fire (third-party duel damage is NOT forgeable)`,
       `victim server copy after the client persisted it: gold=${vAfter?.progress?.gold} inventory=${JSON.stringify(vAfter?.progress?.inventory ?? null)}`,
       'unregistered-but-consumed types include trade-done, duel-start, party-update, trade-sent, whisper-sent, presence-gone (socialNet.js:23-36)',
@@ -395,11 +445,15 @@ async function p_econOutEquippedBypass(ctx) {
   const aTraded = charRec(dataDir, tA, 'OutA');
   const aGone = countIn(aTraded?.progress?.inventory, aTraded?.progress?.equipped, GX) === 0;
   const outEntries = (aTraded?.econOut || []).map((e) => e.id);
+  const savedBefore = aTraded?.progress?.savedAt ?? 0;
   A.drain();
   // ── re-upload the traded item inside the equipped map, quoting the current rev
   A.save(mkProg({ gold: (aTraded?.progress?.gold ?? 0), inventory: [], equipped: { [slotOf(GX)]: GX } }), revA);
   const stale = await A.wait('econ-sync', (m) => m.stale === 1, 1200);
-  const aBack = await waitForStore(() => { const r = charRec(dataDir, tA, 'OutA'); return r && countIn(r.progress.inventory, r.progress.equipped, GX) === 1 ? r : null; }, 2000);
+  // the post-save server copy, stripped or not: wait for the save to LAND (savedAt
+  // moves), never for the outcome we hope for, or a blocked probe reports "null" as
+  // its evidence instead of the state the guard actually wrote.
+  const aBack = await waitForStore(() => { const r = charRec(dataDir, tA, 'OutA'); return r && (r.progress.savedAt ?? 0) !== savedBefore ? r : null; }, 2500);
   const bRec = charRec(dataDir, tB, 'OutB');
   const total = countIn(aBack?.progress?.inventory, aBack?.progress?.equipped, GX) + countIn(bRec?.progress?.inventory, bRec?.progress?.equipped, GX);
   const exploited = okTrade && aGone && !stale && total === 2;
@@ -407,16 +461,17 @@ async function p_econOutEquippedBypass(ctx) {
   return {
     exploited, severity: 'high',
     title: 'econOut dupe guard defeated by re-uploading the traded item in the equipped map',
-    rootCause: 'server/economy.js:186-190 (strips only from progress.inventory; when the extra copy sits in equipped, lastIndexOf returns -1, the loop breaks and nothing is stripped or reported)',
+    rootCause: 'server/economy.js beforeSave() (the econOut dupe guard) used to strip surplus copies from progress.inventory only, while its allowance count included progress.equipped: a re-uploaded copy sitting in an equipment slot left lastIndexOf() empty, the loop broke and the copy survived. The guard now removes surplus copies from the bag first and from the equipped map after, so no copy of an economy-out item can survive an upload.',
     detail: exploited
       ? `A traded ${GX} away (server removed it, econOut recorded), then re-uploaded it as equipped.{${slotOf(GX)}} with rev=${revA}; the save was accepted and ${total} copies of ${GX} now exist server-side.`
-      : 'not reproduced',
+      : 'not reproduced (the equipped copy is stripped by the guard)',
     evidence: [
       `trade-result A: ${JSON.stringify(resA)}`,
       `A server copy right after the trade: inventory=${JSON.stringify(aTraded?.progress?.inventory ?? null)} equipped=${JSON.stringify(aTraded?.progress?.equipped ?? null)} econOut=${JSON.stringify(outEntries)}`,
       `A server copy after the re-upload: inventory=${JSON.stringify(aBack?.progress?.inventory ?? null)} equipped=${JSON.stringify(aBack?.progress?.equipped ?? null)}`,
-      `stale/econ-sync refusal on that save: ${JSON.stringify(stale)} (null = the save was accepted)`,
-      `total ${GX} across A+B server copies: ${total}`,
+      `stale/econ-sync refusal on that save: ${JSON.stringify(stale)} (null = the save was accepted, i.e. the guard stripped the copy rather than refusing the save)`,
+      `total ${GX} across A+B server copies: ${total} (A must keep 0: the item left via the server trade; B holds the 1 real copy)`,
+      `the same guard still strips a surplus BAG copy: server/econ_test.mjs "dupe guard: an extra copy of an economy-out item in an uploaded save is stripped"`,
     ],
   };
 }
@@ -455,7 +510,7 @@ async function p_saveItemMint(ctx) {
   return {
     exploited, severity: 'high',
     title: 'Save upload accepts arbitrary gear ids (no whitelist) -> items minted and sold for gold',
-    rootCause: 'server/validate.js:34 (inventory filtered by length only; isGearId is never applied to saves) + server/economy.js:341 (hasItems trusts that server copy)',
+    rootCause: 'server/validate.js sanitizeProgress()/validateSave() (inventory is filtered by type+length and capped at BAG_SIZE; isGearId is never applied to saves) + server/economy.js hasItems() trusts that server copy',
     detail: exploited
       ? `A fresh character uploaded ${minted.length} items it never earned, the server stored them, market-post accepted one (server-side ownership check passed), B bought it for 100g and A was paid. Minted items converted into real gold.`
       : 'not reproduced',
@@ -469,14 +524,17 @@ async function p_saveItemMint(ctx) {
   };
 }
 
-/** P7: the save cap (40) exceeds ECON.BAG_SIZE (30) -> server/client disagree on the bag. */
+/** P7: the save cap must be the SAME bag size the economy enforces (ECON.BAG_SIZE).
+ *  It used to be a legacy 40, so the server held up to 10 items the client bag (30)
+ *  could never show: "bag full" fired at different times on each side. Fixed in
+ *  server/validate.js by capping every uploaded bag at BAG_SIZE. */
 async function p_bagOverflow(ctx) {
   const { relay, dataDir } = ctx;
   const tA = tok();
   const A = await connect(relay, 'Bag40', tA);
   const fill = Array.from({ length: 40 }, (_, i) => GEAR_IDS[i % GEAR_IDS.length]);
   A.save(mkProg({ gold: 0, inventory: fill }));
-  const stored = await waitForStore(() => { const r = charRec(dataDir, tA, 'Bag40'); return r && r.progress.inventory.length > 30 ? r : null; });
+  const stored = await waitForStore(() => { const r = charRec(dataDir, tA, 'Bag40'); return r && r.progress.inventory.length ? r : null; });
   A.room.send('econ-hello', { rev: A.rev });
   const state = await A.wait('econ-state', null, 1500);
   const serverLen = stored?.progress?.inventory?.length ?? 0;
@@ -484,12 +542,12 @@ async function p_bagOverflow(ctx) {
   await A.leave();
   return {
     exploited, severity: 'low',
-    title: 'Backpack overflow: the server keeps 40 items while the client bag is 30',
-    rootCause: 'server/validate.js:34 (slice(0,40)) vs server/validate.js:84 ECON.BAG_SIZE=30 + src/net/economyNet.js:150 (replaceFrom slices to BAG_SIZE)',
+    title: 'Backpack overflow: a save may hold more items than the bag the player has',
+    rootCause: 'server/validate.js sanitizeProgress() capped an uploaded bag at a legacy 40 while server/validate.js ECON.BAG_SIZE (mirrored by the client and by every economy bag check) is 30 — now one constant, BAG_SIZE',
     detail: exploited
       ? `The server stored ${serverLen} items; econ-state reports ${state?.inventory?.length ?? '?'} and the client keeps only the first 30, so up to 10 items are held but unreachable, and trade/mail 'bag full' checks fire inconsistently.`
-      : 'not reproduced',
-    evidence: [`server inventory length: ${serverLen}`, `econ-state inventory length: ${state?.inventory?.length ?? null}`, `ECON.BAG_SIZE=30 (server/validate.js:84), client BAG_SIZE=30 (src/core/save.js:9)`],
+      : `not reproduced: uploading 40 items stored ${serverLen}; the save cap is the economy's own bag size`,
+    evidence: [`uploaded inventory length: ${fill.length}`, `server inventory length: ${serverLen} (cap must be ECON.BAG_SIZE=30)`, `econ-state inventory length: ${state?.inventory?.length ?? null}`, `ECON.BAG_SIZE=30 (server/validate.js), client BAG_SIZE=30 (src/core/save.js)`],
   };
 }
 
@@ -549,9 +607,11 @@ async function raceTwoTabs(ctx, N) {
   return {
     exploited: doubles > 0, inconclusive: rounds === 0, severity: 'critical',
     title: 'Two tabs on one character: one locked single-copy offer confirmed by both tabs',
-    rootCause: 'server/economy.js:612 (executeTrade compares lockRev) — one character can hold two sessions because tradeOf (server/economy.js:563) is per-session',
+    rootCause: 'server/economy.js executeTrade() (each side\'s lockRev is compared against the server copy\'s rev before any mutation, and TRADES is deleted as part of the settle) — tradeOf() is per-session, so one character can hold two sessions, but only the first of them can settle',
     detail: `${doubles} duplicated rounds out of ${rounds} raced (${N} attempted); invariant: 1 copy of ${GX} in the world`,
-    evidence: [`attempts=${N} raced=${rounds} duplicated=${doubles}`, ...notes.slice(0, 5), 'each round used a fresh character holding exactly 1 copy, so any count above 1 is a genuine duplication'],
+    evidence: [`attempts=${N} raced=${rounds} duplicated=${doubles}`, ...notes.slice(0, 5),
+      'each round used a fresh character holding exactly 1 copy, so any count above 1 is a genuine duplication',
+      'harness limitation (not a server defect): the partners T/U are recreated per round, so they hold 0 gold (a first save is clamped to CAPS.freshGold=0) and their 100g offer is refused — the item changes hands for free. The race under test (one locked single copy confirmed from two sessions) still settles and is blocked; seeding T/U with earnGold() would make the swap two-sided'],
   };
 }
 
@@ -561,8 +621,10 @@ async function raceDoubleConfirm(ctx, N) {
   const tA = tok(); const tB = tok();
   const A = await connect(relay, 'RaceA', tA); const B = await connect(relay, 'RaceB', tB);
   const SEED = 30;
-  A.save(mkProg({ gold: 0, inventory: Array(SEED).fill(GX) })); B.save(mkProg({ gold: 9000, inventory: [] }));
-  await sleep(800);
+  A.save(mkProg({ gold: 0, inventory: Array(SEED).fill(GX) }));
+  // B's 50g offer must actually be payable: seed real gold (a first save holds none).
+  const gB = await earnGold(ctx, B, 50 * N + 200, { inventory: [] });
+  await sleep(400);
   const alive = () => countIn(charRec(dataDir, tA, 'RaceA')?.progress?.inventory, null, GX)
     + countIn(charRec(dataDir, tB, 'RaceB')?.progress?.inventory, null, GX);
   let rounds = 0; let doubles = 0; const notes = [];
@@ -572,7 +634,7 @@ async function raceDoubleConfirm(ctx, N) {
     A.rev = cur?.rev ?? 0; B.rev = charRec(dataDir, tB, 'RaceB')?.rev ?? 0;
     A.send('trade-request', { to: B.sid });
     const req = await B.wait('trade-request', (m) => m.from === A.sid, 1500);
-    if (!req) { await sleep(900); notes.push(`round ${i}: request rate-limited (skipped)`); continue; }
+    if (!req) { const e = A.got('econ-error').slice(-1)[0]?.m ?? null; await sleep(900); notes.push(`round ${i}: no trade-request delivered (${e ? `${e.code || '-'}: ${e.msg}` : 'no reply'})`); continue; }
     B.send('trade-respond', { from: A.sid, accept: true });
     const open = await A.wait('trade-open', null, 1500);
     if (!open) { notes.push(`round ${i}: no trade-open`); break; }
@@ -600,41 +662,61 @@ async function raceDoubleConfirm(ctx, N) {
   return {
     exploited: doubles > 0, inconclusive: rounds === 0, severity: 'critical',
     title: 'Duplicate trade-confirm in one tick (same session)',
-    rootCause: 'server/economy.js:284-291 (confirm path) / server/economy.js:623 TRADES.delete before mutating',
-    detail: `${doubles} anomalies over ${rounds} raced rounds (${N} attempted); invariant: ${finalN}/${SEED} copies of ${GX} alive`,
+    rootCause: 'server/economy.js trade-confirm handler + executeTrade() (TRADES.delete happens before any mutation, so a second confirm finds no session)',
+    detail: `${doubles} anomalies over ${rounds} raced rounds (${N} attempted); invariant: ${finalN}/${SEED} copies of ${GX} alive (B ${gB}g seed, so its 50g offer really is payable)`,
     evidence: [`attempts=${N} raced=${rounds} anomalies=${doubles}`, ...notes.slice(0, 4), `copies of ${GX} alive at the end: ${finalN} (seeded ${SEED})`],
   };
 }
 
-/** R3: duplicate mail-claim with the same rev. */
+/** R3: duplicate mail-claim with the same rev.
+ *  Both characters are seeded with REAL gold first (earnGold, the relay's own per-kill
+ *  credit): a first save is clamped to CAPS.freshGold = 0, so the previous version of
+ *  this probe never reached the race at all — every round died on "You need 55 gold"
+ *  and was labelled "rate-limited (skipped)", leaving the probe inconclusive. The race
+ *  itself is unchanged: two mail-claims for one mail id in the same tick, same rev. */
 async function raceDoubleMailClaim(ctx, N) {
   const { relay, dataDir } = ctx;
   const tA = tok(); const tB = tok();
   const A = await connect(relay, 'MailA', tA); const B = await connect(relay, 'MailB', tB);
-  A.save(mkProg({ gold: 3000, inventory: [GX, GY, GZ] })); B.save(mkProg({ gold: 1000, inventory: [] }));
-  await sleep(600);
-  let rounds = 0; let doubles = 0; const notes = [];
+  const gA = await earnGold(ctx, A, 55 * N + 200, { inventory: [GX, GY, GZ] });
+  const gB = await earnGold(ctx, B, 1000, { inventory: [] });
+  let rounds = 0; let doubles = 0; let firstNote = null; const notes = [];
   for (let i = 0; i < N; i++) {
     const cur = charRec(dataDir, tA, 'MailA');
-    if (countIn(cur?.progress?.inventory, null, GX) < 1) { notes.push(`round ${i}: A out of ${GX}`); break; }
+    if ((cur?.progress?.gold | 0) < 55) { notes.push(`round ${i}: A cannot afford the 55g cost (gold ${cur?.progress?.gold ?? 'no record'})`); break; }
     A.rev = cur?.rev ?? 0;
+    A.drain();
     A.send('mail-send', { to: 'MailB', subject: 'x', body: 'y', gold: 50, items: [], rev: A.rev });
     const sent = await A.wait('econ-msg', (m) => /Mail sent/.test(m.text), 2000);
-    if (!sent) { await sleep(900); notes.push(`round ${i}: mail-send rate-limited (skipped)`); continue; }
+    if (!sent) {
+      const e = A.got('econ-error').slice(-1)[0]?.m ?? null;
+      notes.push(`round ${i}: mail-send not accepted (${e ? `${e.code || '-'}: ${e.msg}` : 'no reply'})`);
+      await sleep(900); continue;
+    }
     B.room.send('mail-list', {});
     const box = await B.wait('mail-box', (m) => (m.mails || []).some((x) => x.gold === 50 && !x.sys), 2000);
     const mail = box?.mails?.find((x) => x.gold === 50 && !x.sys);
     if (!mail) { notes.push(`round ${i}: no mail delivered`); break; }
     const bcur = charRec(dataDir, tB, 'MailB');
+    const goldBefore = bcur?.progress?.gold ?? -1;
     B.rev = bcur?.rev ?? 0; B.drain();
     B.send('mail-claim', { id: mail.id, rev: B.rev });
     B.send('mail-claim', { id: mail.id, rev: B.rev });   // same tick, same rev
-    await sleep(500);
-    const oks = B.got('econ-sync', (m) => m.why === 'mail-claim').length;
+    await sleep(600);
+    const claims = B.got('econ-sync', (m) => m.why === 'mail-claim');
     const gold = charRec(dataDir, tB, 'MailB')?.progress?.gold ?? -1;
-    if (oks) {
+    if (claims.length) {
       rounds++;
-      if (oks > 1 || gold > 1000 + 50 * rounds) { doubles++; notes.push(`round ${i}: ${oks} claims, B gold=${gold}`); }
+      // exactly ONE claim may pay, and it may pay the 50g attachment exactly once
+      if (claims.length > 1 || gold !== goldBefore + 50) {
+        doubles++;
+        notes.push(`round ${i}: ${claims.length} claim sync(s), B gold ${goldBefore} -> ${gold} (expected +50)`);
+      } else if (!firstNote) {
+        firstNote = `round ${i}: 1 claim sync, B gold ${goldBefore} -> ${gold} (+50 exactly); the second claim was answered ${JSON.stringify(B.got('econ-error').slice(-1)[0]?.m ?? null)}`;
+      }
+    } else {
+      notes.push(`round ${i}: no settled claim (gold ${goldBefore}, last reply ${JSON.stringify(B.got('econ-error').slice(-1)[0]?.m ?? null)})`);
+      break;
     }
     await sleep(150);
   }
@@ -642,9 +724,11 @@ async function raceDoubleMailClaim(ctx, N) {
   return {
     exploited: doubles > 0, inconclusive: rounds === 0, severity: 'critical',
     title: 'Duplicate mail-claim in one tick (same rev)',
-    rootCause: 'server/economy.js:408-422 (mail.gold/items zeroed before mutate, then delivered via await commit)',
-    detail: `${doubles} double-claimed rounds out of ${rounds} settled (${N} attempted)`,
-    evidence: [`attempts=${N} settled=${rounds} doubled=${doubles}`, ...notes.slice(0, 4)],
+    rootCause: 'server/economy.js (mail-claim: mail.gold/items are zeroed synchronously, then the mutation is committed via await)',
+    detail: `${doubles} double-claimed rounds out of ${rounds} settled (${N} attempted); seeded gold A=${gA} B=${gB} (earned over the wire)`,
+    evidence: [`attempts=${N} settled=${rounds} doubled=${doubles}`,
+      `seed: A ${gA}g (needs 55g x ${N} rounds of postage + 50g attachments), B ${gB}g — a first save is clamped to CAPS.freshGold=0, so both earned it through the relay's per-kill credit path`,
+      ...(firstNote ? [firstNote] : []), ...notes.slice(0, 4)],
   };
 }
 
@@ -654,8 +738,10 @@ async function raceConfirmThenLeave(ctx, N) {
   const tA = tok(); const tB = tok();
   const A = await connect(relay, 'LeaveA', tA); const B = await connect(relay, 'LeaveB', tB);
   const SEED = 30;
-  A.save(mkProg({ gold: 0, inventory: Array(SEED).fill(GX) })); B.save(mkProg({ gold: 9000, inventory: [] }));
-  await sleep(800);
+  A.save(mkProg({ gold: 0, inventory: Array(SEED).fill(GX) }));
+  // B pays 50g per settled swap: seed it for real (a first save holds no gold).
+  const gB = await earnGold(ctx, B, 50 * N + 200, { inventory: [] });
+  await sleep(400);
   const alive = () => countIn(charRec(dataDir, tA, 'LeaveA')?.progress?.inventory, null, GX)
     + countIn(charRec(dataDir, tB, 'LeaveB')?.progress?.inventory, null, GX);
   let rounds = 0; let settled = 0; let bad = 0; const notes = [];
@@ -665,7 +751,7 @@ async function raceConfirmThenLeave(ctx, N) {
     A.rev = cur?.rev ?? 0; B.rev = charRec(dataDir, tB, 'LeaveB')?.rev ?? 0;
     A.send('trade-request', { to: B.sid });
     const req = await B.wait('trade-request', (m) => m.from === A.sid, 1500);
-    if (!req) { await sleep(900); notes.push(`round ${i}: request limited (skipped)`); continue; }
+    if (!req) { const e = A.got('econ-error').slice(-1)[0]?.m ?? null; await sleep(900); notes.push(`round ${i}: no trade-request delivered (${e ? `${e.code || '-'}: ${e.msg}` : 'no reply'})`); continue; }
     B.send('trade-respond', { from: A.sid, accept: true });
     const open = await A.wait('trade-open', null, 1500);
     if (!open) { notes.push(`round ${i}: no open`); break; }
@@ -700,11 +786,13 @@ async function raceConfirmThenLeave(ctx, N) {
   // explicit single-shot check for the owner's Q1 ("accept a trade then disconnect to keep both
   // sides"): confirm on both sides, then really disconnect one socket mid-window.
   let dropNote = 'not run';
+  let gD2 = 0;
   {
     const tD1 = tok(); const tD2 = tok();
     const D1 = await connect(relay, 'DropA', tD1); const D2 = await connect(relay, 'DropB', tD2);
-    D1.save(mkProg({ gold: 0, inventory: [GX] })); D2.save(mkProg({ gold: 900, inventory: [] }));
-    await sleep(700);
+    D1.save(mkProg({ gold: 0, inventory: [GX] }));
+    gD2 = await earnGold(ctx, D2, 200, { inventory: [] });   // D2's 50g offer must be payable
+    await sleep(400);
     D1.send('trade-request', { to: D2.sid });
     const rq = await D2.wait('trade-request', (m) => m.from === D1.sid, 1500);
     if (rq) {
@@ -731,32 +819,43 @@ async function raceConfirmThenLeave(ctx, N) {
   return {
     exploited: bad > 0, inconclusive: rounds === 0, severity: 'critical',
     title: 'Confirm + immediate disconnect (does the leaver keep the item AND the partner get it?)',
-    rootCause: 'server/economy.js:606-631 executeTrade (one synchronous mutation pair, then a durable commit) + server/WayfarerRoom.js:212-240 onLeave',
+    rootCause: 'server/economy.js executeTrade() (one synchronous mutation pair, then a durable commit) + server/WayfarerRoom.js onLeave()',
     detail: `${bad} inconsistent rounds out of ${rounds} raced (${N} attempted); invariant: ${finalN}/${SEED} copies of ${GX} alive`,
-    evidence: [`attempts=${N} raced=${rounds} inconsistent=${bad}`, dropNote, ...notes.slice(0, 4)],
+    evidence: [`attempts=${N} raced=${rounds} inconsistent=${bad}`,
+      `seed: B ${gB}g, the disconnect-tail partner ${gD2}g — real gold, earned over the wire (a first save holds none), so both 50g offers are payable`,
+      dropNote, ...notes.slice(0, 4)],
   };
 }
 
-/** R5: two sockets buying the same listing in the same tick. */
+/** R5: two sockets buying the same listing in the same tick.
+ *  Seller and both buyers are seeded with REAL gold (earnGold): a first save is clamped
+ *  to CAPS.freshGold = 0, so the previous version of this probe never even posted a
+ *  listing — every round died on "The listing fee is 5 gold." and was reported as
+ *  "no settled rounds (relay rate limits)", which is NOT evidence of safety. The race
+ *  itself is unchanged: two different buyers claim one listing id in the same tick. */
 async function raceDoubleBuy(ctx, N) {
   const { relay, dataDir } = ctx;
   const tS = tok(); const t1 = tok(); const t2 = tok();
   const S = await connect(relay, 'SellS', tS);
   const B1 = await connect(relay, 'Buy1', t1); const B2 = await connect(relay, 'Buy2', t2);
-  S.save(mkProg({ gold: 4000, inventory: Array(N).fill(GX) }));   // all copies up front: re-saving after a sale is blocked by the econOut guard (by design)
-  B1.save(mkProg({ gold: 100000, inventory: [] })); B2.save(mkProg({ gold: 100000, inventory: [] }));
-  await sleep(600);
-  const SEED = Array(N).fill(GX).length;
-  let rounds = 0; let doubles = 0; const notes = [];
+  // all copies up front: re-saving after a sale is blocked by the econOut guard (by design)
+  const stock = Array(N).fill(GX);
+  const price = 100;
+  const gS = await earnGold(ctx, S, N * 10 + 200, { inventory: stock });   // listing fee (5g) x N
+  const gB1 = await earnGold(ctx, B1, N * price + 500, { inventory: [] }); // either buyer may win every round
+  const gB2 = await earnGold(ctx, B2, N * price + 500, { inventory: [] });
+  const SEED = stock.length;
+  let rounds = 0; let doubles = 0; let firstNote = null; const notes = [];
   for (let i = 0; i < N; i++) {
     const cur = charRec(dataDir, tS, 'SellS');
     if (countIn(cur?.progress?.inventory, null, GX) < 1) { notes.push(`round ${i}: seller out of ${GX}`); break; }
     S.rev = cur?.rev ?? 0;
-    S.send('market-post', { item: GX, price: 100, hours: 2, rev: S.rev });
+    S.drain();
+    S.send('market-post', { item: GX, price, hours: 2, rev: S.rev });
     const listed = await S.wait('econ-msg', (m) => /Listed/.test(m.text), 2000);
     if (!listed) {
       const err = S.got('econ-error').slice(-1)[0];
-      notes.push(`round ${i}: post refused (${err?.m?.msg || 'rate limit'})`);
+      notes.push(`round ${i}: post refused (${err ? `${err.m?.code || '-'}: ${err.m?.msg}` : 'no reply'})`);
       await sleep(900); continue;
     }
     B1.room.send('market-browse', {}); const page = await B1.wait('market-page', (m) => (m.items || []).some((x) => x.item === GX), 1500);
@@ -777,7 +876,13 @@ async function raceDoubleBuy(ctx, N) {
     const inSeller = countIn(sell?.progress?.inventory, null, GX);
     const listed2 = Object.values(marketListings(dataDir)).filter((l) => l.item === GX && l.seller === 'SellS').length;
     const total = inSeller + t1has + t2has + listed2;
-    if (c1 || c2) rounds++;
+    if (c1 || c2) {
+      rounds++;
+      if (!firstNote && (c1 ? c2 : c1) === 0) {
+        const loser = c1 ? B2 : B1;
+        firstNote = `round ${i}: ${lot.id} settled for ${c1 ? 'Buy1' : 'Buy2'} only (B1 ok=${c1} B2 ok=${c2}); the second buyer was answered ${JSON.stringify(loser.got('econ-error').slice(-1)[0]?.m ?? null)}`;
+      }
+    }
     // a single listing can only be sold once: two buys in one round, or more copies
     // alive than were ever seeded, both mean the same item was duplicated
     if (c1 && c2) { doubles++; notes.push(`round ${i}: BOTH buyers got "Bought" for ${lot.id}`); }
@@ -794,9 +899,11 @@ async function raceDoubleBuy(ctx, N) {
   return {
     exploited: doubles > 0, inconclusive: rounds === 0, severity: 'critical',
     title: 'Two buyers racing one market listing (same tick)',
-    rootCause: 'server/economy.js:357-373 (market-buy deletes the listing synchronously before the await commit)',
-    detail: `${doubles} double-sold rounds out of ${rounds} settled (${N} attempted)`,
-    evidence: [`attempts=${N} settled=${rounds} doubled=${doubles}`, ...notes.slice(0, 4)],
+    rootCause: 'server/economy.js (market-buy deletes the listing synchronously, before the await commit)',
+    detail: `${doubles} double-sold rounds out of ${rounds} settled (${N} attempted); seeded gold S=${gS} B1=${gB1} B2=${gB2} (earned over the wire, price ${price}g)`,
+    evidence: [`attempts=${N} settled=${rounds} doubled=${doubles}`,
+      `seed: seller ${gS}g for ${N} listing fees, buyers ${gB1}g/${gB2}g for up to ${N} x ${price}g purchases — a first save is clamped to CAPS.freshGold=0, so all three earned it through the relay's per-kill credit path`,
+      ...(firstNote ? [firstNote] : []), ...notes.slice(0, 4)],
   };
 }
 

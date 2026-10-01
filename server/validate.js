@@ -48,6 +48,14 @@ export const CAPS = {
   // a forged counter mint boss money off trash kills.
 };
 
+// Bag size: the client's bag (src/core/save.js BAG_SIZE), the economy's bag
+// (ECON.BAG_SIZE below) and the cap on an uploaded save are the SAME number, on
+// purpose. They used to disagree — saves were truncated at a legacy 40 while trade,
+// market, mail and the client all used 30 — so the server would hold up to 10 items
+// the player could never see or spend, and "bag full" fired at different times on
+// each side (docs/audit/dupes.md: bag-overflow-40v30). One constant, one bag.
+export const BAG_SIZE = 30;
+
 export function sanitizeProgress(p) {
   if (!p || typeof p !== 'object') return null;
   const out = {
@@ -61,7 +69,7 @@ export function sanitizeProgress(p) {
     potions: int(p.potions, 0, 99, 0),
     maxHp: int(p.maxHp, 1, 1e6, 100), maxMp: int(p.maxMp, 0, 1e6, 30), atk: int(p.atk, 0, 1e6, 10),
     x: int(p.x, -20000, 40000, 0), y: int(p.y, -20000, 40000, 0),
-    inventory: (Array.isArray(p.inventory) ? p.inventory : []).filter((s) => typeof s === 'string' && s.length <= 48).slice(0, 40),
+    inventory: (Array.isArray(p.inventory) ? p.inventory : []).filter((s) => typeof s === 'string' && s.length <= 48).slice(0, BAG_SIZE),
     equipped: {}, dyes: {},
     quest: p.quest && typeof p.quest === 'object' && jsonSize(p.quest) < 24_000 ? p.quest : { idx: 0, kills: {} },
     prog: p.prog && typeof p.prog === 'object' && jsonSize(p.prog) < 12_000 ? p.prog : null,
@@ -86,6 +94,11 @@ export function validateSave(prev, progress, now = Date.now()) {
   const clamped = [];
   const p = sanitizeProgress(progress);
   if (!p) return { rec: null, clamped: ['invalid'] };
+  // An uploaded bag bigger than the bag the player has is truncated to BAG_SIZE by
+  // sanitizeProgress; say so, so the caller logs a real violation instead of the
+  // server silently holding slots the client can never open (bag-overflow-40v30).
+  const bagIn = Array.isArray(progress.inventory) ? progress.inventory.filter((s) => typeof s === 'string' && s.length <= 48).length : 0;
+  if (bagIn > p.inventory.length) clamped.push(`bag ${bagIn}>${p.inventory.length}`);
   // A MISSING previous record must not be a licence to claim anything. Treat a
   // first save as a fresh character at the baseline allowance and apply the SAME
   // rate clamp; previously `if (pp)` skipped clamping entirely, so a fresh device
@@ -141,7 +154,7 @@ try {
 export const GEAR_META = ITEM_DB.gear || {};
 
 export const ECON = {
-  BAG_SIZE: 30,              // client BAG_SIZE (src/core/save.js)
+  BAG_SIZE,                  // the ONE bag size (see BAG_SIZE above; client src/core/save.js)
   TRADE_ITEMS: 8,            // per side
   GOLD_MAX: CAPS.GOLD_MAX,
   PRICE_MAX: 1_000_000,

@@ -180,19 +180,37 @@ export function beforeSave(room, client, p, m, prev) {
     log.info('econ: stale save refused', { name: p.name, got: m.rev ?? null, cur });
     return false;
   }
-  // dupe guard: items the economy just moved out may not reappear
+  // dupe guard: items the economy just moved out may not reappear ANYWHERE in the
+  // uploaded record. A save can carry an item in exactly two places: progress.inventory
+  // (the bag) and progress.equipped (the equipment map) — and only the bag is what the
+  // economy itself moves (trade / market / mail remove from the bag only). This guard
+  // counted both but stripped from the bag only, so re-uploading an item the economy
+  // moved out under an equipment slot left `lastIndexOf` empty: the loop broke out and
+  // the copy survived, i.e. one traded item came back as an equipped item and two
+  // copies were alive (docs/audit/dupes.md: econout-equipped-bypass, verified
+  // exploitable: trade it away, save it as equipped.{slot}, keep both).
+  // Surplus copies are now removed from the bag first (that is the cheap copy to lose)
+  // and then from the equipped map, so no copy of an economy-out item can survive an
+  // upload. `equipped` comes off the wire, so it is only read when it is a real map.
   const t = now();
   const out = (prev.econOut || []).filter((e) => t - e.t < ECON_OUT_MS);
+  const eqMap = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
   if (out.length && m.progress && Array.isArray(m.progress.inventory)) {
-    const count = (inv, eq, id) => inv.filter((x) => x === id).length + Object.values(eq || {}).filter((x) => x === id).length;
+    const count = (inv, eq, id) => inv.filter((x) => x === id).length + Object.values(eqMap(eq)).filter((x) => x === id).length;
     const stripped = [];
     for (const id of new Set(out.map((e) => e.id))) {
       const allowed = count(prev.progress.inventory, prev.progress.equipped, id);
       let extra = count(m.progress.inventory, m.progress.equipped, id) - allowed;
+      const eq = eqMap(m.progress.equipped);
       while (extra > 0) {
         const i = m.progress.inventory.lastIndexOf(id);
-        if (i < 0) break; // equipped copy: leave it, it came from the bag we already checked
-        m.progress.inventory.splice(i, 1); extra--; stripped.push(id);
+        if (i >= 0) { m.progress.inventory.splice(i, 1); extra--; stripped.push(id); continue; }
+        // no bag copy left: the surplus is an EQUIPPED copy of an item the server
+        // copy no longer holds. Un-equip it (null = empty slot, which
+        // sanitizeProgress accepts) instead of letting it ride into the save.
+        const slot = Object.keys(eq).find((k) => eq[k] === id);
+        if (slot === undefined) break; // nothing left to strip
+        eq[slot] = null; extra--; stripped.push(id);
       }
     }
     if (stripped.length) suspicious(room, client, p, 'dupe', { stripped });
