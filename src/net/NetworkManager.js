@@ -334,7 +334,8 @@ export class NetworkManager {
       return;
     }
     this.lastSaveSent = now;
-    this.send('save', { name: this.name, progress: this.pendingSave, hero: this.hero || loadHero() });
+    // rev: economy revision (src/net/economyNet.js); the server refuses saves quoting an old one
+    this.send('save', { name: this.name, progress: this.pendingSave, hero: this.hero || loadHero(), rev: this.econRev });
     this.pendingSave = null;
   }
 

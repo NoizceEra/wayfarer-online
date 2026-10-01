@@ -86,6 +86,7 @@ class Townfolk {
       });
     }
     if (n.shop) opts.push({ label: 'Browse gear', cb: () => bus.emit(Events.GEAR, { open: 'shop', shop: n.shop }) });
+    if (n.market) opts.push({ label: 'Open the market board', cb: () => bus.emit('econ-ui', { panel: 'market' }) }, { label: 'Check my mail', cb: () => bus.emit('econ-ui', { panel: 'mail' }) });
     opts.push({ label: 'Goodbye', cb: () => {} });
     return opts.length === 1 ? [] : opts.slice(0, 5);
   }

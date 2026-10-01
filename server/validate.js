@@ -1,3 +1,7 @@
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
 // Light anti-cheat for uploaded character saves. Not a full authority: the
 // client simulates combat, so we bound what a save can claim instead.
 //  - shape/size limits on every field (junk never reaches disk)
@@ -61,4 +65,63 @@ export function validateSave(prev, progress, now = Date.now()) {
     if (p.gold > maxGold) { clamped.push(`gold ${p.gold}>${maxGold}`); p.gold = maxGold; }
   }
   return { rec: p, clamped };
+}
+
+// ─── economy (trade / market / mail / guild bank) ─────────────────────
+// Item ids come from server/shared/item_ids.json, generated from the client
+// catalogues by tools/export_item_ids.mjs (the client imports the same file).
+// Only bag gear (progress.inventory) is tradable; ids outside the whitelist are
+// rejected by every economy handler. Saves are NOT filtered by it (a stale
+// whitelist must never delete items from a character).
+let ITEM_DB = { gear: {}, items: [], mats: [] };
+try {
+  const file = path.join(path.dirname(fileURLToPath(import.meta.url)), 'shared', 'item_ids.json');
+  ITEM_DB = JSON.parse(fs.readFileSync(file, 'utf8'));
+} catch (e) { console.error(`item_ids.json missing or invalid (${e.message}): economy rejects every item`); }
+export const GEAR_META = ITEM_DB.gear || {};
+
+export const ECON = {
+  BAG_SIZE: 30,              // client BAG_SIZE (src/core/save.js)
+  TRADE_ITEMS: 8,            // per side
+  GOLD_MAX: CAPS.GOLD_MAX,
+  PRICE_MAX: 1_000_000,
+  MARKET_TAX: 0.05,          // listing fee (gold sink), paid up front, not refunded
+  MARKET_HOURS: [2, 8, 24, 48],
+  MARKET_MAX_PER_SELLER: 10,
+  MAIL_ITEMS: 5,
+  MAIL_POSTAGE: 5,           // gold sink per player mail
+  MAIL_BOX_MAX: 50,          // player mail refused beyond this (system mail always delivers)
+  TEXT_MAX: 200,
+  SUBJECT_MAX: 40,
+  MOTD_MAX: 120,
+};
+
+export const isGearId = (id) => typeof id === 'string' && id.length <= 48 && Object.prototype.hasOwnProperty.call(GEAR_META, id);
+// whole gold amount in [0, max] or null (no floats, no strings, no negatives)
+export function goldAmount(v, max = ECON.GOLD_MAX) {
+  if (typeof v !== 'number' || !Number.isInteger(v) || v < 0 || v > max) return null;
+  return v;
+}
+// array of whitelisted gear ids, at most `max`, or null if anything is off
+export function itemList(v, max) {
+  if (v === undefined || v === null) return [];
+  if (!Array.isArray(v) || v.length > max) return null;
+  for (const id of v) if (!isGearId(id)) return null;
+  return v.slice();
+}
+export const cleanLine = (t, max) => String(t ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
+export const cleanCharName = (t) => String(t ?? '').replace(/[^\w \-']/g, '').trim().slice(0, 14);
+export const revOf = (v) => (typeof v === 'number' && Number.isInteger(v) && v >= 0 ? v : null);
+// multiset check: does `inv` contain every id of `want` (with multiplicity)?
+export function hasItems(inv, want) {
+  const n = new Map();
+  for (const id of inv || []) n.set(id, (n.get(id) || 0) + 1);
+  for (const id of want) { const c = n.get(id) || 0; if (c < 1) return false; n.set(id, c - 1); }
+  return true;
+}
+// copy of `inv` with one occurrence of each id of `take` removed
+export function withoutItems(inv, take) {
+  const out = (inv || []).slice();
+  for (const id of take) { const i = out.indexOf(id); if (i >= 0) out.splice(i, 1); }
+  return out;
 }
