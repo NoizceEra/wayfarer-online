@@ -3,8 +3,13 @@ import { bus, Events } from '../core/events.js';
 import { CONFIG } from '../config.js';
 import { RemotePlayer } from '../entities/RemotePlayer.js';
 import { audio } from '../systems/audio.js';
-import { net, areaKey } from './NetworkManager.js';
+import { net } from './NetworkManager.js';
 import { SnapBuffer, INTERP_DELAY } from './interp.js';
+import {
+  netAreaOf, enemyNetArea, focusTarget, applySnapFields, spawnFromSnap, hitConfirm,
+  tickReplica, appendEnemyDelta, takeoverArea, sendDungeonState, onDungeonState,
+  sendEventProgress, onEventProgress,
+} from './coopSync.js';
 
 // Glue between WorldScene and the relay. WorldScene hooks (all no-ops solo):
 //   sync.attach(scene, player, hero)       once, after enemies exist
@@ -51,8 +56,14 @@ export class WorldSync {
       net.on('adead', (m) => this.onDeadList(m)),
       net.on('act', (m) => this.onAct(m)),
       net.on('correct', (m) => this.onCorrect(m)),
-      net.on('auth', () => this.enemyLast.clear()),
+      net.on('auth', (m) => {
+        this.enemyLast.clear();
+        this._dstSent = null; this._evpSent = null;
+        if (m?.sid === net.sessionId && m.a) takeoverArea(this, m.a);
+      }),
       net.on('peer-status', (m) => this.remotes.get(m.sessionId)?.setDisconnected(m.dc)),
+      net.on('dst', (m) => onDungeonState(this, m)),
+      net.on('evp', (m) => onEventProgress(this, m)),
     ];
     // Peers that joined before world entry (lobby on the title screen).
     net.peers.forEach((p, id) => this.addRemote(id, p.name, p.hero, p.a));
@@ -60,7 +71,8 @@ export class WorldSync {
     if (net.connected) this.resync();
   }
 
-  myArea() { return areaKey(this.scene.areas?.current?.id); }
+  myArea() { return netAreaOf(this.scene); }
+  focusTarget(e) { return focusTarget(this, e); }
 
   // Ask the server for a full replication refresh (everything we missed
   // while on the title/creator screens or during a reconnect).
@@ -89,12 +101,14 @@ export class WorldSync {
       r.pushSample(t - (d.d || 0), d.x, d.y, d.f, d.m);
     }
     for (const d of m.e || []) {
-      const e = this.enemyById.get(d.i);
+      let e = this.enemyById.get(d.i);
+      if (!e || !e.active) e = spawnFromSnap(this, d);
       if (!e || !e.active) continue;
       if (!e._nb) e._nb = new SnapBuffer(16);
       if (d.x !== undefined) e._nb.push(t - (d.d || 0), d.x, d.y);
       if (d.h !== undefined) this.setEnemyHp(e, d.h);
       if (d.s !== undefined) this.setEnemyState(e, d.s);
+      applySnapFields(this, e, d);
     }
   }
 
@@ -109,16 +123,27 @@ export class WorldSync {
 
   // ─── enemies ───────────────────────────────────────────────────────
   registerEnemy(e) {
-    if (!e || e.netId || !e.home) return;
-    const base = `${areaKey(e.areaId)}:${e.typeId}:${Math.round(e.home.x)},${Math.round(e.home.y)}`;
-    let id = base, k = 1;
-    while (this.enemyById.get(id)?.active) id = `${base}#${k++}`;
-    e.netId = id;
+    if (!e || e.localOnly) return;
+    if (!e.netId) {
+      if (!e.home) return;
+      const na = enemyNetArea(e, this.scene);
+      e.netArea = na;
+      const base = `${na}:${e.typeId}:${Math.round(e.home.x)},${Math.round(e.home.y)}`;
+      let id = base, k = 1;
+      while (this.enemyById.get(id)?.active) id = `${base}#${k++}`;
+      e.netId = id;
+    } else {
+      e.netArea = e.netArea || enemyNetArea(e, this.scene);
+      const prev = this.enemyById.get(e.netId);
+      if (prev && prev !== e && prev.active) return prev;
+    }
+    const id = e.netId;
     this.enemyById.set(id, e);
     e.once('destroy', () => {
       if (this.enemyById.get(id) === e) this.enemyById.delete(id);
       this.enemyLast.delete(id);
     });
+    return e;
   }
 
   setEnemyHp(e, h) {
@@ -145,8 +170,13 @@ export class WorldSync {
   // Called from WorldScene's enemy loop for enemies in the player's space.
   driveEnemy(e, time) {
     if (!net.connected || !e.netId) return false;
-    if (net.isAuthority(e.areaId)) return e.aiUpdate ? false : this.chaseRemote(e, time);
-    // replica: interpolate authority snapshots
+    const na = enemyNetArea(e, this.scene);
+    if (net.isAuthority(na)) {
+      e._netReplica = false;
+      return e.aiUpdate ? false : this.chaseRemote(e, time);
+    }
+    // replica: interpolate authority snapshots + shared telegraphs
+    e._netReplica = true;
     e.body?.setVelocity(0, 0);
     const s = e._nb?.sample(net.serverNow() - INTERP_DELAY);
     if (s) {
@@ -155,6 +185,7 @@ export class WorldSync {
       if (Math.abs(dx) + Math.abs(dy) > 0.25) e.setFacingByVelocity?.(dx, dy);
     }
     this.animateReplica(e, time);
+    tickReplica(this, e);
     e.setDepth(e.y);
     return true;
   }
@@ -205,14 +236,14 @@ export class WorldSync {
     return out;
   }
   announceDeath(e) {
-    net.send('edeath', { i: e.netId, by: this.contributors(e), r: e.def?.respawn || 12000 });
+    net.send('edeath', { i: e.netId, by: this.contributors(e), r: e.noRespawn ? 0 : (e.def?.respawn || 12000) });
   }
 
   // Top of WorldScene.damageEnemy. Returns true when the hit was routed to the network.
   interceptHit(ed, dmg, fromRemote) {
     if (!net.connected || fromRemote || !ed?.netId) return false;
     const n = Math.max(1, Math.round(dmg));
-    if (net.isAuthority(ed.areaId)) {
+    if (net.isAuthority(enemyNetArea(ed, this.scene))) {
       this.contrib(ed, net.sessionId);
       const h = Math.max(0, Math.round(ed.hp - n));
       net.send('ehit', { i: ed.netId, d: n, h, by: net.sessionId });
@@ -231,7 +262,7 @@ export class WorldSync {
   // Authority: a remote player's hit.
   onRemoteHit(m) {
     const e = this.enemyById.get(m.i);
-    if (!e || !e.active || !net.isAuthority(e.areaId)) return;
+    if (!e || !e.active || !net.isAuthority(enemyNetArea(e, this.scene))) return;
     const n = Math.max(1, Math.round(m.d));
     this.contrib(e, m.by);
     const h = Math.max(0, Math.round(e.hp - n));
@@ -244,14 +275,15 @@ export class WorldSync {
     }
     this.announceDeath(e);
     if (this.contributors(e).includes(net.sessionId)) this.scene.damageEnemy(e, n, true); // shared kill: we get credit too
-    else this.killQuiet(e, e.def?.respawn || 12000);
+    else this.killQuiet(e, e.noRespawn ? 0 : (e.def?.respawn || 12000));
   }
 
   onEnemyHit(m) {
     const e = this.enemyById.get(m.i);
-    if (!e || !e.active || net.isAuthority(e.areaId)) return;
+    if (!e || !e.active || net.isAuthority(enemyNetArea(e, this.scene))) return;
     this.setEnemyHp(e, m.h);
-    if (m.by !== net.sessionId) {
+    if (m.by === net.sessionId) hitConfirm(this, e, m);
+    else {
       this.scene.damageNumber?.(e.x, e.y, m.d);
       this.flash(e);
     }
@@ -260,8 +292,10 @@ export class WorldSync {
   onEnemyDeath(m) {
     const e = this.enemyById.get(m.i);
     if (!e || !e.active) return;
+    const typeId = e.typeId;
     if ((m.by || []).includes(net.sessionId)) this.localKill(e);
-    else this.killQuiet(e, m.r || e.def?.respawn || 12000);
+    else this.killQuiet(e, e.noRespawn ? 0 : (m.r || e.def?.respawn || 12000));
+    this.scene.dungeon?.onNetDeath?.(typeId);
   }
   // Run the scene's own death path (XP, gold, quest credit, per-player loot
   // roll, respawn timer) without printing a bogus damage number.
@@ -277,14 +311,18 @@ export class WorldSync {
     if (!e.active) return;
     s.spawnFx?.(e.x, e.y - 6, 'fx.smoke', 1.2);
     const { x, y } = e.home; const typeId = e.typeId; const areaId = e.areaId || null;
+    const noRespawn = !!e.noRespawn || !(respawnMs > 0);
     e.destroy();
+    if (noRespawn) return;
     s.time.delayedCall(Math.max(500, respawnMs), () => { if (s.scene.isActive()) s.makeEnemy(x, y, typeId, areaId); });
   }
   onDeadList(m) {
     if (m.a !== this.myArea()) return;
     for (const [id, ms] of m.ids || []) {
       const e = this.enemyById.get(id);
-      if (e?.active) this.killQuiet(e, ms);
+      const typeId = e?.typeId;
+      if (e?.active) this.killQuiet(e, e.noRespawn ? 0 : ms);
+      if (typeId) this.scene.dungeon?.onNetDeath?.(typeId);
     }
   }
 
@@ -347,6 +385,8 @@ export class WorldSync {
     this.sendAcc = Math.min(this.sendAcc - SEND_MS, SEND_MS);
     this.sendMove(myA);
     this.sendEnemies(myA);
+    sendDungeonState(this);
+    sendEventProgress(this);
   }
 
   // Delta-compressed move: only changed fields; x/y always travel together.
@@ -366,14 +406,16 @@ export class WorldSync {
 
   // Authority: stream changed fields of enemies near any player in this area.
   sendEnemies(myA) {
-    if (!net.isAuthority(this.scene.areas?.current?.id)) { if (this.enemyLast.size) this.enemyLast.clear(); return; }
+    if (!net.isAuthority(myA)) { if (this.enemyLast.size) this.enemyLast.clear(); return; }
     const pts = [this.player];
     this.remotes.forEach((r) => { if (r.area === myA && r.placed) pts.push(r); });
     if (pts.length < 2) return; // nobody to tell
     const R = AOI + 64;
     const out = [];
     this.enemyById.forEach((e, id) => {
-      if (!e.active || areaKey(e.areaId) !== myA) return;
+      if (!e.active) return;
+      const na = enemyNetArea(e, this.scene);
+      if (na !== myA) return;
       if (!pts.some((q) => Math.abs(q.x - e.x) < R && Math.abs(q.y - e.y) < R)) return;
       const cur = { x: Math.round(e.x), y: Math.round(e.y), h: Math.max(0, Math.round(e.hp)), s: stateIdx(e), f: e.facing };
       const last = this.enemyLast.get(id);
@@ -382,9 +424,11 @@ export class WorldSync {
       if (!last || last.h !== cur.h) { d.h = cur.h; n++; }
       if (!last || last.s !== cur.s) { d.s = cur.s; n++; }
       if (!last || last.f !== cur.f) { d.f = cur.f; n++; }
+      const extras = appendEnemyDelta(d, e, last?._x);
+      if (d.ty || d.lv != null || d.rk || d.mh != null || d.tg !== undefined || d.mt !== undefined || d.ph != null || d.sh != null || d.en != null) n++;
       if (!n) return;
       out.push(d);
-      this.enemyLast.set(id, cur);
+      this.enemyLast.set(id, { ...cur, _x: extras });
     });
     if (out.length) net.send('esnap', { a: myA, e: out, t: Math.round(net.serverNow()) });
   }

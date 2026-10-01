@@ -3,6 +3,7 @@ import { Boss } from './Boss.js';
 import { bus, Events } from '../core/events.js';
 import { audio } from '../systems/audio.js';
 import { RANKS } from '../data/combatMath.js';
+import { net } from '../net/NetworkManager.js';
 
 // Boss with extra, data-driven mechanics on top of Boss.js's slam / charge / nova kit.
 // def.mech = one object or an array of:
@@ -73,7 +74,8 @@ export class MechBoss extends Boss {
     }
   }
 
-  tickTele(m, scene, delta, now, g, p) {
+  tickTele(m, scene, delta, now, g, p0) {
+    const p = scene.sync?.focusTarget?.(this) || p0;
     const slow = this.invuln && m.k === 'ring' ? 1 : 1;
     if (m.st === 'idle') {
       if (m.k === 'ring' && m.onlyShield && !this.invuln) return;
@@ -132,32 +134,37 @@ export class MechBoss extends Boss {
       for (const s of pl.spots) {
         scene.spawnFx(s.x, s.y - 6, 'fx.explosion', 1.6);
         this.impactRing(scene, s.x, s.y, m.r || 28);
-        if (!hit && Phaser.Math.Distance.Between(p.x, p.y, s.x, s.y) < (m.r || 28)) { hit = true; this.damageToPlayer(scene, dmg, st); }
+        if (!hit && Phaser.Math.Distance.Between(scene.player.x, scene.player.y, s.x, s.y) < (m.r || 28)) { hit = true; this.damageToPlayer(scene, dmg, st); }
       }
     } else if (m.k === 'ring') {
       scene.spawnFx(pl.x, pl.y - 6, 'fx.explosion', 2.6);
       this.impactRing(scene, pl.x, pl.y, m.r);
-      if (Phaser.Math.Distance.Between(p.x, p.y, pl.x, pl.y) < m.r) this.damageToPlayer(scene, dmg, st);
+      if (Phaser.Math.Distance.Between(scene.player.x, scene.player.y, pl.x, pl.y) < m.r) this.damageToPlayer(scene, dmg, st);
     } else {
       const len = m.len || 220, wide = m.wide || 22;
       let hit = false;
+      const me = scene.player;
       for (const a of pl.lanes) {
         const ex = pl.sx + Math.cos(a) * len, ey = pl.sy + Math.sin(a) * len;
         scene.spawnFx((pl.sx + ex) / 2, (pl.sy + ey) / 2 - 6, 'fx.explosion', 1.2);
         const vx = ex - pl.sx, vy = ey - pl.sy, l2 = vx * vx + vy * vy || 1;
-        const tt = Phaser.Math.Clamp(((p.x - pl.sx) * vx + (p.y - pl.sy) * vy) / l2, 0, 1);
-        if (!hit && Math.hypot(p.x - (pl.sx + vx * tt), p.y - (pl.sy + vy * tt)) < wide / 2 + 5) { hit = true; this.damageToPlayer(scene, dmg, st); }
+        const tt = Phaser.Math.Clamp(((me.x - pl.sx) * vx + (me.y - pl.sy) * vy) / l2, 0, 1);
+        if (!hit && Math.hypot(me.x - (pl.sx + vx * tt), me.y - (pl.sy + vy * tt)) < wide / 2 + 5) { hit = true; this.damageToPlayer(scene, dmg, st); }
       }
     }
   }
 
   spawnAdds(scene, types, n, radius) {
+    if (net.connected && !net.isAuthority(this.netArea || this.areaId)) return;
     const rnd = Math.random;
     for (let i = 0; i < n; i++) {
       const a = (i / n) * 6.283 + rnd(), d = radius * (0.7 + rnd() * 0.6);
       const x = this.x + Math.cos(a) * d, y = this.y + Math.sin(a) * d;
       const type = types[i % types.length];
-      const e = scene.makeEnemy(x, y, type, this.areaId, { local: true, eo: { level: Math.max(1, this.level - 1), rank: RANKS.normal } });
+      const e = scene.makeEnemy(x, y, type, this.areaId, {
+        netId: this.netId ? `${this.netId}:add:${this.adds.length}` : undefined,
+        eo: { level: Math.max(1, this.level - 1), rank: RANKS.normal },
+      });
       e.noRespawn = true; e.isAdd = true;
       scene.combat?.aggro(e, false);
       scene.spawnFx(x, y - 6, 'fx.smoke', 1.2);
@@ -176,7 +183,10 @@ export class MechBoss extends Boss {
         for (let i = 0; i < n; i++) {
           const a = (i / n) * 6.283 + 0.5, d = 92;
           const x = this.x + Math.cos(a) * d, y = this.y + Math.sin(a) * d;
-          const e = scene.makeEnemy(x, y, m.lantern || 'hlantern', this.areaId, { local: true, eo: { level: Math.max(1, this.level - 2), rank: RANKS.normal } });
+          const e = scene.makeEnemy(x, y, m.lantern || 'hlantern', this.areaId, {
+            netId: this.netId ? `${this.netId}:lan:${i}` : undefined,
+            eo: { level: Math.max(1, this.level - 2), rank: RANKS.normal },
+          });
           e.noRespawn = true; e.isAdd = true; e.xpValue = 0;
           this.lanterns.push(e); this.adds.push(e);
           scene.spawnFx(x, y - 6, 'fx.circleOrange', 1.2);

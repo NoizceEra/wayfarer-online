@@ -11,6 +11,7 @@ import { makeProps } from './propsExtra.js';
 import { grantLoot } from '../systems/lootUtil.js';
 import { RANKS } from '../data/combatMath.js';
 import { vnoise } from './ground.js';
+import { dungeonSeed } from '../systems/coopPve.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Hollow Depths: a seeded, instanced-feel dungeon.
@@ -22,9 +23,9 @@ import { vnoise } from './ground.js';
 //     shield phases) - entities/MechBoss.js, data in data/enemiesExtra.js
 //   · difficulty rises per floor: enemy level, pack size, elite chance, trap damage
 //   · the run ends with a guaranteed rare+ chest and an exit portal
-// Co-op: the seed derives from the party id (else the room code) plus a 15-minute epoch, so
-// everyone who enters together walks the same dungeon. Solo entries are fully random.
-// Enemies are local-only (not part of the co-op enemy sync), see README notes in the PR.
+// Co-op: party / private-room seed + 15-minute epoch so people who enter together share
+// a layout; public-without-party and solo stay unique. Enemies, traps, seal and lanterns
+// follow area-authority replication (per seed+floor). Solo is fully offline-safe.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const EPOCH_MS = 15 * 60 * 1000;
@@ -38,11 +39,14 @@ const PAL = [
 const POOL = [['hcrawler', 'hwraith', 'hknight'], ['hcrawler', 'hwraith', 'hknight', 'hhound'], ['hwraith', 'hknight', 'hhound', 'shadehound'], ['hknight', 'hhound', 'shadehound', 'bloodeye'], ['hhound', 'shadehound', 'bloodeye', 'cgolem']];
 
 export function entrySeed(scene, forced) {
-  if (forced != null) return forced >>> 0;
-  let key = null;
-  try { key = social?.party?.id || (net.connected ? net.code : null); } catch { key = null; }
-  if (key) return hashStr(`${key}|${Math.floor(Date.now() / EPOCH_MS)}`);
-  return (Math.random() * 4294967296) >>> 0;
+  let partyId = null, roomKind = null, roomCode = null, connected = false;
+  try {
+    partyId = social?.party?.id || null;
+    connected = !!net.connected;
+    roomKind = net.kind;
+    roomCode = net.code;
+  } catch { /* solo */ }
+  return dungeonSeed({ partyId, roomKind, roomCode, connected, now: Date.now(), forced });
 }
 export const floorsFor = (seed) => 3 + Math.floor(rng32(seed ^ 0xA5A5A5A5)() * 3);
 
@@ -340,14 +344,14 @@ export class DungeonRun {
     const eliteP = 0.06 + i * 0.05;
     const r = rnd();
     const rank = r < 0.012 + i * 0.008 ? RANKS.champion : r < eliteP ? RANKS.elite : RANKS.normal;
-    const e = this.s.makeEnemy(x, y, t, 'hollow', { local: true, eo: { level, rank, zoneLv: [12, 20] } });
+    const e = this.s.makeEnemy(x, y, t, 'hollow', { local: !!ambushed, eo: { level, rank, zoneLv: [12, 20] } });
     e.noRespawn = true;
     this.enemies.push(e); this.b.enemies.push(e);
     if (ambushed) this.s.combat?.aggro(e, false);
     return e;
   }
   spawnBoss(type, x, y, level) {
-    const e = this.s.makeEnemy(x, y, type, 'hollow', { local: true, eo: { level, rank: RANKS.normal, zoneLv: [12, 20] } });
+    const e = this.s.makeEnemy(x, y, type, 'hollow', { eo: { level, rank: RANKS.normal, zoneLv: [12, 20] } });
     e.noRespawn = true;
     this.enemies.push(e); this.b.enemies.push(e);
     return e;
@@ -485,6 +489,12 @@ export class DungeonRun {
     if (k.typeId === 'hwarden') this.unseal();
     else if (k.typeId === 'hking') this.complete();
   }
+  // Replica deaths (no local credit) still break the seal / complete the floor.
+  onNetDeath(typeId) {
+    if (!this.run || !this.active) return;
+    if (typeId === 'hwarden') this.unseal();
+    else if (typeId === 'hking' && !this.run.done) this.complete();
+  }
 
   unseal() {
     const run = this.run;
@@ -535,4 +545,4 @@ export class DungeonRun {
     try { this.updateTraps(time); } catch (e) { this._errs = (this._errs || 0) + 1; if (this._errs < 4) console.error('dungeon traps', e); }
   }
 }
-void clamp; void HOLLOW; void hollowSolid;
+void clamp; void HOLLOW; void hollowSolid; void EPOCH_MS; void hashStr;
