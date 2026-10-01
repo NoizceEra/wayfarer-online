@@ -9,7 +9,8 @@
     "build": "vite build",
     "preview": "vite preview --port 5177 --strictPort",
     "start": "vite preview --port 5177 --strictPort",
-    "copy-assets": "node tools/copy_assets.mjs"
+    "copy-assets": "node tools/copy_assets.mjs",
+    "test:wallet": "node tools/test_wallet_marks.mjs"
   },
   "dependencies": {
     "colyseus.js": "^0.16.22",

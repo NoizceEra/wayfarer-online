@@ -12,6 +12,7 @@ import { ShopPanel } from '../ui/ShopPanel.js';
 import { social } from '../systems/social/index.js';
 import { installSocialUI } from '../ui/socialUI.js';
 import { installEconomyUI } from '../ui/economyUI.js';
+import { installMarksUI } from '../ui/marksUI.js';
 import { JournalPanel } from '../ui/JournalPanel.js';
 import { CraftPanel } from '../ui/CraftPanel.js';
 import { FishingGame } from '../ui/FishingGame.js';
@@ -364,6 +365,7 @@ export class UIScene extends Phaser.Scene {
     // Social UI: chat window, party frames, players/friends, emote wheel (src/ui/socialUI.js)
     this.social = installSocialUI(this, { name: this.pname, job: this.job.id, framesY: this.small ? 136 : 134 });
     this.economy = installEconomyUI(this); // trade / market board / mail / guild tab (src/ui/economyUI.js)
+    this.marksUI = installMarksUI(this); // optional wallet + Wayfarer Marks (Z)
     // WorldScene emits the initial QUEST/HP/XP before this overlay exists —
     // pull current values so the tracker never starts empty.
     const w0 = this.world();

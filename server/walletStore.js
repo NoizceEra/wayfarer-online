@@ -72,6 +72,8 @@ const dirty = new Set();      // dk | '#board'
 let timer = null;
 
 export function initWalletStore() {
+  marksCache.clear();
+  dirty.clear();
   fs.mkdirSync(WDIR, { recursive: true });
   fs.mkdirSync(MDIR, { recursive: true });
   for (const dir of [WDIR, MDIR]) for (const f of fs.readdirSync(dir)) if (f.endsWith('.tmp')) { try { fs.unlinkSync(path.join(dir, f)); } catch { /* ignore */ } }
@@ -111,6 +113,7 @@ export function marksRec(dk) {
 }
 export const markMarksDirty = (dk) => dirty.add(dk);
 export const markBoardDirty = () => dirty.add('#board');
+export function dropMarksCache() { marksCache.clear(); }
 
 const ipSalt = crypto.randomBytes(16); // per-process: audit IPs are unlinkable across restarts
 export const ipTag = (ip) => crypto.createHash('sha256').update(ipSalt).update(String(ip || '')).digest('hex').slice(0, 12);
@@ -140,7 +143,7 @@ export function badgesFor(dk, rec) {
   const a = links.byAddr[l.addr];
   const att = Array.isArray(a?.attest) ? a.attest : [];
   if (WCFG.FOUNDER_BADGE && att.some((x) => x.id === 'founder')) out.push('b_founder');
-  if (WCFG.SEASON_BADGE && att.some((x) => x.id === 'season:s1')) out.push('b_season1');
+  if (WCFG.SEASON_BADGE && att.some((x) => x.id === `season:${WCFG.SEASON}`)) out.push(WCFG.SEASON === 's1' ? 'b_season1' : `b_${WCFG.SEASON}`);
   return out;
 }
 
@@ -159,10 +162,11 @@ export function attest(addr, id, extra = {}) {
 // Season badge: linked wallet + SEASON_BADGE_MARKS earned in season s1.
 export function maybeSeasonAttest(dk, rec) {
   const l = links.byDevice[dk];
-  if (!l || !WCFG.SEASON_BADGE || WCFG.SEASON !== 's1') return false;
-  if (rec.marks.season.id !== 's1' || rec.marks.season.earned < WCFG.SEASON_BADGE_MARKS) return false;
-  if (!attest(l.addr, 'season:s1', { season: 's1' })) return false;
+  if (!l || !WCFG.SEASON_BADGE) return false;
+  if (rec.marks.season.id !== WCFG.SEASON || rec.marks.season.earned < WCFG.SEASON_BADGE_MARKS) return false;
+  const id = `season:${WCFG.SEASON}`;
+  if (!attest(l.addr, id, { season: WCFG.SEASON })) return false;
   saveLinks();
-  audit({ ev: 'attest', id: 'season:s1', dk, addr: l.addr });
+  audit({ ev: 'attest', id, dk, addr: l.addr });
   return true;
 }

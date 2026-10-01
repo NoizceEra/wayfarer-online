@@ -56,10 +56,11 @@ class Tok {
   take() { const now = Date.now(); this.n = Math.min(this.burst, this.n + ((now - this.t) / 1000) * this.rate); this.t = now; if (this.n < 1) return false; this.n -= 1; return true; }
 }
 const BUCKETS = new Map(); // `${kind}|${key}` -> Tok
+const envNum = (name, def) => { const n = Number(process.env[name]); return Number.isFinite(n) && n >= 0 ? n : def; };
 const LIMITS = {
-  ip: [0.5, 12],       // any wallet route: 30/min, burst 12, per IP
-  challenge: [0.1, 5], // per device: 6/min, burst 5
-  link: [0.1, 5],      // per device verify attempts
+  ip: [envNum('WALLET_IP_RATE', 0.5), envNum('WALLET_IP_BURST', 12)],             // any wallet route: 30/min, burst 12, per IP
+  challenge: [envNum('WALLET_CHALLENGE_RATE', 0.1), envNum('WALLET_CHALLENGE_BURST', 5)], // per device: 6/min, burst 5
+  link: [envNum('WALLET_LINK_RATE', 0.1), envNum('WALLET_LINK_BURST', 5)],         // per device verify attempts
 };
 function limited(kind, key) {
   const k = `${kind}|${key}`;
