@@ -6,8 +6,12 @@
  * does NOT sign: the actual SPL transfer lives in `server/chain/settlement.js`, which
  * is the only module in the relay that touches a keypair.
  *
- *   * DRY RUN BY DEFAULT. Nothing is signed unless PAYOUTS_ENABLED === 'true'. The
- *     default path computes and reports exactly what it would do and moves nothing.
+ *   * DRY RUN BY DEFAULT, AND IT NEVER TOUCHES THE NETWORK. Nothing is signed unless
+ *     PAYOUTS_ENABLED === 'true'. The dry-run path validates the CONFIG SHAPE only
+ *     (the mint parses as a base58 pubkey, the configured decimals match the economy's)
+ *     and returns; it performs no RPC call at all, so an operator can preview a payout
+ *     with a dead RPC. Every ON-CHAIN gate (the mint account read, the hot-wallet float
+ *     read) runs on the signing path only.
  *   * VERIFIED WALLET ONLY. The destination is resolved through the ONE
  *     signature-verified authority (server/walletStore.js). An unverified address —
  *     anyone can type one — is refused, and a legacy on-disk link without the verified
@@ -43,6 +47,7 @@ import { log } from '../log.js';
 import { apply, balancesOf } from './ledger.js';
 import { mintConfig } from '../chain/mintConfig.js';
 import { mintUsable } from '../chain/mintVerify.js';
+import { isSolanaAddress } from '../chain/walletAuth.js';
 import { settleClaim, payoutWalletRaw } from '../chain/settlement.js';
 import { verifiedWalletFor } from '../walletStore.js';
 
@@ -74,6 +79,27 @@ export function payoutConfig() {
     floatMinRaw: intOr(process.env.HOT_FLOAT_MIN_RAW, 100_000_000), // 100 tokens kept as runway
     floatMaxRaw: intOr(process.env.HOT_FLOAT_MAX_RAW, 20_000_000_000), // 20,000 token CAP = blast radius
   };
+}
+
+// ── the network-free config-shape gate (dry-run safe) ────────────────────────
+// The dry run may not read the chain, but it can still refuse a configuration that
+// CANNOT possibly work: a mint that is not base58, or a configured exponent that is
+// not the one the ledger's base units assume. That is the whole preview an operator
+// needs before going live, and it costs no RPC. The ON-CHAIN check (mintVerify.js)
+// remains absolute on the signing path below.
+export function mintConfigShape(cfg = payoutConfig()) {
+  if (!cfg.mint) return { ok: true, checked: 'mint-absent' };
+  if (!isSolanaAddress(String(cfg.mint))) {
+    return { ok: false, reason: `WAYFARER_MINT (${cfg.mint}) is not a valid base58 Solana address` };
+  }
+  if (cfg.decimals !== cfg.requiredDecimals) {
+    return {
+      ok: false,
+      reason: `CHAIN_DECIMALS is ${cfg.decimals} but the ledger stores base units at `
+        + `${cfg.requiredDecimals} decimals (server/economy/CONTRACT.md); every payout would be mis-priced`,
+    };
+  }
+  return { ok: true, checked: 'mint-config-shape' };
 }
 
 // ── payout journal (append-only, atomic, bounded) ────────────────────────────
@@ -152,7 +178,25 @@ export async function claim({ playerKey, walletAddress, amountRaw, claimId }, de
     return { ok: false, reason: 'insufficient', available: bal ? bal.wayfarer : 0 };
   }
 
-  // Gate 3: when a mint is configured it must be REAL and must have the economy's
+  // Gate 3: the CONFIG SHAPE. Network-free, and it runs on BOTH paths so a broken
+  // configuration is refused identically whether or not the operator is live.
+  if (cfg.mint) {
+    const shape = mintConfigShape(cfg);
+    if (!shape.ok) return { ok: false, reason: 'mint_rejected', error: shape.reason };
+  }
+
+  // DRY RUN: report precisely what would happen, and move NOTHING. Reached BEFORE
+  // every on-chain gate, so a preview never needs a live RPC or a reachable mint —
+  // that is the entire point of a dry run. Nothing is signed and no ledger entry is
+  // written (not even a zero-amount one).
+  if (!cfg.enabled) {
+    const rec = appendJournal({ at: Date.now(), claimId, playerKey, walletAddress, amountRaw, status: 'dry_run' });
+    return { ok: false, reason: 'dry_run', wouldPay: amountRaw, note: 'set PAYOUTS_ENABLED=true to sign', record: rec };
+  }
+
+  // ── everything below this line SIGNS, so every ON-CHAIN gate is absolute ────
+
+  // Gate 4: when a mint is configured it must be REAL and must have the economy's
   // decimals. Checked ON-CHAIN, never trusted from config, and a mismatch REFUSES
   // rather than logging: the ledger stores base units, so a mint with any other
   // exponent would mis-price every payout by orders of magnitude. (With no mint at all
@@ -167,7 +211,7 @@ export async function claim({ playerKey, walletAddress, amountRaw, claimId }, de
     }
   }
 
-  // Gate 4: the float. Checked BEFORE any ledger movement so a refusal is free.
+  // Gate 5: the float. Checked BEFORE any ledger movement so a refusal is free.
   let floatRaw = null;
   try { floatRaw = await floatBalanceImpl(cfg); }
   catch (e) { return { ok: false, reason: `float_unreadable: ${e.message}` }; }
@@ -185,12 +229,6 @@ export async function claim({ playerKey, walletAddress, amountRaw, claimId }, de
     if (floatRaw - amountRaw < cfg.floatMinRaw) {
       return { ok: false, reason: 'float_too_low', floatRaw, required: cfg.floatMinRaw + amountRaw };
     }
-  }
-
-  // Dry run: report precisely what would happen, and move NOTHING (no debit either).
-  if (!cfg.enabled) {
-    const rec = appendJournal({ at: Date.now(), claimId, playerKey, walletAddress, amountRaw, status: 'dry_run' });
-    return { ok: false, reason: 'dry_run', wouldPay: amountRaw, note: 'set PAYOUTS_ENABLED=true to sign', record: rec };
   }
 
   // Debit first, keyed on the claim id so a retry cannot pay twice.
