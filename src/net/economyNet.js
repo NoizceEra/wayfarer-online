@@ -40,6 +40,8 @@ class EconNet {
     this.worldFn = null;
     if (typeof window === 'undefined') return;
     net.onAttach((room) => this.attach(room));
+    // a brand-new character has no server copy at hello time: ask again after its first save
+    net.on('saved', () => { if (this.online && this.ready && !this.hasSave) net.send('econ-hello', { rev: this.localRev() }); });
     bus.on(Events.NET_DISCONNECTED, () => { this.ready = false; this.guild = null; this.emit('status', { online: false }); });
     bus.on(Events.NET_STATUS, (s) => { if (s?.status !== 'online') { this.ready = false; } this.emit('status', { online: this.online }); });
   }
@@ -106,7 +108,7 @@ class EconNet {
         this.replaceFrom(m, 'Your bag was synced with the server (economy).');
       }
       this.setRev(m.rev);
-    }
+    } else if (this.rev === null) this.setRev(0);
     this.ready = true;
     this.emit('state', m);
     this.emit('mail-unread', { n: this.mailUnread });

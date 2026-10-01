@@ -30,6 +30,7 @@ class TradeSystem {
     });
     econ.on('trade-open', (m) => {
       const blank = () => ({ items: [], gold: 0, locked: false, confirmed: false });
+      this._pending = null; clearTimeout(this._offerT);
       this.session = { id: m.id, partner: m.partner, me: blank(), them: blank() };
       this.request = null;
       econ.syncSave(); // server copy = current bag before any offer
@@ -38,6 +39,7 @@ class TradeSystem {
     econ.on('trade-update', (m) => {
       if (!this.session || m.id !== this.session.id) return;
       this.session.me = m.me; this.session.them = m.them;
+      if (this._pending) Object.assign(this.session.me, { items: [...this._pending.items], gold: this._pending.gold, locked: false, confirmed: false });
       this.emit({ kind: 'update', session: this.session });
     });
     econ.on('trade-result', (m) => {
@@ -113,14 +115,17 @@ class TradeSystem {
     Object.assign(this.session.me, { items: [...items], gold, locked: false, confirmed: false });
     this.session.them.locked = false; this.session.them.confirmed = false;
     this.emit({ kind: 'update', session: this.session });
+    this._pending = { items: [...items], gold };
     clearTimeout(this._offerT);
-    this._offerT = setTimeout(() => { if (this.session) econ.send('trade-offer', { id: this.session.id, items: [...this.session.me.items], gold: this.session.me.gold }, { sync: true }); }, 250);
+    this._offerT = setTimeout(() => this.flushOffer(), 250);
     return true;
   }
+  // send the pending offer (kept apart from session.me, which trade-update overwrites)
   flushOffer() {
-    if (!this._offerT || !this.session) return;
     clearTimeout(this._offerT); this._offerT = 0;
-    econ.send('trade-offer', { id: this.session.id, items: [...this.session.me.items], gold: this.session.me.gold }, { sync: true });
+    const p = this._pending; this._pending = null;
+    if (!p || !this.session) return;
+    econ.send('trade-offer', { id: this.session.id, items: p.items, gold: p.gold }, { sync: true });
   }
   lock() { if (!this.session) return; this.flushOffer(); econ.send('trade-lock', { id: this.session.id }, { rev: true, sync: true }); }
   unlock() { if (this.session) econ.send('trade-unlock', { id: this.session.id }); }
