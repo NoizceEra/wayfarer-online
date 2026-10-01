@@ -125,3 +125,47 @@ export function withoutItems(inv, take) {
   for (const id of take) { const i = out.indexOf(id); if (i >= 0) out.splice(i, 1); }
   return out;
 }
+
+// ─── wallet link + Marks (server/wallet.js, server/marks.js) ─────────
+// Solana addresses are base58 ed25519 public keys (32 bytes); signatures are
+// base58 ed25519 signatures (64 bytes). Strict: anything else is rejected.
+const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+const B58_MAP = Object.fromEntries([...B58].map((c, i) => [c, i]));
+export function b58decode(s) {
+  if (typeof s !== 'string' || !s.length || s.length > 128) return null;
+  let n = 0n;
+  for (const ch of s) { const v = B58_MAP[ch]; if (v === undefined) return null; n = n * 58n + BigInt(v); }
+  const bytes = [];
+  while (n > 0n) { bytes.push(Number(n & 0xffn)); n >>= 8n; }
+  for (const ch of s) { if (ch === '1') bytes.push(0); else break; }
+  return Buffer.from(bytes.reverse());
+}
+export function b58encode(buf) {
+  const b = Buffer.from(buf);
+  let n = 0n;
+  for (const x of b) n = (n << 8n) + BigInt(x);
+  let out = '';
+  while (n > 0n) { out = B58[Number(n % 58n)] + out; n /= 58n; }
+  for (const x of b) { if (x === 0) out = `1${out}`; else break; }
+  return out;
+}
+// -> 32-byte Buffer or null (canonical encoding only)
+export function solAddress(v) {
+  if (typeof v !== 'string' || v.length < 32 || v.length > 44) return null;
+  const b = b58decode(v);
+  return b && b.length === 32 && b58encode(b) === v ? b : null;
+}
+// -> 64-byte Buffer or null
+export function solSignature(v) {
+  if (typeof v !== 'string' || v.length < 64 || v.length > 90) return null;
+  const b = b58decode(v);
+  return b && b.length === 64 ? b : null;
+}
+export const NONCE_RE = /^[A-Za-z0-9]{24,48}$/;
+export const WALLET_ACTIONS = new Set(['link', 'relink']);
+// leaderboard display name: letters, digits, space, - ' _ ; 2..16 chars
+export function displayName(v) {
+  const s = String(v ?? '').replace(/[^\p{L}\p{N} \-'_]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 16);
+  return s.length >= 2 ? s : null;
+}
+export const shortAddr = (a) => (typeof a === 'string' && a.length > 10 ? `${a.slice(0, 4)}…${a.slice(-4)}` : '');
