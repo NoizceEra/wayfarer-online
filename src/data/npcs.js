@@ -11,6 +11,7 @@
 //   lines                 2-4 flavour lines, cycled per talk (hints for quests/zones/hotkeys)
 //   sells                 merchants: consumable item ids from data/items.js (buy via dialog options)
 //   shop                  merchants: existing gear shop id ('maren' | 'dovey' | 'bram')
+import { EXTRA_NPCS } from './npcsExtra.js';
 export const NPCS = [
   // ——— Thistle Town ———
   { id: 'varro', name: 'Captain Varro', title: 'Gate Captain', sheet: 'Samurai', role: 'guard', area: 'town', at: [-150, 118], face: 'right', night: 'stay',
@@ -100,6 +101,7 @@ export const NPCS = [
     lines: ['Look, I made a snow-slime!', 'Do not tell Ulla I went near the pass.'] },
   { id: 'kaze', name: 'Kaze', title: 'Wind Ninja', sheet: 'NinjaLeaf', role: 'ambient', area: 'frost', at: [2.5, 28.5], wander: 14, night: 'stay',
     lines: ['The wind speaks to those who listen. Mostly it says "cold".', 'Ninja rule two: never reveal rule one.'] },
+  ...EXTRA_NPCS, // desert / marsh / caverns hubs (data/npcsExtra.js)
 ];
 
 // Extra idle/hint patter for the Thistle plaza (merged into the `lines` cycle of

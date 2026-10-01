@@ -7,6 +7,8 @@
 // `choices` (optional): [{label, reward}] shown at turn-in; the picked one is granted on top of `reward`.
 // Legacy ids (q_meadow..q_final, sq_*) are kept so old saves migrate cleanly.
 
+import { EXTRA_CHAINS, EXTRA_QUESTS, EXTRA_POIS, EXTRA_NPC_SPOTS, EXTRA_LORE, EXTRA_LORE_ON_ENTER } from './questsExtra.js';
+
 export const NPC_SPOTS = {
   // wild quest givers (overworld tile coords) - WorldScene adds them as real NPCs
   'Farmer Hob': { tex: 'Villager3', tx: 43, ty: 66, zone: 'meadow', text: 'Mind the mud, friend. The meadow never dries out.' },
@@ -227,6 +229,7 @@ export const QUEST_LIST = [
     obj: [{ t: 'collect', id: 'iron_ore', n: 4 }, { t: 'explore', poi: 'ruins_altar' }], reward: { xp: 300, gold: 130, mats: { guard_elixir: 1 } } }),
 ];
 
+QUEST_LIST.push(...EXTRA_QUESTS); // desert / marsh / caverns / Hollow Depths / world-event quests (data/questsExtra.js)
 export const QUESTS_BY_ID = Object.fromEntries(QUEST_LIST.map((q) => [q.id, q]));
 
 // Legacy (pre-v2) quest order: questState.idx indexed these.
@@ -269,3 +272,9 @@ export const LORE = {
 };
 // Lore unlocked by first entering a zone/area.
 export const LORE_ON_ENTER = { meadow: 'lore_meadow', woods: 'lore_woods', ruins: 'lore_ruins', crypt: 'lore_crypt', frost: 'lore_frostpass', dock: 'lore_dock' };
+
+Object.assign(CHAINS, EXTRA_CHAINS);
+Object.assign(POIS, EXTRA_POIS);
+Object.assign(NPC_SPOTS, EXTRA_NPC_SPOTS);
+Object.assign(LORE, EXTRA_LORE);
+Object.assign(LORE_ON_ENTER, EXTRA_LORE_ON_ENTER);

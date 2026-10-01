@@ -38,6 +38,10 @@ const MUSIC_FOR_ZONE = {
   inn: 'mus_village', cottage_a: 'mus_village', cottage_b: 'mus_village',
   dock: 'mus_village_alt', dock_beach: 'mus_village_alt',
   crypt: 'mus_crypt', frost: 'mus_tension', frost_camp: 'mus_tension',
+  // world expansion: desert / marsh / caverns / Hollow Depths (reused tracks)
+  desert: 'mus_ruins', desert_temple: 'mus_boss_alt', desert_camp: 'mus_village_alt',
+  marsh: 'mus_forest', marsh_isle: 'mus_tension', marsh_camp: 'mus_village',
+  caverns: 'mus_tension', caverns_camp: 'mus_village_alt', hollow: 'mus_crypt',
 };
 
 class AudioBus {
