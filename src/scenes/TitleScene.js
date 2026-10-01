@@ -1,7 +1,10 @@
 import Phaser from 'phaser';
-import { saveProfile, loadHero, loadProgress } from '../core/save.js';
-import { listSlots, activeSlot, freeSlotId, setActiveSlot, nameTaken, MAX_SLOTS } from '../core/slots.js';
+import { saveProfile, loadHero, loadProgress, listLocalCharacters } from '../core/save.js';
+import { listSlots, activeSlot, freeSlotId, setActiveSlot, nameTaken, MAX_SLOTS, exportBackup, importBackup } from '../core/slots.js';
 import { net } from '../net/NetworkManager.js';
+// Guest-first identity: the device recovery code is the "account without a wallet" path.
+// Plain-language UI over src/net/identity.js — no crypto vocabulary anywhere a player can see.
+import { ensureRecoveryCode, continueWithCode, isFreshDevice, ackRecovery, isRecoveryAcked } from '../net/identity.js';
 import { CONFIG } from '../config.js';
 import { bus, Events } from '../core/events.js';
 import { audio } from '../systems/audio.js';
@@ -69,11 +72,21 @@ export class TitleScene extends Phaser.Scene {
     this.codeValue = this.persist.codeValue || '';
     this.toastMsg = this.persist.toastMsg || '';
     this.busy = false;
+    // recovery/backup page state (in-memory only; a resize restart re-fetches)
+    this.recoverCode = '';
+    this.recoverLinked = false;
+    this.recoverState = 'idle';   // idle | busy | ready | offline
+    this.restoreDraft = '';
     this.probe = (typeof window !== 'undefined' && window.__netProbe?.()) || { up: null, players: 0, ping: null };
     this.nav = new Nav();
     this.entry = new DomEntry();
     this.logo = null;
     this.bd = null;
+
+    // Appear softly the first time this scene instance paints (page changes inside the
+    // title are a light panel fade instead — see build()).
+    if (!prefersReducedMotion() && !this.persist.shown) this.cameras.main.fadeIn(300, 7, 20, 10);
+    this.persist.shown = true;
 
     this.build();
     // Restore the remembered "the user chose to link" state, then let the wallet's own change
@@ -105,6 +118,7 @@ export class TitleScene extends Phaser.Scene {
   goPage(page, extra = {}) {
     if (this.busy && page !== 'home') return;
     this.entry.stop(true);
+    this._panelFade = page !== this.page;
     this.page = this.persist.page = page;
     Object.assign(this.persist, extra);
     Object.assign(this, extra);
@@ -157,7 +171,7 @@ export class TitleScene extends Phaser.Scene {
   build() {
     this.entry.stop(true);
     this.bd?.destroy();
-    if (this.root) this.root.destroy(true);
+    if (this.root) { this.tweens.killTweensOf(this.root); this.root.destroy(true); }
     this.root = this.add.container(0, 0);
     this.nav.clear();
     this.onlineBtn = null;
@@ -179,16 +193,26 @@ export class TitleScene extends Phaser.Scene {
     else if (this.page === 'settings') this.buildSettings(add, W, H);
     else if (this.page === 'help') this.buildHelp(add, W, H);
     else if (this.page === 'wallet') this.buildWallet(add, W, H);
+    else if (this.page === 'keep') this.buildKeep(add, W, H);
+    else if (this.page === 'recover') this.buildRecover(add, W, H);
     else this.buildHome(add, W, H);
 
     this.toast = add(txt(this, this.root, W / 2, H - 36, this.toastMsg, {
       size: 11, font: FONT.body, color: '#ffd0c4', wrap: W - 24,
     }).setVisible(!!this.toastMsg));
     this.nav.first();
+    // panel-level cross-fade between title pages (never the first paint: the camera fades in instead)
+    if (this._panelFade) {
+      this._panelFade = false;
+      if (!prefersReducedMotion()) {
+        this.root.setAlpha(0);
+        this.tweens.add({ targets: this.root, alpha: 1, duration: 170, ease: 'Sine.easeOut' });
+      }
+    }
   }
 
   footer(add, W, H, extra = '') {
-    const line = extra || `v${VER}  ·  play first, earn second  ·  Ninja Adventure (CC0)`;
+    const line = extra || `v${VER}  ·  play first, earn second  ·  no wallet needed`;
     add(txt(this, this.root, W / 2, H - 14, line, { size: 8, color: C.dim, wrap: W - 16 }));
     // X / Twitter. Canvas text, but a real link: pointerdown opens it in a new tab.
     // Kept on its own line so a long handle can never reflow the version line.
@@ -203,64 +227,91 @@ export class TitleScene extends Phaser.Scene {
     const reduce = prefersReducedMotion();
     const hero = activeSlot();
     const pad = 16;
+    const twoCol = this.wide && !this.portrait;
     const logoSize = this.short ? 22 : this.portrait ? 28 : this.wide ? 40 : 30;
     const logoY = this.short ? 28 : Math.round(H * 0.09);
-    this.logo = addLogo(this, this.root, W / 2, logoY, { size: logoSize, reduce, sub: 'solo or together' });
+    this.logo = addLogo(this, this.root, W / 2, logoY, { size: logoSize, reduce, sub: 'a cozy open world · solo or together' });
 
-    const colW = Math.min(this.wide && !this.portrait ? 260 : W - pad * 2, W - pad * 2);
+    const colW = Math.min(twoCol ? 268 : W - pad * 2, W - pad * 2);
     const bw = Math.min(300, colW);
     const bh = this.short ? 26 : 32;
-    const leftX = this.wide && !this.portrait ? Math.round(W * 0.30) : W / 2;
-    const rightX = this.wide && !this.portrait ? Math.round(W * 0.72) : W / 2;
-    const menuTop = this.wide && !this.portrait ? Math.round(H * 0.28) : logoY + this.logo.h / 2 + 10;
+    const leftX = twoCol ? Math.round(W * 0.30) : W / 2;
+    const rightX = twoCol ? Math.round(W * 0.72) : W / 2;
+    const menuTop = twoCol ? Math.round(H * 0.28) : logoY + this.logo.h / 2 + 10;
+    const cardW = Math.min(bw, 280);
+    const cardH = this.short ? 84 : 96;
 
-    if (hero) this.drawHeroCard(add, leftX, menuTop + (this.wide && !this.portrait ? 8 : 0), Math.min(bw, 280), hero);
-    else {
-      frame(this, this.root, leftX, menuTop + 36, Math.min(bw, 280), 72, { alpha: 0.78 });
-      txt(this, this.root, leftX, menuTop + 24, 'New here?', { size: 11, color: C.gold_s });
-      txt(this, this.root, leftX, menuTop + 48, 'Hit Play. We pick a friendly name.\nWallet is optional — never required.', {
-        size: 10, font: FONT.body, color: C.text, wrap: Math.min(bw, 280) - 16, lineSpacing: 2,
+    // ── left column (two-column layouts) / top block: Continue card, or a welcome card ──
+    if (hero) {
+      this.drawHeroCard(add, leftX, menuTop + (twoCol ? 8 : 0), cardW, hero);
+      if (twoCol) {
+        // a returning player can still start a fresh guest in one key — the left column has room
+        makeButton(this, this.root, this.nav, {
+          id: 'guest', x: leftX, y: menuTop + 8 + (this.short ? 39 : 46) + 24, w: Math.min(cardW, 240),
+          h: this.short ? 24 : 28, label: 'Play as guest', kind: 'ghost', size: 9, onClick: () => this.playFreshGuest(),
+        });
+      }
+    } else {
+      const cy = menuTop + (twoCol ? 8 : 0) + cardH / 2;
+      frame(this, this.root, leftX, cy, cardW, cardH, { alpha: 0.78 });
+      txt(this, this.root, leftX, cy - cardH / 2 + 16, 'New here?', { size: 11, color: C.gold_s });
+      txt(this, this.root, leftX, cy - 6, 'Hit Play — we pick a friendly name for you.\nNo sign-up, no wallet, nothing to install.', {
+        size: 10, font: FONT.body, color: C.text, wrap: cardW - 18, lineSpacing: 2,
+      });
+      txt(this, this.root, leftX, cy + cardH / 2 - 26, 'Your hero lives in this browser.\n“Keep your hero” saves a code to carry them anywhere.', {
+        size: 9, font: FONT.body, color: C.gold_s, wrap: cardW - 18, lineSpacing: 2,
       });
     }
 
     const specs = [];
-    if (hero) specs.push({ id: 'play', label: 'Continue', kind: 'primary', sub: `${hero.name} · Lv ${hero.level}`, click: () => this.continueHero(hero) });
-    else specs.push({ id: 'play', label: 'Play', kind: 'primary', sub: 'One click · guest name', click: () => this.playGuest() });
+    if (hero) {
+      specs.push({ id: 'play', label: 'Continue', kind: 'primary', sub: `${hero.name} · Lv ${hero.level} · ${jobName(hero.job)}`, click: () => this.continueHero(hero) });
+    } else {
+      specs.push({ id: 'play', label: 'Play', kind: 'primary', sub: 'one key · we pick your name', click: () => this.playGuest() });
+    }
     specs.push(
       { id: 'online', label: 'Play Online', sub: this.onlineCap(), click: () => this.doOnline() },
-      { id: 'journey', label: 'New Journey', sub: 'Name your wayfarer', click: () => this.goPage('journey') },
-      { id: 'join', label: 'Join with code', sub: "A friend's 5-letter room", click: () => this.goPage('join') },
-      { id: 'host', label: 'Host co-op', sub: 'Share a room code', click: () => this.doHost() },
+      { id: 'journey', label: 'New Journey', sub: 'name and shape your wayfarer', click: () => this.goPage('journey') },
+      { id: 'join', label: 'Join with code', sub: "a friend's 5-letter room", click: () => this.goPage('join') },
+      { id: 'host', label: 'Host co-op', sub: 'share a room code', click: () => this.doHost() },
     );
-    const btnX = rightX;
-    let y = menuTop;
-    if (!(this.wide && !this.portrait)) y = menuTop + (hero ? 88 : 86);
+
+    // single-column layouts only get the extra guest row when it genuinely fits
+    const need = bh + (this.short ? 6 : 8);
+    const btnsTop = twoCol ? menuTop : menuTop + (hero ? 84 : cardH + 18);
+    if (hero && !twoCol && btnsTop + (specs.length + 1) * need <= H - 66) {
+      specs.splice(1, 0, { id: 'guest', label: 'Play as guest', sub: 'one key · fresh name', click: () => this.playFreshGuest() });
+    }
+
+    let y = btnsTop;
     specs.forEach((s) => {
       const b = makeButton(this, this.root, this.nav, {
-        id: s.id, x: btnX, y, w: bw, h: bh, label: s.label, sub: s.sub, kind: s.kind || 'normal',
+        id: s.id, x: rightX, y, w: bw, h: bh, label: s.label, sub: s.sub, kind: s.kind || 'normal',
         size: this.short ? 10 : 12, onClick: s.click,
       });
       if (s.id === 'online') this.onlineBtn = b;
-      y += bh + (this.short ? 6 : 8);
+      y += need;
     });
 
+    // secondary row: the account-less "keep your hero" path sits right here, next to Heroes
     const rowY = Math.min(H - 58, y + 6);
-    const mini = Math.min(88, Math.max(64, (W - 40) / 5));
     const extras = [
       { id: 'heroes', label: 'Heroes', click: () => this.scene.start('profile', { from: 'title' }) },
+      { id: 'keep', label: 'Keep your hero', click: () => this.goPage('keep') },
       { id: 'news', label: "What's new", click: () => this.goPage('news') },
       { id: 'settings', label: 'Settings', click: () => this.goPage('settings') },
       { id: 'help', label: 'Controls', click: () => this.goPage('help') },
-      { id: 'wallet', label: wallet.state.linked ? 'Wallet' : 'Wallet', click: () => this.goPage('wallet') },
     ];
+    const mini = Math.min(88, Math.max(60, (W - 24) / extras.length - 6));
+    const esz = W < 520 ? 7 : 8;
     extras.forEach((s, i) => {
       const n = extras.length;
       const x = W / 2 + (i - (n - 1) / 2) * (mini + 6);
       makeButton(this, this.root, this.nav, {
-        id: s.id, x, y: rowY, w: mini, h: 22, label: s.label, kind: 'ghost', size: 8, onClick: s.click,
+        id: s.id, x, y: rowY, w: mini, h: 22, label: s.label, kind: 'ghost', size: esz, onClick: s.click,
       });
     });
-    this.footer(add, W, H, `v${VER}  ·  play first, earn second  ·  Optional: connect wallet`);
+    this.footer(add, W, H);
   }
 
   drawHeroCard(add, x, y, w, slot) {
@@ -277,7 +328,7 @@ export class TitleScene extends Phaser.Scene {
       add(this.add.circle(px, py - 8, 5, 0xc8e060));
     }
     const linked = !!(wallet.state.linked || wallet.state.connected);
-    const badge = linked ? 'Wallet linked' : 'Guest';
+    const badge = linked ? 'Wallet linked' : 'No wallet needed';
     txt(this, this.root, x - w / 2 + 52, y - 26, slot.name, { size: 13, origin: [0, 0.5], color: C.gold_s });
     txt(this, this.root, x - w / 2 + 52, y - 10, `${jobName(slot.job)}  ·  Lv ${slot.level}`, { size: 10, origin: [0, 0.5], color: C.text });
     const zone = zoneName(loadProgress(slot.name));
@@ -380,7 +431,7 @@ export class TitleScene extends Phaser.Scene {
     const { pw, cx, top, bot } = this.panel(add, W, H, 'SETTINGS');
     const rowW = Math.min(pw - 28, 420);
     let y = top + 48;
-    const rowH = Math.min(30, Math.max(24, (bot - 60 - y) / 8));
+    const rowH = Math.min(30, Math.max(24, (bot - 60 - y) / 9));
     const row = (id, label, get, step, click) => {
       makeButton(this, this.root, this.nav, {
         id, x: cx, y, w: rowW, h: rowH - 4, label, kind: 'row', size: 10,
@@ -408,6 +459,13 @@ export class TitleScene extends Phaser.Scene {
     });
     row('shake', 'Screen shake', () => (settings.get('shake') ? 'ON' : 'OFF'), () => { settings.set('shake', !settings.get('shake')); this.build(); });
     row('motion', 'Reduce motion', () => (settings.get('reduceMotion') ? 'ON' : 'OFF'), () => { settings.set('reduceMotion', !settings.get('reduceMotion')); this.build(); });
+    // The wallet lives HERE — one clearly-labelled, strictly-optional line, never on the
+    // first-run path and never popped automatically. Nothing about it is needed to play.
+    makeButton(this, this.root, this.nav, {
+      id: 'wallet', x: cx, y, w: rowW, h: rowH - 4, label: 'Wallet (optional)', kind: 'row', size: 10,
+      onClick: () => this.goPage('wallet'),
+    }).setValue(wallet.state.linked ? 'Linked' : wallet.state.connected ? 'Connected' : 'Not linked');
+    y += rowH;
     makeButton(this, this.root, this.nav, {
       id: 'defaults', x: cx - 70, y: bot - 22, w: 120, h: 24, label: 'Defaults', kind: 'ghost', size: 9,
       onClick: () => { for (const k of Object.keys(DEFAULT_SETTINGS)) settings.set(k, DEFAULT_SETTINGS[k]); this.build(); },
@@ -448,23 +506,23 @@ export class TitleScene extends Phaser.Scene {
   }
 
   buildWallet(add, W, H) {
-    const { pw, cx, top, bot } = this.panel(add, W, H, 'OPTIONAL WALLET');
+    const { pw, cx, top, bot } = this.panel(add, W, H, 'WALLET (OPTIONAL)');
     const lines = [
-      'You do not need a wallet to play.',
-      'Play is first. A wallet is only a way to sign in later and unlock collectibles.',
-      'We never pop a wallet prompt on their own. This screen is the only place that talks about it.',
+      'Nothing here is needed to play. Wayfarer Online is a complete game with no wallet, no account and no sign-up.',
+      'A wallet is only ever used to sign in on another device and to unlock cosmetic rewards later. It never changes combat, gold, items or stats.',
+      'The game never opens a wallet prompt by itself — this page is the only place that mentions it.',
       wallet.available()
         ? (wallet.state.connected
             ? (wallet.state.linked
                 ? `Linked: ${wallet.shortAddress() || 'wallet'}`
                 : `Connected: ${wallet.shortAddress() || 'wallet'} — not linked yet`)
-            : 'A wallet adapter is ready if you want it.')
+            : 'A wallet is available in this browser if you want it.')
         : MOBILE_HINT,
     ];
-    let y = top + 48;
+    let y = top + 40;
     for (const line of lines) {
-      txt(this, this.root, cx, y, line, { size: 11, font: FONT.body, color: C.text, wrap: pw - 36, lineSpacing: 2 });
-      y += 42;
+      const t = txt(this, this.root, cx, y, line, { size: 9, font: FONT.body, color: C.text, wrap: pw - 36, lineSpacing: 3 });
+      y += Math.max(24, Math.min(46, t.height + 8));
     }
     const canLink = wallet.available() && wallet.state.connected;
     if (wallet.available()) {
@@ -503,10 +561,182 @@ export class TitleScene extends Phaser.Scene {
     });
   }
 
+  // ─── Keep your hero: the account-less backup / recovery path ─────────
+  // Plain language on purpose. A player who never touches a wallet (or a token, or a
+  // chain) still gets a real, portable account: a local travel code AND, for people who
+  // play Online, the relay recovery code from src/net/identity.js.
+  buildKeep(add, W, H) {
+    const { pw, cx, top, bot } = this.panel(add, W, H, 'KEEP YOUR HERO');
+    const fresh = isFreshDevice() && !isRecoveryAcked();
+    let y = top + 38;
+    const para = (s, color = C.text, size = 10, gap = 6) => {
+      const t = txt(this, this.root, cx, y, s, { size, font: FONT.body, color, wrap: pw - 36, lineSpacing: 3 });
+      y += t.height + gap;
+    };
+    para('No account, no wallet, no sign-up — your hero lives in this browser.');
+    para('Save this travel code and your hero follows you to another device: a new phone, a library PC, a fresh browser.', C.gold_s);
+    if (fresh) para('New device — copy it once now and you are set up for good.', C.textHi, 9);
+
+    this.keepCode = exportBackup();
+    const codeW = Math.min(pw - 32, 380);
+    frame(this, this.root, cx, y + 15, codeW, 30, { gold: true, stud: false, alpha: 0.9 });
+    txt(this, this.root, cx, y + 15, `${this.keepCode.slice(0, 32)}…`, { size: 9, color: C.textHi, wrap: codeW - 20 });
+    y += 36;
+    makeButton(this, this.root, this.nav, {
+      id: 'copy', x: cx, y, w: Math.min(280, pw - 40), h: 28, label: 'Copy my travel code', kind: 'primary', size: 10,
+      onClick: () => this.copyTravel(),
+    });
+    y += 32;
+    para('Already have a code from another device?', C.muted, 9, 4);
+    makeField(this, this.root, this.nav, this.entry, {
+      id: 'travel', x: cx, y: y + 13, w: Math.min(320, pw - 40), h: 26, value: this.restoreDraft, max: 8000,
+      placeholder: 'Paste a travel code', label: 'Travel code',
+      onChange: (v) => { this.restoreDraft = v; },
+      onCommit: (v) => this.restoreTravel(v),
+    });
+    y += 46;   // clear the field box (it spans y..y+26) before the button under it
+    makeButton(this, this.root, this.nav, {
+      id: 'restore', x: cx, y, w: Math.min(280, pw - 40), h: 28, label: 'Bring my heroes here', kind: 'normal', size: 10,
+      onClick: () => this.restoreTravel(this.nav.items.find((i) => i.id === 'travel')?.value || ''),
+    });
+    makeButton(this, this.root, this.nav, {
+      id: 'recover', x: cx, y: bot - 50, w: Math.min(300, pw - 40), h: 24, label: 'Play Online? Get a recovery code', kind: 'ghost', size: 9,
+      onClick: () => this.goPage('recover'),
+    });
+    makeButton(this, this.root, this.nav, {
+      id: 'back', x: cx, y: bot - 22, w: Math.min(240, pw - 40), h: 24, label: 'Back to play', kind: 'ghost', size: 10,
+      onClick: () => this.goPage('home'),
+    });
+  }
+
+  buildRecover(add, W, H) {
+    const { pw, cx, top, bot } = this.panel(add, W, H, 'RECOVERY CODE');
+    let y = top + 38;
+    const para = (s, color = C.text, size = 10, gap = 6) => {
+      const t = txt(this, this.root, cx, y, s, { size, font: FONT.body, color, wrap: pw - 36, lineSpacing: 3 });
+      y += t.height + gap;
+    };
+    para('Playing Online keeps a copy of your heroes on the server, tied to this device.');
+    para('If this browser is ever cleared, or you move to a new device, this code picks them back up. No password, no email, no wallet.', C.gold_s);
+
+    const codeW = Math.min(pw - 32, 380);
+    if (this.recoverState === 'ready' && this.recoverCode) {
+      frame(this, this.root, cx, y + 15, codeW, 30, { gold: true, stud: false, alpha: 0.9 });
+      txt(this, this.root, cx, y + 15, this.recoverCode, { size: 11, color: C.textHi, wrap: codeW - 20 });
+      y += 36;
+      makeButton(this, this.root, this.nav, {
+        id: 'copyr', x: cx, y, w: Math.min(280, pw - 40), h: 28, label: 'Copy my recovery code', kind: 'primary', size: 10,
+        onClick: () => this.copyRecovery(),
+      });
+      y += 30;
+      if (!this.recoverLinked) para('Not synced with the server yet — it links itself next time you play Online.', C.warn, 9, 4);
+      y += 4;
+    } else {
+      const msg = this.recoverState === 'offline'
+        ? 'The server is not reachable right now. Your travel code (previous screen) still works offline.'
+        : 'Getting your recovery code…';
+      para(msg, this.recoverState === 'offline' ? C.warn : C.muted, 9, 4);
+    }
+    para('I already have a code', C.muted, 9, 4);
+    makeField(this, this.root, this.nav, this.entry, {
+      id: 'rcode', x: cx, y: y + 13, w: Math.min(320, pw - 40), h: 26, value: '', max: 64, upper: true,
+      placeholder: 'ABCD-EFGH-JKLM-NPQR-STVW', label: 'Recovery code',
+      onCommit: (v) => this.useRecovery(v),
+    });
+    y += 46;   // clear the field box (it spans y..y+26) before the button under it
+    makeButton(this, this.root, this.nav, {
+      id: 'use', x: cx, y, w: Math.min(280, pw - 40), h: 28, label: 'Use my recovery code', kind: 'normal', size: 10,
+      onClick: () => this.useRecovery(this.nav.items.find((i) => i.id === 'rcode')?.value || ''),
+    });
+    makeButton(this, this.root, this.nav, {
+      id: 'back', x: cx, y: bot - 22, w: Math.min(240, pw - 40), h: 24, label: 'Back', kind: 'ghost', size: 10,
+      onClick: () => this.goPage('keep'),
+    });
+    if (this.recoverState === 'idle') this.time.delayedCall(0, () => this.fetchRecovery());
+  }
+
+  async copyTravel() {
+    const ok = await copyText(this.keepCode || exportBackup());
+    this.say(ok ? 'Travel code copied — keep it somewhere safe (a note, a password manager).' : 'Could not copy — select the code above yourself.');
+    if (!ok) audio.error();
+  }
+
+  async copyRecovery() {
+    const ok = await copyText(this.recoverCode);
+    if (ok) { try { ackRecovery(); } catch { /* private mode */ } }
+    this.say(ok ? 'Recovery code copied — that is your sign-in, with no password.' : 'Could not copy — type it out and keep it safe.');
+    if (!ok) audio.error();
+  }
+
+  restoreTravel(code) {
+    const v = String(code || '').trim();
+    if (!v) { this.say('Paste a travel code first.'); audio.error(); return; }
+    const r = importBackup(v);
+    if (!r.ok) { this.say(r.error || 'That code did not work.'); audio.error(); return; }
+    this.restoreDraft = '';
+    this.say(`Welcome here — ${r.count} hero${r.count === 1 ? '' : 'es'} moved onto this device.`);
+    this.goPage('home');
+  }
+
+  async fetchRecovery() {
+    if (this.recoverState !== 'idle') return;
+    if (!net.token) { this.recoverState = 'offline'; if (this.page === 'recover') this.build(); return; }
+    this.recoverState = 'busy';
+    if (this.page === 'recover') this.build();
+    let state = 'offline', code = '', linked = false;
+    try {
+      const r = await ensureRecoveryCode(net.token);
+      code = r.code || ''; linked = !!r.linked;
+      // A locally minted code is still worth showing: it links itself the next time the
+      // player reaches the relay, and it works forever even if the server never answers.
+      state = code ? 'ready' : 'offline';
+    } catch { /* relay unreachable and no code: the travel code still works offline */ }
+    this.recoverCode = code; this.recoverLinked = linked; this.recoverState = state;
+    if (this.scene.isActive() && this.page === 'recover') this.build();
+  }
+
+  async useRecovery(raw) {
+    if (this.busy) return;
+    const code = String(raw || '').trim();
+    if (!isPlausibleCode(code)) { this.say('That does not look like a full recovery code.'); audio.error(); return; }
+    this.busy = true; this.say('Looking up your heroes…');
+    try {
+      const token = await continueWithCode(code);
+      const ok = net.useToken(token);
+      const names = listLocalCharacters();
+      this.busy = false;
+      this.say(!ok ? 'That code could not be applied on this device.'
+        : names.length ? `Code accepted — this device now answers to ${names.length} of your hero${names.length === 1 ? '' : 'es'}.`
+          : 'Code accepted. Your heroes will be waiting next time you Play Online.');
+      try { ackRecovery(); } catch { /* private mode */ }
+      this.goPage('home');
+    } catch (e) {
+      this.busy = false;
+      this.say(e?.code === 'not_found' || e?.status === 404
+        ? 'No heroes match that code — check for a typo.'
+        : `That code did not work (${e?.code || e?.message || 'unreachable'}).`);
+      audio.error();
+    }
+  }
+
   // ─── Actions ────────────────────────────────────────────────────────
   cleanName(raw) {
     const n = String(raw || this.nameDraft || '').replace(/[^\w \-']/g, '').trim().slice(0, 14);
     return n || this.guestName();
+  }
+
+  // A short camera dip before leaving the title for the creator/world. Never blocks:
+  // reduced motion (or a missing camera) starts the next scene at once, and a timer is
+  // the safety net so a resize mid-fade can never strand the player on the title.
+  fadeInto(fn) {
+    const cam = this.cameras?.main;
+    if (prefersReducedMotion() || !cam) { fn(); return; }
+    let done = false;
+    const run = () => { if (done) return; done = true; this.busy = false; try { fn(); } catch (e) { console.error(e); } };
+    this.busy = true;
+    try { cam.fadeOut(190, 7, 20, 10); } catch { run(); return; }
+    try { cam.once('camerafadeoutcomplete', run); } catch { run(); return; }
+    this.time.delayedCall(700, run);
   }
 
   continueHero(slot) {
@@ -527,6 +757,18 @@ export class TitleScene extends Phaser.Scene {
     this.goCreator('solo', name);
   }
 
+  // The one-key guest path for a player who already has heroes: brand-new wayfarer,
+  // generated name, first free slot, straight into the creator. Never asks for anything.
+  playFreshGuest() {
+    if (this.busy) return;
+    const id = freeSlotId();
+    if (!id) { this.scene.start('profile', { from: 'title', toast: 'All three heroes are full — rename or delete one first.' }); return; }
+    const name = this.guestName();
+    setActiveSlot(id, name);
+    saveProfile({ name });
+    this.goCreator('solo', name);
+  }
+
   beginJourney() {
     if (this.busy) return;
     const id = freeSlotId();
@@ -542,7 +784,7 @@ export class TitleScene extends Phaser.Scene {
     const n = name || this.cleanName();
     saveProfile({ name: n });
     this.persist.page = 'home';
-    this.scene.start('creator', { name: n, mode });
+    this.fadeInto(() => this.scene.start('creator', { name: n, mode }));
   }
 
   async doHost() {

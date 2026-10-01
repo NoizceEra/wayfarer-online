@@ -48,30 +48,44 @@ export async function copyText(s) {
 }
 
 // Jacquard12 wordmark in a gold frame, with an optional shine sweep.
+// Polished: carved-gold bevel, corner diamonds, a hairline rule under the wordmark,
+// a slowly breathing additive glow and a shine sweep that travels inside the frame.
 export function addLogo(scene, parent, x, y, { size = 36, reduce = false, sub = 'a cozy open world' } = {}) {
   const w = Math.min(460, Math.max(220, Math.round(size * 8.6)));
   const h = Math.round(size + 28);
   const g = scene.add.container(x, y);
   parent?.add(g);
   frame(scene, g, 0, 0, w, h, { fill: 0x08140c, alpha: 0.72 });
+  // carved-gold bevel: bright hairline on top, dark one below, so the plate reads as metal
+  g.add(scene.add.rectangle(0, -h / 2 + 4, w - 14, 1, 0xffe9a0, 0.30));
+  g.add(scene.add.rectangle(0, h / 2 - 4, w - 14, 1, 0x24160a, 0.6));
+  for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    g.add(scene.add.rectangle(sx * (w / 2 - 4), sy * (h / 2 - 4), 4, 4, C.goldHi).setAngle(45));
+  }
+  let glow = null;
   if (scene.textures.exists('title.glow')) {
-    const glow = scene.add.image(0, 0, 'title.glow').setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.22).setDisplaySize(w * 0.9, h * 1.4);
+    glow = scene.add.image(0, 0, 'title.glow').setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.24).setDisplaySize(w * 0.92, h * 1.5);
     g.add(glow);
   }
-  const title = txt(scene, g, 0, sub ? -6 : 0, 'WAYFARER ONLINE', {
+  const title = txt(scene, g, 0, sub ? -7 : 0, 'WAYFARER ONLINE', {
     size, font: FONT.title, color: C.gold_s, stroke: ['#1a1000', Math.max(3, Math.round(size / 10))],
   });
   title.setShadow(0, 2, '#000000', 4, false, true);
-  if (sub) txt(scene, g, 0, size * 0.38, sub, { size: Math.max(8, Math.round(size * 0.28)), font: FONT.body, color: C.muted });
-  const shine = scene.add.rectangle(-w / 2, 0, Math.max(10, size * 0.35), h - 10, 0xffffff, 0.16).setBlendMode(Phaser.BlendModes.ADD);
+  if (sub) {
+    g.add(scene.add.rectangle(0, size * 0.16, Math.max(40, Math.round(w * 0.32)), 1, C.goldDk, 0.85));
+    txt(scene, g, 0, size * 0.40, sub, { size: Math.max(8, Math.round(size * 0.28)), font: FONT.body, color: C.muted });
+  }
+  const shine = scene.add.rectangle(-w / 2, 0, Math.max(10, size * 0.30), h - 12, 0xffffff, 0.16).setBlendMode(Phaser.BlendModes.ADD);
   g.add(shine);
-  let t0 = 0;
   const tick = (time) => {
-    if (!g.active || reduce) { shine.setVisible(false); return; }
-    t0 += 0.016;
-    const p = (t0 * 0.18) % 1.4 - 0.2;
-    shine.x = -w / 2 + p * w;
-    shine.setAlpha(0.08 + 0.12 * Math.sin(t0 * 2));
+    if (!g.active) return;
+    if (reduce) { shine.setVisible(false); glow?.setAlpha(0.24); return; }
+    const t = (Number(time) || 0) / 1000;
+    const cyc = (t * 0.34) % 1.9;   // one pass, then a short rest off-frame
+    const on = cyc <= 1;
+    shine.setVisible(on);
+    if (on) { shine.x = -w / 2 + cyc * w; shine.setAlpha(0.09 + 0.17 * Math.sin(cyc * Math.PI)); }
+    glow?.setAlpha(0.20 + 0.07 * Math.sin(t * 1.3));
   };
   if (reduce) shine.setVisible(false);
   return { g, title, shine, w, h, tick };
