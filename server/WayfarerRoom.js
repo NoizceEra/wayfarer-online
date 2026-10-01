@@ -77,7 +77,7 @@ export class WayfarerRoom extends Room {
     LIVE_ROOMS.add(this);
     if (options.persistent) this.autoDispose = false;
     this.players = new Map();   // sessionId -> player record
-    this.areas = new Map();     // areaKey -> {auth, enemies: Map id->{x,y,h,s,f,t}, dead: Map id->until}
+    this.areas = new Map();     // areaKey -> {auth, enemies, dead, dst, evp}
     this.views = new Map();     // sessionId -> {p: Map sid->lastSent, e: Map id->lastSent}
     this.joinSeq = 0;
     this.setMetadata({ kind: this.kind, name: this.displayName });
@@ -98,6 +98,8 @@ export class WayfarerRoom extends Room {
     on('hit', (c, p, m) => this.onHit(c, p, m), 'hit');
     on('ehit', (c, p, m) => this.onEnemyHit(c, p, m), 'hit');
     on('edeath', (c, p, m) => this.onEnemyDeath(c, p, m), 'hit');
+    on('dst', (c, p, m) => this.onDungeonState(c, p, m), 'mv');
+    on('evp', (c, p, m) => this.onEventProgress(c, p, m), 'mv');
     on('act', (c, p, m) => {
       const out = { sessionId: c.sessionId, k: String(m.k || 'atk').slice(0, 12), x: m.x | 0, y: m.y | 0, f: FACINGS.has(m.f) ? m.f : p.f, an: Number.isFinite(m.an) ? +m.an.toFixed(3) : undefined, kind: typeof m.kind === 'string' ? m.kind.slice(0, 12) : undefined, ab: typeof m.ab === 'string' ? m.ab.slice(0, 16) : undefined };
       this.sendNear(p, 'act', out, c);
@@ -115,7 +117,7 @@ export class WayfarerRoom extends Room {
     }, 'chat');
     on('save', (c, p, m) => this.onSave(c, p, m), 'save');
     // client (re)entered the world: resend everything in its AOI + dead enemies
-    on('resync', (c, p) => { this.views.set(c.sessionId, { p: new Map(), e: new Map() }); this.sendDeadList(c, p.a); }, 'ping');
+    on('resync', (c, p) => { this.views.set(c.sessionId, { p: new Map(), e: new Map() }); this.sendDeadList(c, p.a); this.sendAreaExtras(c, p.a); }, 'ping');
     on('ping', (c, p, m) => { this.sendTo(c, 'pong', { c: m.c, t: Date.now(), n: this.clients.length, rn: this.displayName }); }, 'ping');
     // Generic passthrough (social/party/emote modules add types without server edits).
     this.onMessage('*', (client, type, m) => {
@@ -145,7 +147,7 @@ export class WayfarerRoom extends Room {
   clientOf(sid) { return this.clients.find((c) => c.sessionId === sid); }
   area(key) {
     let a = this.areas.get(key);
-    if (!a) { a = { auth: null, enemies: new Map(), dead: new Map() }; this.areas.set(key, a); }
+    if (!a) { a = { auth: null, enemies: new Map(), dead: new Map(), dst: null, evp: null }; this.areas.set(key, a); }
     return a;
   }
   // send to players in the same area within AOI of (x,y) (defaults to sender position)
@@ -199,6 +201,7 @@ export class WayfarerRoom extends Room {
       auth: [...this.areas].filter(([, a]) => a.auth).map(([k, a]) => [k, a.auth]),
     });
     this.sendDeadList(client, p.a);
+    this.sendAreaExtras(client, p.a);
     this.bcast('peer-join', { sessionId: client.sessionId, name: p.name, hero: p.hero, a: p.a }, client);
     for (const [sid, q] of this.players) {
       if (sid === client.sessionId) continue;
@@ -231,6 +234,7 @@ export class WayfarerRoom extends Room {
         });
         for (const [sid, q] of this.players) if (sid !== back.sessionId) this.sendTo(back, 'peer-join', { sessionId: sid, name: q.name, hero: q.hero, a: q.a, dc: q.dc ? 1 : 0 });
         this.sendDeadList(back, p.a);
+        this.sendAreaExtras(back, p.a);
         this.bcast('peer-status', { sessionId: back.sessionId, dc: 0 }, back);
         log.info('reconnected', { room: this.displayName, name: p.name });
         return;
@@ -288,6 +292,11 @@ export class WayfarerRoom extends Room {
     for (const [id, until] of a.dead) { if (until > now) ids.push([id, until - now]); else a.dead.delete(id); }
     this.sendTo(client, 'adead', { a: key, ids });
   }
+  sendAreaExtras(client, key) {
+    const a = this.area(key);
+    if (a.dst) this.sendTo(client, 'dst', a.dst);
+    if (a.evp) this.sendTo(client, 'evp', a.evp);
+  }
 
   // ─── movement + anti-cheat ─────────────────────────────────────────
   onMove(client, p, m) {
@@ -321,6 +330,7 @@ export class WayfarerRoom extends Room {
       this.ensureAuth(newArea);
       this.views.get(p.sid)?.e.clear();
       this.sendDeadList(client, newArea);
+      this.sendAreaExtras(client, newArea);
     }
   }
   correct(client, p) {
@@ -337,7 +347,7 @@ export class WayfarerRoom extends Room {
     const arrived = Date.now();
     const now = Number.isFinite(m.t) ? Math.min(arrived, Math.max(arrived - 1000, m.t)) : arrived;
     for (const d of m.e.slice(0, 200)) {
-      if (!d || typeof d.i !== 'string' || d.i.length > 64) continue;
+      if (!d || typeof d.i !== 'string' || d.i.length > 80) continue;
       let e = a.enemies.get(d.i);
       if (!e) { e = { x: 0, y: 0, h: 1, s: 0, f: 'down', t: now }; a.enemies.set(d.i, e); a.dead.delete(d.i); }
       if (d.x !== undefined) { e.x = d.x | 0; e.t = now; }
@@ -345,11 +355,22 @@ export class WayfarerRoom extends Room {
       if (d.h !== undefined) e.h = d.h | 0;
       if (d.s !== undefined) e.s = d.s | 0;
       if (d.f !== undefined && FACINGS.has(d.f)) e.f = d.f;
+      if (d.lv !== undefined) e.lv = d.lv | 0;
+      if (d.rk !== undefined && typeof d.rk === 'string') e.rk = d.rk.slice(0, 4);
+      if (d.mh !== undefined) e.mh = d.mh | 0;
+      if (d.ty !== undefined && typeof d.ty === 'string') e.ty = d.ty.slice(0, 24);
+      if (d.ph !== undefined) e.ph = d.ph | 0;
+      if (d.sh !== undefined) e.sh = d.sh ? 1 : 0;
+      if (d.en !== undefined) e.en = d.en ? 1 : 0;
+      if (d.tg !== undefined) e.tg = Array.isArray(d.tg) ? d.tg.slice(0, 16) : null;
+      if (d.mt !== undefined) e.mt = Array.isArray(d.mt) ? d.mt.slice(0, 6) : null;
+      if (d.hx !== undefined) e.hx = d.hx | 0;
+      if (d.hy !== undefined) e.hy = d.hy | 0;
     }
   }
   onHit(client, p, m) {
     const a = this.area(p.a);
-    if (!a.auth || a.auth === client.sessionId || typeof m.i !== 'string') return;
+    if (!a.auth || a.auth === client.sessionId || typeof m.i !== 'string' || m.i.length > 80) return;
     const d = Math.floor(Number(m.d));
     if (!Number.isFinite(d) || d < 1) return;
     if (d > 20000) { this.violation(client, p, 'dmg-cap', { d }); return; }
@@ -358,9 +379,30 @@ export class WayfarerRoom extends Room {
     const auth = this.clientOf(a.auth);
     if (auth) this.sendTo(auth, 'hit', { i: m.i, d, by: client.sessionId, kx: p.x | 0, ky: p.y | 0 });
   }
+  onDungeonState(client, p, m) {
+    const key = areaKey(m.a || p.a);
+    const a = this.area(key);
+    if (a.auth !== client.sessionId) return;
+    a.dst = {
+      a: key, seed: (m.seed >>> 0) || 0, floor: m.floor | 0,
+      sealed: m.sealed ? 1 : 0, done: m.done ? 1 : 0, kills: Math.max(0, m.kills | 0),
+    };
+    this.sendNear(p, 'dst', a.dst, client, p.x, p.y, 1e9);
+  }
+  onEventProgress(client, p, m) {
+    const a = this.area(p.a);
+    if (a.auth !== client.sessionId) return;
+    a.evp = {
+      k: String(m.k || '').slice(0, 24), n: Math.max(0, m.n | 0), of: Math.max(0, m.of | 0),
+      hp: Math.max(0, m.hp | 0), max: Math.max(0, m.max | 0), tier: Math.max(0, Math.min(2, m.tier | 0)),
+    };
+    this.sendNear(p, 'evp', a.evp, client, p.x, p.y, 1e9);
+  }
   onEnemyHit(client, p, m) {
     const a = this.area(p.a);
     if (a.auth !== client.sessionId || typeof m.i !== 'string') return;
+    const dmg = Math.floor(Number(m.d));
+    if (Number.isFinite(dmg) && dmg > 20000) { this.violation(client, p, 'dmg-cap', { d: dmg }); return; }
     const e = a.enemies.get(m.i);
     if (e && m.h !== undefined) e.h = m.h | 0;
     const out = { i: m.i, d: m.d | 0, h: m.h | 0, by: typeof m.by === 'string' ? m.by : client.sessionId };
@@ -371,7 +413,8 @@ export class WayfarerRoom extends Room {
     const a = this.area(p.a);
     if (a.auth !== client.sessionId || typeof m.i !== 'string') return;
     a.enemies.delete(m.i);
-    a.dead.set(m.i, Date.now() + clampN(m.r, 1000, 600_000));
+    const ttl = m.r === 0 ? 86_400_000 : clampN(m.r, 1000, 600_000);
+    a.dead.set(m.i, Date.now() + ttl);
     for (const v of this.views.values()) v.e.delete(m.i);
     const by = Array.isArray(m.by) ? m.by.filter((s) => typeof s === 'string').slice(0, 16) : [];
     for (const c of this.clients) {
@@ -446,9 +489,19 @@ export class WayfarerRoom extends Room {
           if (!last || last.h !== e.h) { d.h = e.h; n++; }
           if (!last || last.s !== e.s) { d.s = e.s; n++; }
           if (!last || last.f !== e.f) { d.f = e.f; n++; }
+          if (e.lv != null && (!last || last.lv !== e.lv)) { d.lv = e.lv; n++; }
+          if (e.rk != null && (!last || last.rk !== e.rk)) { d.rk = e.rk; n++; }
+          if (e.mh != null && (!last || last.mh !== e.mh)) { d.mh = e.mh; n++; }
+          if (e.ty != null && (!last || last.ty !== e.ty)) { d.ty = e.ty; n++; }
+          if (e.ph != null && (!last || last.ph !== e.ph)) { d.ph = e.ph; n++; }
+          if (e.sh != null && (!last || last.sh !== e.sh)) { d.sh = e.sh; n++; }
+          if (e.en != null && (!last || last.en !== e.en)) { d.en = e.en; n++; }
+          if (e.tg !== undefined && JSON.stringify(last?.tg || null) !== JSON.stringify(e.tg || null)) { d.tg = e.tg; n++; }
+          if (e.mt !== undefined && JSON.stringify(last?.mt || null) !== JSON.stringify(e.mt || null)) { d.mt = e.mt; n++; }
+          if (e.hx != null && !last) { d.hx = e.hx; d.hy = e.hy; n++; }
           if (!n) continue;
           E.push(d);
-          view.e.set(id, { x: e.x, y: e.y, h: e.h, s: e.s, f: e.f });
+          view.e.set(id, { x: e.x, y: e.y, h: e.h, s: e.s, f: e.f, lv: e.lv, rk: e.rk, mh: e.mh, ty: e.ty, ph: e.ph, sh: e.sh, en: e.en, tg: e.tg, mt: e.mt });
         }
       }
       if (P.length || E.length) this.sendTo(c, 'snap', { t: now, p: P, e: E });

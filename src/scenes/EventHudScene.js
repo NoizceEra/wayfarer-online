@@ -8,7 +8,7 @@ export class EventHudScene extends Phaser.Scene {
   constructor() { super('eventhud'); }
   create() {
     this.g = this.add.graphics().setDepth(10);
-    this.lines = [0, 1].map(() => this.add.text(0, 0, '', { fontFamily: FONT, fontSize: '9px', color: '#ffd84a', stroke: '#1a1024', strokeThickness: 3 }).setOrigin(0.5, 0).setDepth(11));
+    this.lines = [0, 1, 2].map(() => this.add.text(0, 0, '', { fontFamily: FONT, fontSize: '9px', color: '#ffd84a', stroke: '#1a1024', strokeThickness: 3 }).setOrigin(0.5, 0).setDepth(11));
     this.bossName = this.add.text(0, 0, '', { fontFamily: FONT, fontSize: '11px', color: '#ffd0c0', stroke: '#2a0a08', strokeThickness: 4 }).setOrigin(0.5, 1).setDepth(12).setVisible(false);
     this.bossHp = this.add.text(0, 0, '', { fontFamily: FONT, fontSize: '8px', color: '#ffffff', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5, 0.5).setDepth(12).setVisible(false);
     this.scale.on('resize', () => { this.last = null; });

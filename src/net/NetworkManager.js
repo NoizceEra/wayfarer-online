@@ -185,7 +185,7 @@ export class NetworkManager {
       emit('auth', m);
     });
     room.onMessage('snap', (m) => { this.stats.snaps++; emit('snap', m); });
-    for (const type of ['adead', 'hit', 'ehit', 'edeath', 'act', 'saved', 'notice']) room.onMessage(type, (m) => emit(type, m));
+    for (const type of ['adead', 'hit', 'ehit', 'edeath', 'act', 'saved', 'notice', 'dst', 'evp']) room.onMessage(type, (m) => emit(type, m));
     room.onMessage('correct', (m) => { this.stats.corrections++; emit('correct', m); });
     room.onMessage('pong', (m) => this.onPong(m));
     // legacy shapes still forwarded on NET_STATE for older listeners

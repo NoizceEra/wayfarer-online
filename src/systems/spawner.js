@@ -6,6 +6,7 @@ import { RANKS } from '../data/combatMath.js';
 import { ENEMY_TABLE } from '../data/jobs.js';
 import { EXTRA_OVERWORLD_SPAWNS } from '../data/worldEnemies.js';
 import { waterAt, onBridge } from '../world/waterways.js';
+import { net } from '../net/NetworkManager.js';
 
 // Overworld population per zone: [type, cap, zoneId]. Each entry is a set of
 // spawn "slots"; a slain enemy's slot respawns after a timer somewhere else in
@@ -67,6 +68,8 @@ export class Spawner {
 
   onDeath(ed) {
     if (ed.noRespawn) return; // dungeon / event / boss-add enemies never respawn
+    // replicas wait for authority spawn snapshots so rank/level stay aligned
+    if (net.connected && ed.netId && !net.isAuthority(ed.netArea || ed.areaId)) return;
     const slot = ed.slot || { type: ed.typeId, zoneId: null, areaId: ed.areaId || null, home: { ...ed.home } };
     const base = ed.def.respawn || (ed.rank !== RANKS.normal ? 45000 : 20000 + Math.random() * 15000);
     this.pending.push({ slot, at: this.s.time.now + base });
