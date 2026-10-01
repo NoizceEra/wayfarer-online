@@ -43,12 +43,25 @@ try { identity = await import('./identity.js'); } catch (e) {
 }
 if (identity) log.info('identity module loaded');
 
+// Optional token-economy HTTP surface (/econ/*): rates, balance, stake, unstake, claim,
+// history + the per-kill WAYFARER credit. Same additive hook shape as social/economy/
+// wallet — if server/econ/index.js is missing the relay behaves exactly as before.
+// ECON_ENABLED defaults off, so it loads inert: /econ/rates answers, everything that
+// moves value refuses. See server/econ/index.js and docs/BLOCKCHAIN_V1.md §5 (WS A).
+let econ = null;
+try { econ = await import('./econ/index.js'); } catch (e) {
+  if (e?.code !== 'ERR_MODULE_NOT_FOUND') log.error('econ/index.js failed to load', { err: e.message });
+}
+
 initStore();
 if (economy) {
   try { economy.init?.(); addRoomModule(economy); log.info('economy module loaded'); } catch (e) { log.error('economy init failed', { err: e.message }); economy = null; }
 }
 if (wallet) {
   try { wallet.init?.(); addRoomModule(wallet); log.info('wallet/marks module loaded'); } catch (e) { log.error('wallet init failed', { err: e.message }); wallet = null; }
+}
+if (econ) {
+  try { econ.init?.(); addRoomModule(econ); log.info('econ module loaded'); } catch (e) { log.error('econ init failed', { err: e.message }); econ = null; }
 }
 
 const app = express();
@@ -84,6 +97,9 @@ try { economy?.routes?.(app); } catch (e) { log.error('economy.routes failed', {
 try { wallet?.routes?.(app); } catch (e) { log.error('wallet.routes failed', { err: e.message }); }
 // JSON identity endpoints: /identity/link, /identity/continue, /identity/status
 try { identity?.routes?.(app); } catch (e) { log.error('identity.routes failed', { err: e.message }); }
+// JSON token-economy endpoints: /econ/rates, /econ/balance, /econ/stake, /econ/unstake,
+// /econ/claim, /econ/history
+try { econ?.routes?.(app); } catch (e) { log.error('econ.routes failed', { err: e.message }); }
 
 const httpServer = http.createServer(app);
 const gameServer = new Server({
@@ -111,6 +127,9 @@ gameServer.onShutdown(async () => {
   await flushAll();
   try { economy?.stop?.(); } catch (e) { log.error('economy flush failed', { err: e.message }); }
   try { wallet?.stop?.(); } catch (e) { log.error('wallet flush failed', { err: e.message }); }
+  // econ.stop() is async: it awaits the ledger's write-behind flush so no balance write is
+  // lost, then flushes the emission budget / stake registry (state.js).
+  try { await econ?.stop?.(); } catch (e) { log.error('econ flush failed', { err: e.message }); }
   stopStore();
   log.info('shutdown complete');
 });
