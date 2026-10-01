@@ -28,8 +28,10 @@ const SCHEDULE = {
   dock:   { clear: 46, rain: 20, storm: 10, fog: 14 },
   beach:  { clear: 38, rain: 12, storm: 8, fog: 8, sand: 34 },
   frost:  { clear: 14, snow: 44, blizzard: 28, fog: 14 },
+  desert: { clear: 34, sand: 46, fog: 4 }, // Sunscorch Desert: frequent sandstorms
+  marsh:  { clear: 14, fog: 48, rain: 26, storm: 6, pollen: 6 }, // Whisperfen Marsh: mist and drizzle
 };
-const INITIAL = { frost: 'snow' };
+const INITIAL = { frost: 'snow', marsh: 'fog' };
 const KEYS = ['rain', 'snow', 'fog', 'leaves', 'pollen', 'sand', 'dark', 'wind', 'bolt'];
 const LEAF_TINT = {
   woods: [0x6b8f3a, 0x8aa84a, 0xc48a3a, 0xa0642c, 0x4f7a34],

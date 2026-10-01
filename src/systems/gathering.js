@@ -15,6 +15,7 @@ import { matById } from '../data/materials.js';
 import { addMat } from './pack.js';
 import { NPC_SPOTS } from '../data/quests.js';
 import { STATION_SPOTS } from './crafting.js';
+import { EXTRA_NODE_TYPES, EXTRA_FISH, EXTRA_AREA_PLAN } from '../data/gatherExtra.js';
 
 const T = CONFIG.tile;
 
@@ -66,6 +67,10 @@ const AREA_PLAN = {
     fixed: [['icehole', 33.2, 12.5], ['icehole', 42.6, 13.2]],
   },
 };
+
+Object.assign(NODE_TYPES, EXTRA_NODE_TYPES); // expansion maps (data/gatherExtra.js)
+Object.assign(FISH_TABLES, EXTRA_FISH);
+Object.assign(AREA_PLAN, EXTRA_AREA_PLAN);
 
 // Tiles the overworld scatter must keep clear of (ponds, wild NPCs, stations).
 export function contentClearings(spawn) {
@@ -290,6 +295,7 @@ export function placeGatherNodes(scene, area, b) {
     for (let tries = 0; tries < count * 40 && placed < count; tries++) {
       const x = o.x + (rr[0] + rnd() * rr[2]) * T, y = o.y + (rr[1] + rnd() * rr[3]) * T;
       if (rects.some((r) => x > r.x && x < r.r && y > r.y && y < r.b)) continue;
+      if (b?.walkable && !b.walkable(x, y)) continue; // procedural maps: skip pockets the hero can't reach
       if (!free(x, y, 22) || g.nodes.some((n) => n.area === area.id && Math.hypot(n.x - x, n.y - y) < 22)) continue;
       g.addNode(nodeKey, x, y, area.id);
       avoid.push({ x, y, r: 0 });

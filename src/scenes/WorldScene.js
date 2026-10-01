@@ -19,8 +19,12 @@ import { gearById, rollGearDrop, statLine, RARITY, sellPrice } from '../data/gea
 import { BAG_SIZE } from '../core/save.js';
 import { initPrompt, updatePrompt, showRoomCode } from '../systems/worldFeel.js';
 import { castFx } from '../systems/skillFx.js';
+import { castVfx, attachShotFx } from '../systems/skillVfx.js';
 import { skillDmgMul } from '../data/stats.js';
 import { Boss } from '../entities/Boss.js';
+import { MechBoss } from '../entities/MechBoss.js';
+import { DungeonRun } from '../world/dungeons.js';
+import { WorldEvents } from '../systems/worldEvents.js';
 import { AreaManager } from '../world/areas.js';
 import { buildOverworldFeatures, overworldClearings } from '../world/overworldFeatures.js';
 import { rollDefDrop, rollItemDrops, EXTRA_OVERWORLD_SPAWNS } from '../data/worldEnemies.js';
@@ -123,6 +127,8 @@ export class WorldScene extends Phaser.Scene {
     buildOverworldFeatures(this, this.areas, { spawn, houses, solids });
     placeGatherNodes(this, null);
     this.craft.buildStations(this, null, spawn);
+    this.dungeon = new DungeonRun(this); // Hollow Depths (world/dungeons.js)
+    this.worldEvents = new WorldEvents(this); // timed world events + world boss (systems/worldEvents.js)
     { // notice board (prop drawn by the overworld builder): bounties + '!' marker
       const bx = spawn.x - 118, by = spawn.y - 22;
       const bc = this.add.container(bx, by + 6).setDepth(by + 10);
@@ -219,11 +225,12 @@ export class WorldScene extends Phaser.Scene {
     const def = ENEMY_TABLE[typeId] || ENEMY_TABLE.dewslime;
     const rnd = opts.rnd || Math.random;
     const zoneLv = areaId ? AREAS[areaId]?.lv : this.zoneHere(x, y).lv;
-    const eo = { zoneLv, level: rollMobLevel(def, zoneLv, rnd), rank: def.boss ? RANKS.normal : rollRank(rnd) };
-    const e = def.boss ? new Boss(this, x, y, typeId, eo) : new Enemy(this, x, y, typeId, eo);
+    // opts.eo overrides level / rank / zoneLv (dungeon floors, boss adds); opts.local keeps the enemy out of co-op enemy sync
+    const eo = { zoneLv, level: rollMobLevel(def, zoneLv, rnd), rank: def.boss ? RANKS.normal : rollRank(rnd), ...(opts.eo || {}) };
+    const e = def.boss ? new (def.mech ? MechBoss : Boss)(this, x, y, typeId, eo) : new Enemy(this, x, y, typeId, eo);
     e.areaId = areaId;
     this.enemies.add(e);
-    this.sync?.registerEnemy(e); // net: stable id for co-op enemy sync
+    if (opts.local) e.localOnly = true; else this.sync?.registerEnemy(e); // net: stable id for co-op enemy sync
     return e;
   }
 
@@ -317,6 +324,7 @@ export class WorldScene extends Phaser.Scene {
     s.setData('status', opts.status || (kind === 'fire' ? { id: 'burn', chance: 0.35 } : null));
     if (opts.scale) s.setScale(opts.scale);
     this.shots.add(s);
+    attachShotFx(this, s, kind);
     s.body.setVelocity(Math.cos(angle) * 280, Math.sin(angle) * 280);
     if (kind === 'shuriken') this.tweens.add({ targets: s, angle: 360, duration: 400, repeat: -1 });
     this.time.delayedCall(900, () => s.destroy?.());
@@ -435,7 +443,7 @@ export class WorldScene extends Phaser.Scene {
     const dm = skillDmgMul(lv);
     const cd = this.player.cooldowns[ab.id] || 0;
     if (this.time.now < cd) { audio.play('error', 0.7); return; }
-    const setCd = () => { this.player.cooldowns[ab.id] = this.time.now + this.player.skillCd(ab) * 1000; bus.emit(Events.PLAYER_HP, this.hpPayload()); };
+    const setCd = () => { this.player.cooldowns[ab.id] = this.time.now + this.player.skillCd(ab) * 1000; bus.emit(Events.PLAYER_HP, this.hpPayload()); castVfx(this, ab, lv); };
     if (castFx(this, ab, lv, setCd)) return;
     if (ab.id === 'camp') {
       setCd();
@@ -535,12 +543,15 @@ export class WorldScene extends Phaser.Scene {
   }
 
   interact() {
-    if (this.areas?.interact()) return; // doors, signs, waystones, area/ambient NPCs
     let best = null, bd = CONFIG.interactRadius;
-    for (const n of this.npcs) {
-      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, n.x, n.y);
-      if (d < bd) { bd = d; best = n; }
+    if (!this.areas?.current) {
+      for (const n of this.npcs) {
+        const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, n.x, n.y);
+        if (d < bd) { bd = d; best = n; }
+      }
     }
+    // doors, signs, waystones, stations, area/ambient NPCs — unless a town NPC is closer
+    if (this.areas?.interact(best ? bd : 1e9)) return;
     if (best) {
       audio.play('npc');
       this.spawnFx(best.x, best.y - 20, 'fx.spark', 0.9);
@@ -612,6 +623,7 @@ export class WorldScene extends Phaser.Scene {
     } else this.player.body.setVelocity(0, 0);
     this.player.setDepth(this.player.y); // y-sort against trees/props/NPCs
     this.areas.update(time, delta);
+    this.dungeon?.update(time, delta); this.worldEvents?.update(time, delta);
     this.life?.update(time, delta); this.townfolk?.update(time, delta); // ambient critters + NPC schedules
     this.gather.update();
     this.craft.update(dt);

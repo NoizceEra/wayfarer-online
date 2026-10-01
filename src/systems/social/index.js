@@ -468,7 +468,7 @@ class Social {
     const setCh = (ch) => { this.channel = ch; bus.emit(Events.SOCIAL_UI, { panel: 'channel', channel: ch }); if (arg) this.chat(ch, arg); else this.system(`Now talking in ${CHANNELS[ch].label}.`); };
     switch (cmd) {
       case 'help': case '?':
-        this.system('Commands: /say /s /party /p /world /y /g(uild) /w name msg /r msg /me text /emote id /who /invite name /accept /decline /leave /kick name /promote name /friend name /unfriend name /friends /ignore name /unignore name /trade name [gold] /taccept /tdecline /duel name /dtaccept /dtdecline /dtend /gcreate TAG name /gjoin TAG /gleave /filter /time /clear /help');
+        this.system('Commands: /say /s /party /p /world /y /g(uild) /w name msg /r msg /me text /emote id /who /invite name /accept /decline /leave /kick name /promote name /friend name /unfriend name /friends /ignore name /unignore name /trade name /gift name [gold] /taccept /tdecline /duel name /dtaccept /dtdecline /dtend /gcreate TAG name /gjoin TAG /gleave /filter /time /clear /help');
         this.system(`Emotes: ${EMOTES.map((e) => `/${e.id}`).join(' ')}. Keys: Enter chat · P party · O players · G emotes · Tab cycles channel.`);
         return;
       case 'say': case 's': return setCh('say');
@@ -481,7 +481,8 @@ class Social {
       case 'emote': case 'e': return this.emote(first.toLowerCase());
       case 'who': case 'online': case 'players': return this.who();
       case 'invite': case 'inv': if (!first) return this.system('Usage: /invite name'); return this.invite(first);
-      case 'trade': if (!first) return this.system('Usage: /trade name [gold] — pick items in the trade window'); return socialTradeCmd(this, first, rest);
+      // /trade is the server-checked trade window (ui/economyUI.js); the quick trust-model gift keeps its own command
+      case 'gift': case 'give': if (!first) return this.system('Usage: /gift name [gold] — pick one gear item in the gift window'); return socialTradeCmd(this, first, rest);
       case 'taccept': return this.acceptTrade();
       case 'tdecline': return this.declineTrade();
       case 'duel': case 'dt': if (!first) return this.system('Usage: /duel name'); return this.challenge(first);

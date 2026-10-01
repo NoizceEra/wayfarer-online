@@ -47,6 +47,60 @@ npm start          # ws://localhost:2567
   inventory, equipment, dyes, quest state and position. localStorage stays the client's
   fallback. On join, the newer copy wins; a copy clamped by anti-cheat always wins.
 
+## Player economy (`server/economy.js`)
+
+Direct trade, a server-wide market board, mail and persisted guilds. It is loaded
+like `social.js` (optional module, `addRoomModule`) and stores its data in
+`DATA_DIR/economy/` (`market.json`, `mail.json`, `guilds.json`, `names.json`, an audit
+`ledger.jsonl`). Persistence code lives in `server/econStore.js`.
+
+- **Server-authoritative.** Every operation is checked against the server's copy of the
+  character (`store.js`): bag gear (`progress.inventory`) and gold. What the client
+  claims is never trusted. Item ids must be in `server/shared/item_ids.json`, which is
+  shared with the client. Regenerate it with `node tools/export_item_ids.mjs` after
+  changing the gear catalogue (`--check` fails when the file is stale).
+- **Revisions (anti-dupe).** Each character record has `rev`. The server bumps it on
+  every economy mutation, and economy ops must quote the current value. A `save` that
+  quotes an older rev is refused and answered with `econ-sync {stale}`, so an in-flight
+  upload can't bring back items that were already traded away. Items moved out by the
+  economy are remembered for 5 minutes, and a save that shows extra copies of them is
+  stripped and logged as `anticheat econ-dupe`.
+- **Atomic writes.** A trade, purchase, claim or deposit writes every affected file
+  (economy docs and both players' device files) as one transaction. Each file is
+  written as a `.txn` temp file, then `txn.json` is written as the commit point, then
+  the files are renamed into place. On boot, an interrupted transaction is rolled
+  forward and uncommitted `.txn` files are deleted.
+- **Market.** List an item for a price with a duration of 2, 8, 24 or 48 h. A 5%
+  listing fee (minimum 1g) is a gold sink and is not refunded. The seller can have at
+  most 10 listings. Players can browse with search, slot, rarity, price range, sort
+  and pages, then buy now or cancel. Sale gold and expired items reach the seller by
+  system mail.
+- **Mail.** Mailboxes are per character (device token + name). Letters are addressed
+  by character name: the first device to use a name owns it. A letter can carry up to
+  5 items plus gold, and costs 5g postage.
+- **Guilds.** Guilds have a tag, name, ranks (leader, officer or member), a MOTD, a
+  gold bank (anyone deposits, the leader withdraws) and a log. They are invite-only.
+  Guild chat and nameplate tags still work through `social.js`.
+- **Hardening.** Each connection has token-bucket rate limits (5/s economy ops, 3/s
+  browsing). Payloads over 2 KB are dropped. Gold and items are validated strictly:
+  amounts must be integers, and items must be on the whitelist and present in the
+  bag. Server-to-client economy message types are swallowed so peers can't forge them
+  through the generic passthrough.
+
+| Client → server | Server → client |
+| --- | --- |
+| `econ-hello {rev}` | `econ-state {hasSave,rev,gold,inventory,mailUnread,guild,cfg}` |
+| `trade-request {to}` / `trade-respond {from,accept}` | `trade-request {from,fromName}`, `trade-open {id,partner}` |
+| `trade-offer {id,items,gold}` / `trade-lock {id,rev}` / `trade-unlock` / `trade-confirm` / `trade-cancel` | `trade-update {id,me,them}`, `trade-result {ok,id,rev,gold,inventory,delta}`, `trade-closed {id,reason}` |
+| `market-browse {q,slot,rarity,min,max,sort,page,mine}` | `market-page {items,total,page,pages}` |
+| `market-post {item,price,hours,rev}` / `market-buy {id,rev}` / `market-cancel {id,rev}` | `econ-sync {why,rev,gold,inventory,delta}` + `econ-msg {text}` |
+| `mail-list` / `mail-read {id}` / `mail-delete {id}` / `mail-claim {id,rev}` / `mail-send {to,subject,body,gold,items,rev}` | `mail-box {mails,unread}`, `mail-unread {n,subject?,from?}` |
+| `guild-create/invite/accept/decline/join/leave/kick/rank/motd/info/deposit/withdraw` | `guild-info {...}`, `guild-invite {tag,name,from}`, `guild-update` (social shape) |
+| (any) | `econ-error {msg,code}`. Codes: `rate`, `invalid`, `missing`, `gold`, `bag`, `rev`, `gone`, `closed`, `nosave`, `noname` |
+
+`GET /economy` returns the number of listings, mailboxes, guilds, active trades and
+online characters.
+
 ## HTTP
 
 | Route | Purpose |
@@ -71,6 +125,7 @@ npm start          # ws://localhost:2567
 | `MAX_SPEED` | `260` | Movement validation ceiling (px/s) |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error` |
 | `CORS_ORIGIN` | `*` | Comma-separated allowed origins for the HTTP routes |
+| `MARKET_DURATION_SCALE` | `1` | Multiplies listing durations. It exists for tests: `0.001` turns 2 h into about 7 s. |
 
 ## Deploy (Railway)
 

@@ -50,6 +50,9 @@ export const LIVE_ROOMS = new Set();
 
 let social = null; // optional additive module (server/social.js), see index.js
 export function setSocialModule(m) { social = m; }
+const extra = []; // more optional modules (server/economy.js): same hooks, run after social
+export function addRoomModule(m) { extra.push(m); }
+function hook(name, ...args) { for (const m of extra) { try { m[name]?.(...args); } catch (e) { log.error(`module.${name} failed`, { err: e.message }); } } }
 
 export class WayfarerRoom extends Room {
   onCreate(options = {}) {
@@ -128,6 +131,7 @@ export class WayfarerRoom extends Room {
     });
 
     try { social?.install?.(this); } catch (e) { log.error('social.install failed', { err: e.message }); }
+    hook('install', this);
 
     // simulation interval also drives this.clock (patches are off: no schema state)
     this.setSimulationInterval(() => this.tick(), Math.round(1000 / CFG.TICK_HZ));
@@ -201,6 +205,7 @@ export class WayfarerRoom extends Room {
       this.sendTo(client, 'peer-join', { sessionId: sid, name: q.name, hero: q.hero, a: q.a, dc: q.dc ? 1 : 0 });
     }
     try { social?.onJoin?.(this, client, p); } catch (e) { log.error('social.onJoin failed', { err: e.message }); }
+    hook('onJoin', this, client, p);
     log.info('join', { room: this.displayName, name, n: this.clients.length, saved: !!stored });
   }
 
@@ -243,6 +248,7 @@ export class WayfarerRoom extends Room {
     this.releaseAuth(sid);
     this.bcast('peer-leave', { sessionId: sid, name: p.name, wasHost: p.isCreator ? 1 : 0 });
     try { social?.onLeave?.(this, { sessionId: sid }, p); } catch (e) { log.error('social.onLeave failed', { err: e.message }); }
+    hook('onLeave', this, { sessionId: sid }, p);
     log.info('leave', { room: this.displayName, name: p.name, n: this.players.size });
   }
 
@@ -381,13 +387,14 @@ export class WayfarerRoom extends Room {
     const name = String(m.name || p.name).toLowerCase() === p.name.toLowerCase() ? p.name : null;
     if (!name) return;
     const prev = loadChar(p.token, name);
+    if (extra.some((mod) => mod.beforeSave && mod.beforeSave(this, client, p, m, prev) === false)) return; // economy: stale rev
     const { rec, clamped } = validateSave(prev, m.progress);
     if (!rec) return;
     if (clamped.length) this.violation(client, p, 'save-clamp', { clamped });
     const hero = sanitizeHero(m.hero) || prev?.hero || p.hero;
     const now = Date.now();
     rec.savedAt = now;
-    saveChar(p.token, name, { name, hero, progress: rec, savedAt: now, clamped: clamped.length ? clamped : undefined });
+    saveChar(p.token, name, { name, hero, progress: rec, savedAt: now, clamped: clamped.length ? clamped : undefined, rev: prev?.rev, econOut: prev?.econOut });
     p.lastSave = { progress: rec };
     this.sendTo(client, 'saved', { savedAt: now, clamped: clamped.length ? { level: rec.level, gold: rec.gold } : null });
   }

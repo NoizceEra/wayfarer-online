@@ -113,6 +113,8 @@ export class Fx {
       R.outdoor = true;
       if (a.id === 'dock') { R.id = 'dock'; R.weatherKey = zid === 'dock_beach' ? 'beach' : 'dock'; }
       else if (a.id === 'frost') { R.id = 'frost'; R.weatherKey = 'frost'; }
+      else if (a.id === 'desert') { R.id = 'desert'; R.weatherKey = 'desert'; } // world expansion: sandstorms
+      else if (a.id === 'marsh') { R.id = 'marsh'; R.weatherKey = 'marsh'; } // mist, drizzle
       else { R.id = 'meadow'; R.weatherKey = 'meadow'; }
     } else {
       R.outdoor = true;
@@ -125,6 +127,8 @@ export class Fx {
 
   groundAt(x, y, id) {
     if (id === 'frost') return 'snow';
+    if (id === 'desert') return 'sand';
+    if (id === 'marsh') return 'dirt';
     if (id === 'dock') {
       const o = AREAS.dock.origin, lx = x - o.x, ly = y - o.y;
       if (ly >= 28 * T) return 'wood';
@@ -140,7 +144,7 @@ export class Fx {
   puddleOk(x, y) {
     const id = this.region.id;
     if (id === 'dock') { const o = AREAS.dock.origin; return y - o.y < 23 * T && x - o.x < 37 * T; }
-    if (id === 'frost' || id === 'indoor') return false;
+    if (id === 'frost' || id === 'indoor' || id === 'desert') return false;
     if (x < 44 || y < 44 || x > this.W - 44 || y > this.H - 44) return false;
     if (id === 'town' && Math.hypot(x - this.spawn.x, y - this.spawn.y) < 70) return false; // cobbled plaza stays dry-looking
     return true;

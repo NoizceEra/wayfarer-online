@@ -220,6 +220,8 @@ export class NetworkManager {
   }
   send(type, payload) {
     if (!this.connected) return false;
+    // socket already closing (network drop, before onLeave fires): don't send, the browser logs an error per call
+    if (this.room.connection && this.room.connection.isOpen === false) return false;
     try { this.room.send(type, payload); return true; } catch { return false; }
   }
 
@@ -334,7 +336,8 @@ export class NetworkManager {
       return;
     }
     this.lastSaveSent = now;
-    this.send('save', { name: this.name, progress: this.pendingSave, hero: this.hero || loadHero() });
+    // rev: economy revision (src/net/economyNet.js); the server refuses saves quoting an old one
+    this.send('save', { name: this.name, progress: this.pendingSave, hero: this.hero || loadHero(), rev: this.econRev });
     this.pendingSave = null;
   }
 

@@ -206,7 +206,9 @@ export class ChatPanel {
         social.submit(v);
         if (/^\/(w|whisper|tell|msg|r|reply)\b/i.test(v)) { social.channel = 'whisper'; this.syncChan(); }
         // MMO feel: stay open after a slash command that changes channel, close after a message
-        if (v.trim()[0] !== '/' || /^\/(w|r|me|say|s|party|p|world|y|g|guild)\b/i.test(v.trim())) this.setOpen(false);
+        // (the old test was inverted: /accept, /invite, /wave... left the input focused and swallowed game keys)
+        const bareSwitch = /^\/(say|s|party|p|world|y|yell|global|g|guild)\s*$/i.test(v.trim()) || /^\/(w|whisper|tell|msg)\s+\S+\s*$/i.test(v.trim());
+        if (!bareSwitch) this.setOpen(false);
       } else this.setOpen(false);
     }
   }

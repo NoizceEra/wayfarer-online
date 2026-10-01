@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-visual" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -10,6 +10,13 @@
     <title>Wayfarer Online</title>
     <!-- explicit icon: without it browsers request /favicon.ico -> startup 404 -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-title" content="Wayfarer" />
+    <meta name="description" content="Wayfarer Online - a cozy Game Boy-style open-world action RPG. Solo or together." />
+    <!-- fonts used by the splash + title: fetch at top priority, in parallel with the JS -->
+    <link rel="preload" href="/assets/fonts/silkscreen/Silkscreen-Regular.ttf" as="font" type="font/ttf" crossorigin />
+    <link rel="preload" href="/assets/fonts/jacquard12/Jacquard12-Regular.ttf" as="font" type="font/ttf" crossorigin />
     <style>
       @font-face {
         font-family: 'Jacquard12';
@@ -55,11 +62,26 @@
         -webkit-tap-highlight-color: transparent;
         font-family: 'Silkscreen', monospace;
       }
-      #game { position: fixed; inset: 0; width: 100%; height: 100%; background: #0f380f; }
+      /* canvas sits inside the safe area (notch / home indicator); the margin shows the olive page background */
+      #game { position: fixed; top: env(safe-area-inset-top, 0px); right: env(safe-area-inset-right, 0px); bottom: env(safe-area-inset-bottom, 0px); left: env(safe-area-inset-left, 0px); background: #0f380f; }
       #game canvas {
         image-rendering: pixelated; image-rendering: crisp-edges;
         touch-action: none; display: block; width: 100% !important; height: 100% !important;
       }
+      /* Instant DOM splash (painted before any JS runs); BootScene drives the bar and removes it. */
+      #splash {
+        position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center;
+        background: radial-gradient(ellipse at 50% 40%, #1a4d1a 0%, #0f380f 60%, #071c07 100%); color: #9bbc0f;
+        padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+        transition: opacity .35s ease; text-align: center;
+      }
+      #splash.out { opacity: 0; pointer-events: none; }
+      #splash h1 { margin: 0 0 6px; font: 400 clamp(34px, 9vw, 64px)/1 'Jacquard12', 'Silkscreen', monospace; letter-spacing: 1px; color: #9bbc0f; text-shadow: 0 3px 0 #051208, 0 0 18px rgba(155,188,15,.25); }
+      #splash .sub { font: 400 11px 'Silkscreen', monospace; color: #6b8c0f; letter-spacing: 2px; margin-bottom: 26px; }
+      #splash .bar { width: min(260px, 70vw); height: 14px; background: #051208; border: 2px solid #306230; box-shadow: 3px 3px 0 #0a1e0a; padding: 2px; box-sizing: border-box; }
+      #splash .bar > i { display: block; height: 100%; width: 4%; background: linear-gradient(#c8e030, #9bbc0f 60%, #7fa00f); transition: width .15s linear; }
+      #splash .pct { margin-top: 8px; font: 400 10px 'Silkscreen', monospace; color: #8bac0f; }
+      #splash .tip { margin-top: 22px; max-width: min(380px, 84vw); min-height: 32px; font: 400 13px/1.35 'PixelifySans', monospace; color: #c9a23a; }
       /* Force font preload — invisible spans make browser fetch the files early */
       #font-preload {
         position: absolute; opacity: 0; pointer-events: none;
@@ -74,6 +96,13 @@
       <span style="font-family:'Jersey10'">W</span>
       <span style="font-family:'PixelifySans'">W</span>
       <span style="font-family:'Silkscreen'">W</span>
+    </div>
+    <div id="splash" role="status" aria-live="polite">
+      <h1>WAYFARER ONLINE</h1>
+      <div class="sub">A COZY OPEN WORLD</div>
+      <div class="bar"><i id="splash-bar"></i></div>
+      <div class="pct" id="splash-pct">LOADING 0%</div>
+      <div class="tip" id="splash-tip"></div>
     </div>
     <div id="game"></div>
     <script type="module" src="/src/main.js"></script>

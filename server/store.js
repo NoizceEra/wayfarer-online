@@ -90,3 +90,12 @@ export function storeStats() {
 }
 
 export function stopStore() { if (timer) clearInterval(timer); timer = null; }
+
+// ─── hooks for server/econStore.js (multi-file atomic commits) ──────────
+// The economy writes the affected device files itself, inside one
+// transaction, right after a trade / purchase. It waits for any in-flight
+// write-behind flush first so an older snapshot can never land on top.
+export const charFile = (key) => fileFor(key);
+export const charDocJson = (key) => JSON.stringify(readDoc(key));
+export const storeIdle = () => flushing || Promise.resolve();
+export const storeDir = () => DIR;

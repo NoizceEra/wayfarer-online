@@ -11,6 +11,7 @@ import { rollDefDrop, rollItemDrops } from '../data/worldEnemies.js';
 import { WAYSTONES } from '../data/zones.js';
 import { iconKey } from './gearArt.js';
 import { CombatHudScene } from '../scenes/CombatHudScene.js';
+import { hitSpark } from './skillVfx.js';
 
 const FONT = '"Silkscreen", monospace';
 const POOL = 48;           // pooled floating combat texts
@@ -68,7 +69,8 @@ export class Combat {
     kb.addCapture('TAB');
     input.registerAction({ id: 'dodge', label: 'Dodge roll', group: 'Combat', keys: ['ShiftLeft', 'ShiftRight'], gameplay: true });
     input.registerAction({ id: 'target', label: 'Cycle target', group: 'Combat', keys: ['Tab'], gameplay: true });
-    kb.on('keydown-SPACE', () => { if (!typing()) this.dodge(); }); // Space also rolls (dialogs use it to confirm first)
+    // Space also rolls (dialogs use it to confirm first) — never while a menu/help modal owns the keyboard
+    kb.on('keydown-SPACE', () => { if (!typing() && !input.modal) this.dodge(); });
     input.on('dodge', () => { this.dodge(); return true; }, { scene });
     input.on('target', () => { this.cycleTarget(); return true; }, { scene });
     scene.input.on('pointerdown', (ptr) => { if (ptr.button === 0 && !scene.chatOpen && !scene.uiLock && !scene.uiModal) this.pickTarget(ptr.worldX, ptr.worldY); });
@@ -141,6 +143,7 @@ export class Combat {
     if (s.sync?.interceptHit?.(ed, dmg, fromRemote)) return true; // co-op: non-authority hits go to the area authority
     const now = s.time.now;
     if (ed.mode === 'return') { this.floatText(ed.x, ed.y - 20, 'Evade', '#c8c8c8', 'small'); return false; }
+    if (ed.invuln) { this.floatText(ed.x, ed.y - 22, 'Shielded', '#d0a0ff', 'small'); return false; } // MechBoss shield phase
     const dot = opts.dot || null;
     const crit = opts.crit ?? this.isCrit(dmg);
     if (!dot && !fromRemote && Math.random() < heroMissChance(p.level, ed.level)) {
@@ -156,6 +159,7 @@ export class Combat {
     } else {
       audio.play('hit', crit ? 1 : 0.8);
       s.spawnFx(ed.x, ed.y - 8, 'fx.cut', crit ? 1.4 : 1);
+      hitSpark(s, ed.x, ed.y - 8, crit);
       if (crit) this.floatText(ed.x, ed.y - 22, `${n}!`, '#ffd24a', 'crit');
       else this.floatText(ed.x, ed.y - 20, n, '#ffffff');
       if (!fromRemote) this.bumpCombo();
@@ -315,12 +319,9 @@ export class Combat {
     if (s.chatOpen || !this.canAct() || now < this.rollUntil + 120) return;
     if (this.stamina < ROLL_COST) { this.floatText(p.x, p.y - 26, 'Tired', '#c8c8c8', 'small'); audio.play('error', 0.5); return; }
     this.stamina -= ROLL_COST; this.stamUsedAt = now;
-    const k = s.keys || {};
-    let vx = 0, vy = 0;
-    if (k.A?.isDown || k.LEFT?.isDown) vx -= 1;
-    if (k.D?.isDown || k.RIGHT?.isDown) vx += 1;
-    if (k.W?.isDown || k.UP?.isDown) vy -= 1;
-    if (k.S?.isDown || k.DOWN?.isDown) vy += 1;
+    // roll toward the held movement direction (rebindable keys + gamepad via core/input), else facing
+    const mv = input.axis();
+    let vx = mv.x, vy = mv.y;
     vx += s.touchInput?.x || 0; vy += s.touchInput?.y || 0;
     let len = Math.hypot(vx, vy);
     if (len < 0.15) { const a = s.facingAngle(); vx = Math.cos(a); vy = Math.sin(a); len = 1; }
@@ -580,6 +581,7 @@ export class Combat {
     if (!s.sys.isActive()) return;
     p.hp = p.effMaxHp(); p.mp = p.effMaxMp();
     p.dead = false;
+    p.revivePose?.();
     p.invulnUntil = s.time.now + 2500;
     this.death = null;
     this.lastCombat = -1e9;
@@ -682,23 +684,37 @@ export class Combat {
     const playerSafe = s.zoneHere(p.x, p.y).safe;
     const tg = this.teleG;
     tg.clear();
-    const env = {
-      p, nightBoost: s.daynight?.isNight ? 1.25 : 1,
-      playerOk: !p.dead && !playerSafe && !s.transitioning && !this.death,
+    // one reused env object (was a fresh object + 2 closures per frame)
+    const env = this._env || (this._env = {
+      p: null, nightBoost: 1, playerOk: false,
       safeAt: (x, y) => s.zoneHere(x, y).safe,
       drawLane: (e, a, len, t) => {
         const ex = e.x + Math.cos(a) * len, ey = e.y + Math.sin(a) * len;
         tg.lineStyle(7 * e.vscale, 0xff3030, 0.12 + 0.18 * t).lineBetween(e.x, e.y, ex, ey);
         tg.lineStyle(1, 0xff5040, 0.8).lineBetween(e.x, e.y, e.x + Math.cos(a) * len * t, e.y + Math.sin(a) * len * t);
       },
-    };
+    });
+    env.p = p; env.nightBoost = s.daynight?.isNight ? 1.25 : 1;
+    env.playerOk = !p.dead && !playerSafe && !s.transitioning && !this.death;
     const plv = p.level;
+    const wv = s.cameras.main.worldView;
     s.enemies.children.each((e) => {
       if (!(e instanceof Enemy) || e.dying) return true;
       if ((e.areaId || null) !== here) { e.body.setVelocity(0, 0); return true; }
       if (s.sync?.driveEnemy?.(e, time, delta)) return true; // co-op: replicas interpolate
       if (e.statuses.size) e.statuses.tick(time, (id, dmg) => this.damageEnemy(e, dmg, false, { dot: id }));
       if (!e.alive) return true;
+      // AI sleep: idle, off-screen, non-boss enemies only think every 4th frame (accumulated delta); rendering is culled in core/cull.js
+      if (e.mode === 'idle' && !e.isBoss && !e.aiUpdate && !e.engaged && (e.aiState === 'idle' || e.aiState === undefined)
+        && (e.x < wv.x - 80 || e.x > wv.right + 80 || e.y < wv.y - 80 || e.y > wv.bottom + 80)) {
+        e._sleepDt = (e._sleepDt || 0) + delta;
+        e._sleepF = ((e._sleepF ?? (Math.random() * 4 | 0)) + 1) % 4;
+        if (e._sleepF) return true;
+        delta = e._sleepDt; e._sleepDt = 0; // eslint-disable-line no-param-reassign
+        e.aiTick(s, time, delta, env);
+        return true;
+      }
+      e._sleepDt = 0;
       if (e.aiUpdate) e.aiUpdate(s, delta); else e.aiTick(s, time, delta, env);
       e.setDepth(e.y);
       const d = Phaser.Math.Distance.Between(p.x, p.y, e.x, e.y);

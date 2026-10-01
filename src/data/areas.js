@@ -1,3 +1,4 @@
+import { EXTRA_AREAS, EXTRA_PORTALS, EXTRA_WAYSTONES, EXTRA_SIGNS } from "./areasExtra.js";
 // Expansion: enterable interiors + separate maps ("areas"). Re-exported by zones.js.
 // Areas live in the SAME Phaser world but at far-apart origins (px, y≈0), so:
 //  · co-op peers in a different space are simply never on screen (their world
@@ -121,3 +122,10 @@ export const SIDE_QUESTS = [
   { id: 'sq_wisps', area: 'frost', name: 'Cold Snap', text: 'Douse 6 Frost Wisps circling the pass for Scout Ilka.', need: { enemy: 'frostwisp', count: 6 }, reward: { xp: 640, gold: 240 } },
   { id: 'sq_crawlers', area: 'frost', name: 'Rime Rot', text: 'Clear 5 Rime Crawlers out of the snowfield.', need: { enemy: 'rimecrawler', count: 5 }, reward: { xp: 780, gold: 300 } },
 ];
+
+// ─── World expansion (additive): Sunscorch Desert, Whisperfen Marsh, Emberdeep Caverns, Hollow Depths ───
+// Defined in data/areasExtra.js; built by world/areaBuildersExtra.js + world/dungeons.js.
+Object.assign(AREAS, EXTRA_AREAS);
+PORTALS.push(...EXTRA_PORTALS);
+WAYSTONES.push(...EXTRA_WAYSTONES);
+SIGNS.push(...EXTRA_SIGNS);

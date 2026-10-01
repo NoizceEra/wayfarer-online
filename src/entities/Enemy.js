@@ -3,6 +3,7 @@ import { CONFIG } from '../config.js';
 import { ENEMY_TABLE } from '../data/jobs.js';
 import { RANKS, CON, conOf, rollMobLevel, scaleForLevel } from '../data/combatMath.js';
 import { StatusSet } from '../systems/status.js';
+import { hitReact, deathFx } from '../systems/skillVfx.js';
 
 const FONT = '"Silkscreen", monospace';
 
@@ -345,6 +346,7 @@ export class Enemy extends Phaser.GameObjects.Container {
       this.sprite.x = 0; this.showBang(false);
     }
     this.showBars(true);
+    if (opts.flashMs !== 0) hitReact(this, n > this.maxHp * 0.2);
     if (opts.flashMs !== 0) {
       this.sprite.setTintFill(0xffffff);
       this.scene.time.delayedCall(opts.flashMs || 70, () => { if (this.active && this.aiState !== 'windup') this.restoreTint(); });
@@ -372,6 +374,10 @@ export class Enemy extends Phaser.GameObjects.Container {
     this.sprite.stop();
     this.sprite.setTintFill(0xffffff);
     const sc = this.vscale;
+    if (deathFx(this)) { // family-specific sprite death (bones / ghost / bug); see systems/skillVfx.js
+      this.scene.tweens.add({ targets: this.shadow, alpha: 0, duration: 800, onComplete: () => this.destroy() });
+      return;
+    }
     this.scene.tweens.add({
       targets: this.sprite, scaleX: 1.5 * sc, scaleY: 0.25 * sc, y: this.sprite.y + 4 * sc, duration: 140, ease: 'quad.out',
       onComplete: () => {

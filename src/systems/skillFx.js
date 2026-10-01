@@ -3,11 +3,13 @@ import { Enemy } from '../entities/Enemy.js';
 import { bus, Events } from '../core/events.js';
 import { audio } from './audio.js';
 import { skillDmgMul } from '../data/stats.js';
+import { hasVfx, impactAt, SKILL_DELAY, ELEMENT_OF } from './skillVfx.js';
 
 // Data-driven skill effects for abilities that carry an `fx` block (jobs.js).
 // Returns true if the ability was handled (WorldScene.cast then returns).
 // Effect level scaling: damage/heal/duration scale with skillDmgMul(lv);
 // cooldown scaling is applied by the caller via player.skillCd().
+const MELEE_AOE = new Set(['bash', 'fangdance']);
 export function castFx(scene, ab, lv, setCd) {
   const fx = ab.fx;
   if (!fx) return false;
@@ -24,16 +26,18 @@ export function castFx(scene, ab, lv, setCd) {
 
   if (fx.type === 'aoe') {
     audio.play('explosion', 0.8);
-    scene.spawnFx(p.x, p.y - 8, fx.vfx || 'fx.explosion', 1.6);
-    if (fx.shake) scene.cameras.main.shake(120, fx.shake);
-    p.attackPose();
+    if (!hasVfx(ab.id)) { scene.spawnFx(p.x, p.y - 8, fx.vfx || 'fx.explosion', 1.6); if (fx.shake) scene.cameras.main.shake(120, fx.shake); }
+    if (!hasVfx(ab.id) || MELEE_AOE.has(ab.id)) p.attackPose();
     let n = 0;
-    near(fx.radius, (e) => {
+    const hit = () => near(fx.radius, (e) => {
       scene.damageEnemy(e, p.rollCrit(p.effAtk() * fx.mul * dm));
       if (fx.slow) slow(e, fx.slow * (0.85 + 0.15 * dm));
+      impactAt(scene, e, ELEMENT_OF[ab.id]);
       n += 1;
     });
-    bus.emit(Events.SYSTEM, `${ab.name}: ${n} hit`);
+    const delay = SKILL_DELAY[ab.id] || 0; // meteor / arrow rain: damage lands with the visual impact
+    if (delay) scene.time.delayedCall(delay, () => { if (!p.dead) { hit(); bus.emit(Events.SYSTEM, `${ab.name}: ${n} hit`); } });
+    else { hit(); bus.emit(Events.SYSTEM, `${ab.name}: ${n} hit`); }
   } else if (fx.type === 'shot') {
     audio.play(fx.kind === 'arrow' ? 'arrow' : 'fireball');
     p.attackPose();
@@ -44,7 +48,7 @@ export function castFx(scene, ab, lv, setCd) {
     }
   } else if (fx.type === 'heal') {
     audio.play('heal');
-    scene.spawnFx(p.x, p.y - 6, 'fx.aura', 1.6);
+    if (!hasVfx(ab.id)) scene.spawnFx(p.x, p.y - 6, 'fx.aura', 1.6);
     const n = Math.round(p.effMaxHp() * fx.pct * dm);
     p.heal(n);
     scene.damageNumber(p.x, p.y, `+${n}`, '#2ecc71');
@@ -53,14 +57,14 @@ export function castFx(scene, ab, lv, setCd) {
     bus.emit(Events.SYSTEM, `${ab.name}: +${n} HP`);
   } else if (fx.type === 'buff') {
     audio.play('cast');
-    scene.spawnFx(p.x, p.y - 8, 'fx.boost', 1.4);
+    if (!hasVfx(ab.id)) scene.spawnFx(p.x, p.y - 8, 'fx.boost', 1.4);
     p.buff = { until: scene.time.now + fx.secs * 1000 * (0.85 + 0.15 * dm), atkMul: fx.atkMul, spdMul: fx.spdMul };
     if (fx.ward) p.invulnUntil = scene.time.now + fx.ward * 1000 * dm;
     bus.emit(Events.SYSTEM, `${ab.name}: empowered!`);
   } else if (fx.type === 'strike') {
     audio.play('dash');
     const a = scene.facingAngle();
-    scene.spawnFx(p.x, p.y - 8, 'fx.dust', 1.4);
+    if (!hasVfx(ab.id)) scene.spawnFx(p.x, p.y - 8, 'fx.dust', 1.4);
     p.attackPose();
     const steps = 4;
     for (let i = 1; i <= steps; i++) {
@@ -71,6 +75,8 @@ export function castFx(scene, ab, lv, setCd) {
             e.setData('struck' + ab.id, true);
             scene.time.delayedCall(400, () => e.active && e.setData('struck' + ab.id, false));
             scene.damageEnemy(e, p.rollCrit(p.effAtk() * fx.mul * dm));
+            impactAt(scene, e, 'shadow');
+            scene.spawnFx(e.x, e.y - 8, 'fx.cutX', 1.1);
           }
         });
       });

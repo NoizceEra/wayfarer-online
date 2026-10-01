@@ -11,7 +11,14 @@
 //   lines                 2-4 flavour lines, cycled per talk (hints for quests/zones/hotkeys)
 //   sells                 merchants: consumable item ids from data/items.js (buy via dialog options)
 //   shop                  merchants: existing gear shop id ('maren' | 'dovey' | 'bram')
+import { EXTRA_NPCS } from './npcsExtra.js';
+//   market                true: clerk of the server-wide market board (src/ui/MarketPanel.js)
 export const NPCS = [
+  // ——— market board clerks (one shared, server-wide board) ———
+  { id: 'posey', name: 'Posey', title: 'Market Board', sheet: 'Villager4', role: 'merchant', area: 'town', at: [-150, -40], face: 'right', night: 'stay', market: true,
+    lines: ['Pin it on the board and the whole world can buy it! Five percent fee, paid up front.', 'Sold goods pay out by mail - press V to check your mailbox.'] },
+  { id: 'gull', name: 'Gull', title: 'Market Board', sheet: 'NinjaGray', role: 'merchant', area: 'dock', at: [17.5, 11], face: 'right', night: 'stay', market: true,
+    lines: ['Same board as Thistle Town - the gulls carry the notes. Do not ask.', 'Unsold listings float back to your mailbox when they expire.'] },
   // ——— Thistle Town ———
   { id: 'varro', name: 'Captain Varro', title: 'Gate Captain', sheet: 'Samurai', role: 'guard', area: 'town', at: [-150, 118], face: 'right', night: 'stay',
     lines: ['Thistle Town is a safe zone - no monster will harm you inside the fence.', 'Slimes in Meadowfield are good practice. Press J to swing, 1-4 for skills.', 'Stay sharp past the signposts: they list the level range of every zone.'] },
@@ -100,6 +107,7 @@ export const NPCS = [
     lines: ['Look, I made a snow-slime!', 'Do not tell Ulla I went near the pass.'] },
   { id: 'kaze', name: 'Kaze', title: 'Wind Ninja', sheet: 'NinjaLeaf', role: 'ambient', area: 'frost', at: [2.5, 28.5], wander: 14, night: 'stay',
     lines: ['The wind speaks to those who listen. Mostly it says "cold".', 'Ninja rule two: never reveal rule one.'] },
+  ...EXTRA_NPCS, // desert / marsh / caverns hubs (data/npcsExtra.js)
 ];
 
 // Extra idle/hint patter for the Thistle plaza (merged into the `lines` cycle of

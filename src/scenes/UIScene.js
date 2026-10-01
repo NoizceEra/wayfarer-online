@@ -6,10 +6,12 @@ import { ZONES } from '../data/zones.js';
 import { audio } from '../systems/audio.js';
 import { CONFIG } from '../config.js';
 import { makeHudIcons, HUD_ABILITY_ICON } from '../systems/hudIcons.js';
+import { createAdvBar, updateAdvBar } from '../ui/advSkillBar.js';
 import { EquipPanel } from '../ui/EquipPanel.js';
 import { ShopPanel } from '../ui/ShopPanel.js';
 import { social } from '../systems/social/index.js';
 import { installSocialUI } from '../ui/socialUI.js';
+import { installEconomyUI } from '../ui/economyUI.js';
 import { JournalPanel } from '../ui/JournalPanel.js';
 import { CraftPanel } from '../ui/CraftPanel.js';
 import { FishingGame } from '../ui/FishingGame.js';
@@ -18,6 +20,7 @@ import { input } from '../core/input.js';
 import { settings, uiZoomFor } from '../core/settings.js';
 import { PauseMenu } from '../ui/PauseMenu.js';
 import { HelpOverlay } from '../ui/HelpOverlay.js';
+import { fullscreenSupported, isFullscreen, toggleFullscreen } from '../core/mobile.js';
 
 // HUD: HP/MP/XP bars, hotbar with cooldown sweep (clickable), minimap,
 // quest tracker, chat, party, pause (palette + mute), GB tint + scanlines,
@@ -196,8 +199,12 @@ export class UIScene extends Phaser.Scene {
       { key: 'Q', name: 'Potion', ab: null, action: 'potion' },
     ];
     const hotTotalW = slots.length * cellSt;
+    // narrow / portrait screens: slide the hotbar left so it never sits under the bottom-right minimap
+    const mmLeft = W - (this.small ? 84 : 112) - 14 - 8;
+    let hotX0 = W / 2 - hotTotalW / 2;
+    if (hotX0 + hotTotalW > mmLeft) hotX0 = Math.max(6, mmLeft - hotTotalW);
     slots.forEach((s, i) => {
-      const x = W / 2 - hotTotalW / 2 + i * cellSt + cellSt / 2;
+      const x = hotX0 + i * cellSt + cellSt / 2;
       const bg = this._ns(x, hotY, cellW, cellH, 'ui.cell', 3, 3, 3, 3, 0.5, 0.5, 100);
       bg.setInteractive({ useHandCursor: true });
 
@@ -235,6 +242,8 @@ export class UIScene extends Phaser.Scene {
       });
       this.hotbar.push({ bg, s, cdBg, cdT, bw: cellW, bh: cellH, badgeBg, badgeT });
     });
+
+    createAdvBar(this, W / 2, hotY - cellH / 2 - (this.small ? 24 : 26), this.small ? 34 : 40); // class skills 5/6
 
     // ── Chat / system log (bottom-left) ─────────────────────────────────────
     // The MMO chat window (channels, whispers, scrollback) is a DOM overlay:
@@ -292,7 +301,8 @@ export class UIScene extends Phaser.Scene {
       input.addCloser({ id: 'pause-sub', priority: 850, isOpen: () => this.menu.isOpen && this.menu.page !== 'main', close: () => this.menu.goto('main') }),
       input.addCloser({ id: 'shop', priority: 450, isOpen: () => !!this.shop?.isOpen, close: () => this.shop.close() }),
       input.addCloser({ id: 'equip', priority: 400, isOpen: () => !!this.equip?.isOpen, close: () => this.equip.toggle(false) }),
-      input.addCloser({ id: 'pause', priority: 100, isOpen: () => this.menu.isOpen, close: () => this.menu.close() }),
+      // pause is drawn above every panel (it can be opened over one from the HUD II button), so it closes first
+      input.addCloser({ id: 'pause', priority: 800, isOpen: () => this.menu.isOpen, close: () => this.menu.close() }),
       input.on('menu', () => { this.menu.open('main'); return true; }),
       input.on('help', () => { this.help.toggle(); return true; }),
       input.on('chat', () => this.openChat()),
@@ -302,7 +312,7 @@ export class UIScene extends Phaser.Scene {
     );
     this.offs.push(
       input.addCloser({ id: 'social', priority: 950, isOpen: () => !!this.social?.anyOpen?.(), close: () => social.act('closeAll') }),
-      input.addCloser({ id: 'fishing', priority: 700, isOpen: () => !!this.fishing?.isOpen, close: () => {} }),
+      input.addCloser({ id: 'fishing', priority: 700, isOpen: () => !!this.fishing?.isOpen, close: () => this.fishing.end('cancel') }),
       input.addCloser({ id: 'journal', priority: 470, isOpen: () => !!this.journal?.isOpen, close: () => this.journal.close() }),
       input.addCloser({ id: 'craft', priority: 460, isOpen: () => !!this.craftPanel?.isOpen, close: () => this.craftPanel.close() }),
     );
@@ -339,13 +349,21 @@ export class UIScene extends Phaser.Scene {
     const hbX = W - 8 - this.questW - 30;
     this.menuBtn = hb(hbX, 'II', () => (this.menu.isOpen ? this.menu.close() : this.menu.open('main')));
     this.helpBtn = hb(hbX - 26, '?', () => this.help.toggle());
-    this.fpsT = this.add.text(hbX - 32, 12, '', F(9, '#9bf06b', { stroke: '#1a1024', strokeThickness: 3 })).setOrigin(1, 0).setDepth(121).setVisible(settings.get('showFps'));
+    // touch: fullscreen toggle next to the menu / help buttons (hidden where the API is missing, e.g. iPhone Safari, or already installed)
+    if (('ontouchstart' in window || navigator.maxTouchPoints > 0) && fullscreenSupported() && !document.documentElement.classList.contains('wf-standalone')) {
+      this.fsBtn = hb(hbX - 52, isFullscreen() ? '><' : '[]', () => {});
+      // fullscreen needs a *user activation*: on touch that is granted at touchend (pointerup), not touchstart
+      this.fsBtn[0].removeAllListeners('pointerdown');
+      this.fsBtn[0].on('pointerup', () => { audio.play('ui', 0.6); toggleFullscreen(); setTimeout(() => this.fsBtn?.[1]?.setText(isFullscreen() ? '><' : '[]'), 400); });
+    }
+    this.fpsT = this.add.text(hbX - (this.fsBtn ? 58 : 32), 12, '', F(9, '#9bf06b', { stroke: '#1a1024', strokeThickness: 3 })).setOrigin(1, 0).setDepth(121).setVisible(settings.get('showFps'));
     this.offs.push(bus.on(Events.TOAST, (t) => this.toast?.push(t)));
 
     this.buildTouch();
     this.buildPanels();
     // Social UI: chat window, party frames, players/friends, emote wheel (src/ui/socialUI.js)
     this.social = installSocialUI(this, { name: this.pname, job: this.job.id, framesY: this.small ? 136 : 134 });
+    this.economy = installEconomyUI(this); // trade / market board / mail / guild tab (src/ui/economyUI.js)
     // WorldScene emits the initial QUEST/HP/XP before this overlay exists —
     // pull current values so the tracker never starts empty.
     const w0 = this.world();
@@ -418,7 +436,7 @@ export class UIScene extends Phaser.Scene {
     this.touchUI = this.add.container(0, 0).setDepth(150);
     const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
     if (!isTouch) return;
-    this.input.addPointer(2); // stick + action button held at the same time
+    this.input.addPointer(4); // stick + several action buttons held at the same time (5 touch pointers)
     // Joystick (bottom-left, dynamic origin); kept above the hotbar row
     const sx0 = 90, sy0 = H - 140;
     const base = this.add.circle(sx0, sy0, 46, 0xffffff, 0.12);
@@ -466,8 +484,10 @@ export class UIScene extends Phaser.Scene {
       potion: mkBtn(W - 50 - 2 * R - 18, mmTop - R + 2, 'Q', () => this.world()?.drinkPotion()),
       bag: mkBtn(W - 50 - 2 * R - 18, mmTop - 3 * R - 12, 'BAG', () => bus.emit(Events.GEAR, { open: 'inventory' })),
     };
-    mkBtn(W - 184, H - 176, 'LOG', () => bus.emit(Events.JOURNAL, { open: 'toggle' }));
-    mkBtn(W - 246, H - 110, 'CFT', () => bus.emit(Events.CRAFT, { open: 'toggle' }));
+    // LOG / CRAFT: a second column left of BAG / Q (same rows) so nothing overlaps at 844x390, 390x844, 768x1024
+    const qx = W - 50 - 2 * R - 18, colX = qx - 2 * R - 14;
+    mkBtn(colX, mmTop - 3 * R - 12, 'LOG', () => bus.emit(Events.JOURNAL, { open: 'toggle' }));
+    mkBtn(colX, mmTop - R + 2, 'CFT', () => bus.emit(Events.CRAFT, { open: 'toggle' }));
   }
 
   // ── equipment + shop panels (src/ui/EquipPanel.js, ShopPanel.js) ───────────
@@ -506,8 +526,9 @@ export class UIScene extends Phaser.Scene {
   // HUD buttons (separate scene above this one): lift the UI scene while they are open.
   syncRaise() {
     if (!this.small) return;
-    const on = !!(this.journal?.isOpen || this.craftPanel?.isOpen);
-    if (on === this._raised) return;
+    // (bag / shop are full-screen on phones too: CHAR/SKILL buttons used to cover their header + HEAD slot)
+    const on = !!(this.journal?.isOpen || this.craftPanel?.isOpen || this.equip?.isOpen || this.shop?.isOpen);
+    if (on === !!this._raised) return;
     this._raised = on;
     if (on) this.scene.bringToTop();
     else { if (this.scene.get('character')) this.scene.bringToTop('character'); this.scene.bringToTop('overlay'); }
@@ -531,6 +552,7 @@ export class UIScene extends Phaser.Scene {
     const dtS = (delta || 16) / 1000;
     this.fishing?.update(dtS);
     this.craftPanel?.update();
+    this.syncRaise(); // no-op unless a full-screen panel opened/closed (phones)
     // Hotbar cooldown sweep
     const w   = this.world();
     const now = w?.time.now ?? 0;
@@ -548,6 +570,7 @@ export class UIScene extends Phaser.Scene {
         slot.cdT.setText(remain > 1 ? remain.toFixed(0) : remain.toFixed(1));
       }
     }
+    updateAdvBar(this, w, now);
     // Low-HP pulse (steady tint with Reduce motion)
     if (this.lastHp !== null && w?.player) {
       const frac = w.player.hp / w.player.maxHp;

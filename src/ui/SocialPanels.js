@@ -52,7 +52,7 @@ export class SocialPanels {
     p.appendChild(this.titleBar('PLAYERS', () => this.setList(false)));
     const tabs = el('div', 'wf-tabs');
     this.listTabs = {};
-    for (const [id, label] of [['online', 'Online'], ['friends', 'Friends'], ['ignored', 'Ignored']]) {
+    for (const [id, label] of [['online', 'Online'], ['friends', 'Friends'], ['guild', 'Guild'], ['ignored', 'Ignored']]) {
       const b = el('button', '', label); b.addEventListener('click', () => { this.listTab = id; this.renderList(); });
       tabs.appendChild(b); this.listTabs[id] = b;
     }
@@ -104,6 +104,9 @@ export class SocialPanels {
         ], !!p);
         body.appendChild(r);
       }
+    } else if (this.listTab === 'guild') {
+      // persisted guilds (src/ui/GuildTab.js via the action registry)
+      if (!social.act('renderGuildTab', body, this.list.querySelector('.wf-title span'))) body.appendChild(el('div', 'wf-empty', 'Guilds are loading…'));
     } else {
       this.list.querySelector('.wf-title span').textContent = `IGNORED (${st.ignored.length})`;
       if (!st.ignored.length) body.appendChild(el('div', 'wf-empty', 'Nobody ignored. Peace and quiet.'));
@@ -272,8 +275,10 @@ export class SocialPanels {
     if (inPartyWithThem) {
       if (social.isLeader()) { item('Promote to leader', () => social.promote(sid)); item('Kick from party', () => social.kick(sid)); }
     } else item('Invite to party', () => social.invite(sid || name), !social.online || (social.party && !social.isLeader()));
-    item('Trade', () => bus.emit(Events.SOCIAL_UI, { panel: 'trade-compose', open: true, to: sid || name }));
+    item('Trade', () => social.act('trade', sid || name), !social.online);   // server-checked trade window (economy)
+    item('Quick gift', () => bus.emit(Events.SOCIAL_UI, { panel: 'trade-compose', open: true, to: sid || name })); // 1 gear item + gold, trust model
     item('Duel', () => social.challenge(sid || name));
+    item('Send mail', () => social.act('mail', name), !social.online);
     if (st.isFriend(name)) item('Remove friend', () => social.removeFriend(name)); else item('Add friend', () => social.addFriend(name));
     if (st.isIgnored(name)) item('Unignore', () => social.unignore(name)); else item('Ignore', () => social.ignore(name));
     item('Cancel', () => {});

@@ -6,6 +6,7 @@ import { NPC_SHEETS } from '../data/npcs.js';
 import { ENEMY_TABLE } from '../data/jobs.js';
 import { ITEM_LIST } from '../data/items.js';
 import '../data/worldEnemies.js'; // registers the expanded monster roster into ENEMY_TABLE before we read it
+import '../data/deathFx.js'; // tags every monster def with its death / hit-reaction family (deathFx)
 const NA = 'assets/na';
 export const DIRS = ['down', 'up', 'left', 'right'];
 
@@ -65,6 +66,25 @@ const FX = [
   ['fx.shieldBlue', 'FX/Magic/Shield/SpriteSheetBlue.png', 24, 26, 16],
   ['fx.smoke', 'FX/Smoke/Smoke/SpriteSheet.png', 32, 32, 16],
   ['fx.dust', 'FX/Smoke/SmokeCircular/SpriteSheet.png', 30, 14, 18],
+  // skill VFX sheets (systems/skillVfx.js)
+  ['fx.flam', 'FX/Elemental/Flam/SpriteSheet.png', 25, 30, 16],
+  ['fx.ice', 'FX/Elemental/Ice/SpriteSheet.png', 32, 32, 18],
+  ['fx.iceB', 'FX/Elemental/Ice/SpriteSheetB.png', 32, 32, 14],
+  ['fx.flake', 'FX/Elemental/Ice/SpriteSheetFlake.png', 32, 32, 14],
+  ['fx.thunder', 'FX/Elemental/Thunder/SpriteSheet.png', 20, 28, 20],
+  ['fx.plant', 'FX/Elemental/Plant/SpriteSheet.png', 24, 28, 16],
+  ['fx.water', 'FX/Elemental/Water/SpriteSheet.png', 44, 33, 16],
+  ['fx.pillar', 'FX/Elemental/WaterPillar/SpriteSheet.png', 30, 41, 14],
+  ['fx.rockSpike', 'FX/Elemental/RockSpike/SpriteSheet.png', 54, 48, 18],
+  ['fx.cutX', 'FX/Attack/CutX/SpriteSheet.png', 32, 32, 22],
+  ['fx.slashCurved', 'FX/Attack/SlashCurved/SpriteSheet.png', 32, 32, 22],
+  ['fx.slashDouble', 'FX/Attack/SlashDoubleCurved/SpriteSheet.png', 32, 32, 22],
+  ['fx.circular', 'FX/Attack/CircularSlash/SpriteSheet.png', 32, 32, 22],
+  ['fx.claw', 'FX/Attack/Claw/SpriteSheet.png', 32, 32, 22],
+  ['fx.circleWhite', 'FX/Magic/Circle/SpriteSheetWhite.png', 32, 32, 16],
+  ['fx.circleSpark', 'FX/Magic/Circle/SpriteSheetSpark.png', 32, 32, 16],
+  ['fx.spirit', 'FX/Magic/Spirit/SpriteSheet.png', 32, 32, 14],
+  ['fx.shieldYellow', 'FX/Magic/Shield/SpriteSheetYellow.png', 24, 26, 16],
 ];
 const PROJ_SHEETS = [
   ['proj.energyBall', 'FX/Projectile/EnergyBall.png', 16, 16, 12],
@@ -107,9 +127,7 @@ const FLORA = [
 ];
 
 const AUDIO = {
-  music: ['mus_title', 'mus_village', 'mus_forest', 'mus_ruins', 'mus_tension', 'mus_gameover', 'mus_victory', 'mus_crypt', 'mus_boss', 'mus_village_alt'],
-  ambient: ['amb_wind'],
-  jingles: ['jng_levelup1', 'jng_levelup2', 'jng_success3'],
+  // music / ambient / jingles are fetched on demand by systems/audio.js (audio.fetch) — 10MB saved at boot
   sfx: [
     'sfx_swing_1', 'sfx_swing_2', 'sfx_hit_1', 'sfx_arrow_shot', 'sfx_whoosh_dash',
     'sfx_cast_1', 'sfx_cast_2', 'sfx_fireball', 'sfx_explosion',
@@ -124,7 +142,8 @@ const AUDIO = {
 
 export const AI_ICONS = ['amulet', 'axe', 'boots', 'bow', 'cap', 'cape', 'chainmace', 'cloak_feather', 'crossbow', 'crown', 'crystal', 'dagger', 'firewand', 'fishing_rod', 'gauntlets', 'glasses', 'greatsword', 'greaves', 'hairflower', 'hat_wizard', 'helm', 'helm_horned', 'helm_winged', 'herb', 'hood_ranger', 'longbow', 'mask', 'plate', 'potion_hp', 'potion_mp', 'pouch', 'ring', 'robe', 'robe_white', 'sai', 'scimitar', 'shield', 'spear', 'staff_crystal', 'staff_wood', 'sword', 'throwing_knives', 'tome', 'tunic', 'vest_thief', 'wand_fire', 'warhammer', 'wings'];
 
-export function preload(scene) {
+// Everything the world needs (sprites, faces, items, FX, SFX). Queued AFTER the title is interactive (see BootScene).
+export function preloadWorld(scene) {
   const L = scene.load;
   for (const n of AI_ICONS) L.image(`icon.ai.${n}`, `assets/custom/icons_ai/${n}.png`);
   for (const name of CHARACTERS) {
@@ -140,7 +159,7 @@ export function preload(scene) {
   L.image('veh.crane', `${NA}/Backgrounds/Vehicles/Crane.png`);
   L.image('veh.net', `${NA}/Backgrounds/Vehicles/FishNetFull.png`);
   for (const it of ITEM_LIST) L.image(`item.src.${it.id}`, `${ITEM_DIR}/${it.src}`);
-  L.image('char.shadow', `${NA}/Actor/Character/Shadow.png`);
+  // (the soft ground shadow 'char.shadow' is generated procedurally in worldLoad.js; the hard PNG is no longer used)
   for (const [name, file] of Object.entries(MONSTER_SHEETS)) {
     L.spritesheet(`mon.${name}`, `${NA}/Actor/Monster/${file}`, { frameWidth: 16, frameHeight: 16 });
   }

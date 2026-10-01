@@ -6,8 +6,11 @@ import { audio } from '../systems/audio.js';
 import { makeBiomeTextures } from './biomeTextures.js';
 import { makeProps } from './propsExtra.js';
 import { BUILDERS } from './areaBuilders.js';
+import { EXTRA_BUILDERS } from './areaBuildersExtra.js';
+import { HOLLOW_BUILDER } from './dungeons.js';
 import { populateArea } from './townfolk.js';
 
+Object.assign(BUILDERS, EXTRA_BUILDERS, HOLLOW_BUILDER); // desert / marsh / caverns / Hollow Depths (world expansion)
 const T = CONFIG.tile;
 const FONT = '"Silkscreen", monospace';
 
@@ -208,6 +211,7 @@ export class AreaManager {
     const [sx, sy] = def.spawn || [def.size.w / 2, def.size.h - 2.5];
     const ret = this.returnPos[areaId];
     const big = def.kind !== 'interior';
+    audio.warm(areaId); // preload the destination's music under the loading card
     this.warp(areaId, def.origin.x + sx * T, def.origin.y + sy * T, {
       loading: big, label: big ? `Travelling to ${def.name}…` : undefined, quick: !big,
     });
@@ -269,6 +273,9 @@ export class AreaManager {
       const def = AREAS[areaId];
       o?.banner(def.name, `Lv ${def.lv[0]}-${def.lv[1]}${def.safe ? '  ·  safe' : ''}`, def.safe ? 0x9bbc0f : 0xe67e22);
     }
+    // Hollow Depths: a fresh seeded run on every entry, torn down on exit (world/dungeons.js)
+    if (areaId === 'hollow') s.dungeon?.begin(this.built.hollow);
+    else if (prev?.id === 'hollow') s.dungeon?.end();
     if (areaId === 'crypt') audio.play('warp');
     audio.play(areaId && AREAS[areaId].kind === 'interior' ? 'door' : 'warp', 0.7);
     // snap remote players that teleported between spaces (handled in RemotePlayer too)
@@ -341,12 +348,14 @@ export class AreaManager {
   onUse(id) { return !!this.scene.quests?.onInteract(id); }
 
   // — per-frame —
-  interact() {
+  // maxD: distance of the nearest town NPC (WorldScene) — a closer NPC wins, so a
+  // crafting station / sign beside a shopkeeper never steals their E press.
+  interact(maxD = 1e9) {
     const s = this.scene;
     if (s.uiLock || s.time.now < (s.uiLockUntil || 0) || this.busy) return true; // swallow while a dialog/transition is up
     const p = s.player;
     const here = this.current ? this.current.id : null;
-    let best = null, bd = 1e9;
+    let best = null, bd = maxD;
     for (const i of this.interacts) {
       if (i.area !== here) continue;
       const d = Phaser.Math.Distance.Between(p.x, p.y, i.x, i.y);
@@ -373,7 +382,7 @@ export class AreaManager {
       this._fitCamera(b);
       this._light(b, time);
       this._snow(b);
-      if (b.def.id === 'crypt') this._bossWatch(b);
+      if (b.def.id === 'crypt' || b.def.bossWatch) this._bossWatch(b);
     }
     if (this.busy || s.uiLock) { this._setPrompt(''); return; }
     // walk-on triggers
@@ -385,14 +394,20 @@ export class AreaManager {
       if (d < t.r && this.armed && !p.dead) { t.onEnter(); return; }
     }
     if (!this.armed && !nearTrig) this.armed = true;
-    // prompt for nearest interactable
-    let lab = '', bd = 1e9;
+    // prompt for nearest interactable (unless a town NPC is closer: WorldScene shows that bubble)
+    let lab = '', bd = here ? 1e9 : this._nearestNpc(p);
     for (const i of this.interacts) {
       if (i.area !== here) continue;
       const d = Phaser.Math.Distance.Between(p.x, p.y, i.x, i.y);
       if (d < i.r && d < bd) { bd = d; lab = i.label; }
     }
     this._setPrompt(lab ? `E  ${lab}` : '');
+  }
+
+  _nearestNpc(p) {
+    let bd = 1e9;
+    for (const n of this.scene.npcs || []) { const d = Phaser.Math.Distance.Between(p.x, p.y, n.x, n.y); if (d < CONFIG.interactRadius && d < bd) bd = d; }
+    return bd;
   }
 
   _setPrompt(t) {
