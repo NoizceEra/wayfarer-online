@@ -14,6 +14,15 @@
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-title" content="Wayfarer" />
     <meta name="description" content="Wayfarer Online - a cozy Game Boy-style open-world action RPG. Solo or together." />
+    <!-- Keep the handle in step with SOCIAL_HANDLE in src/scenes/TitleScene.js (which draws
+         the clickable footer link; static HTML cannot import from there). -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@Wayfarer_Online" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Wayfarer Online" />
+    <meta property="og:title" content="Wayfarer Online" />
+    <meta property="og:description" content="A cozy Game Boy-style open-world action RPG. Solo or together. Free to play in your browser." />
+    <meta property="og:url" content="https://wayfarer-online.vercel.app/" />
     <!-- fonts used by the splash + title: fetch at top priority, in parallel with the JS -->
     <link rel="preload" href="/assets/fonts/silkscreen/Silkscreen-Regular.ttf" as="font" type="font/ttf" crossorigin />
     <link rel="preload" href="/assets/fonts/jacquard12/Jacquard12-Regular.ttf" as="font" type="font/ttf" crossorigin />
@@ -82,6 +91,8 @@
       #splash .bar > i { display: block; height: 100%; width: 4%; background: linear-gradient(#c8e030, #9bbc0f 60%, #7fa00f); transition: width .15s linear; }
       #splash .pct { margin-top: 8px; font: 400 10px 'Silkscreen', monospace; color: #8bac0f; }
       #splash .tip { margin-top: 22px; max-width: min(380px, 84vw); min-height: 32px; font: 400 13px/1.35 'PixelifySans', monospace; color: #c9a23a; }
+      #splash .social { margin-top: 14px; font: 400 11px 'Silkscreen', monospace; color: #7fa00f; letter-spacing: 1px; text-decoration: none; border-bottom: 1px solid #306230; padding-bottom: 2px; }
+      #splash .social:hover, #splash .social:focus-visible { color: #e8f5a0; border-bottom-color: #9bbc0f; }
       /* Force font preload — invisible spans make browser fetch the files early */
       #font-preload {
         position: absolute; opacity: 0; pointer-events: none;
@@ -103,6 +114,7 @@
       <div class="bar"><i id="splash-bar"></i></div>
       <div class="pct" id="splash-pct">LOADING 0%</div>
       <div class="tip" id="splash-tip"></div>
+      <a class="social" href="https://x.com/Wayfarer_Online" target="_blank" rel="noopener noreferrer me" aria-label="Wayfarer Online on X">@Wayfarer_Online</a>
     </div>
     <div id="game"></div>
     <script type="module" src="/src/main.js"></script>

@@ -31,6 +31,14 @@ const OVERWORLD = [
 const NAME_RE = /[\w \-']/;
 const CODE_RE = /[A-Za-z0-9]/;
 const VER = typeof __BUILD_ID__ !== 'undefined' ? String(__BUILD_ID__).split('-')[0] : '0.1.0';
+// Public X / Twitter account, shown clickable in the footer. Kept here as the single
+// source for the canvas; index.html carries the same handle in its meta tags and DOM
+// splash (static HTML cannot import from here, so keep the two in step).
+const SOCIAL_URL = 'https://x.com/Wayfarer_Online';
+const SOCIAL_HANDLE = '@Wayfarer_Online';
+const openSocial = () => {
+  try { window.open(SOCIAL_URL, '_blank', 'noopener,noreferrer'); } catch { /* popup blocked; the handle is still visible */ }
+};
 
 function jobName(id) { return JOBS[id]?.name || 'Wayfarer'; }
 function zoneName(p) {
@@ -182,6 +190,13 @@ export class TitleScene extends Phaser.Scene {
   footer(add, W, H, extra = '') {
     const line = extra || `v${VER}  ·  play first, earn second  ·  Ninja Adventure (CC0)`;
     add(txt(this, this.root, W / 2, H - 14, line, { size: 8, color: C.dim, wrap: W - 16 }));
+    // X / Twitter. Canvas text, but a real link: pointerdown opens it in a new tab.
+    // Kept on its own line so a long handle can never reflow the version line.
+    const link = txt(this, this.root, W / 2, H - 27, SOCIAL_HANDLE, { size: 8, color: C.gold_s, wrap: W - 16 });
+    link.setInteractive({ useHandCursor: true });
+    link.on('pointerover', () => link.setColor(C.textHi));
+    link.on('pointerout', () => link.setColor(C.gold_s));
+    link.on('pointerdown', () => openSocial());
   }
 
   buildHome(add, W, H) {
