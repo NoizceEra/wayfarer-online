@@ -5,6 +5,8 @@ import { audio } from './audio.js';
 
 const MAPS = ['town', 'meadow', 'woods', 'ruins', 'dock', 'crypt', 'frost'];
 const WAYS = ['town', 'dock', 'frost'];
+const FRONTIER = ['desert', 'marsh', 'caverns', 'hollow'];
+const WAYS6 = ['town', 'dock', 'frost', 'desert', 'marsh', 'caverns'];
 const C = (id, name, desc, test, prog) => ({ id, name, desc, test, prog });
 
 export const ACHIEVEMENTS = [
@@ -30,6 +32,21 @@ export const ACHIEVEMENTS = [
   C('waystones', 'Well Travelled', 'Attune all three waystones.', (x) => WAYS.every((w) => x.ways[w]), (x) => [WAYS.filter((w) => x.ways[w]).length, 3]),
   C('warden', 'Warden Down', 'Defeat Warden Gravemaw.', (x) => x.c.boss >= 1, (x) => [x.c.boss || 0, 1]),
   C('merchant', 'Shrewd Merchant', 'Sell 20 items to vendors.', (x) => x.c.sells >= 20, (x) => [x.c.sells || 0, 20]),
+  // world expansion: new maps, Hollow Depths, world events
+  C('frontier', 'Frontier Scout', 'Enter the desert, the marsh, the caverns and the Hollow Depths.', (x) => FRONTIER.every((m) => x.visited[m]), (x) => [FRONTIER.filter((m) => x.visited[m]).length, FRONTIER.length]),
+  C('ways6', 'Waystone Wanderer', 'Attune all six waystones.', (x) => WAYS6.every((w) => x.ways[w]), (x) => [WAYS6.filter((w) => x.ways[w]).length, WAYS6.length]),
+  C('khet', 'Sun Breaker', 'Defeat Khet, the Sun Colossus.', (x) => x.c.boss_khet >= 1, (x) => [x.c.boss_khet || 0, 1]),
+  C('gloomtoad', 'Fen Cleanser', 'Defeat the Old Gloomtoad.', (x) => x.c.boss_gloomtoad >= 1, (x) => [x.c.boss_gloomtoad || 0, 1]),
+  C('forgelord', 'Fire Out', 'Defeat Forgelord Ignar.', (x) => x.c.boss_forgelord >= 1, (x) => [x.c.boss_forgelord || 0, 1]),
+  C('delver', 'Delver', 'Clear the Hollow Depths.', (x) => x.c.dungeons >= 1, (x) => [x.c.dungeons || 0, 1]),
+  C('delver3', 'Depth Dweller', 'Clear the Hollow Depths 3 times.', (x) => x.c.dungeons >= 3, (x) => [x.c.dungeons || 0, 3]),
+  C('hollowking', 'Hollow Regicide', 'Defeat the Hollow King.', (x) => x.c.boss_hking >= 1, (x) => [x.c.boss_hking || 0, 1]),
+  C('ev_first', 'Right Place, Right Time', 'Take part in a world event.', (x) => x.c.events >= 1, (x) => [x.c.events || 0, 1]),
+  C('ev_10', 'Event Regular', 'Take part in 10 world events.', (x) => x.c.events >= 10, (x) => [x.c.events || 0, 10]),
+  C('slimeking', 'Crowned Crusher', 'Defeat the Slime King.', (x) => x.c.slimeking >= 1, (x) => [x.c.slimeking || 0, 1]),
+  C('stargazer', 'Stargazer', 'Collect 5 star fragments.', (x) => x.c.stars >= 5, (x) => [x.c.stars || 0, 5]),
+  C('caravan', 'Window Shopper', 'Buy something from the merchant caravan.', (x) => x.c.caravans >= 1, (x) => [x.c.caravans || 0, 1]),
+  C('titan', 'Titan Slayer', 'Defeat a world boss.', (x) => x.c.worldboss >= 1, (x) => [x.c.worldboss || 0, 1]),
 ];
 export const ACH_BY_ID = Object.fromEntries(ACHIEVEMENTS.map((a) => [a.id, a]));
 
@@ -55,6 +72,13 @@ export class Achievements {
       case 'upgrade': this.bump('upgrades'); this.bump('crafts'); break;
       case 'sell': this.bump('sells', e.n || 1); break;
       case 'use': this.bump('uses'); break;
+      case 'bosskill': this.bump(`boss_${e.id}`); break;
+      case 'dungeon': this.bump('dungeons'); break;
+      case 'event': this.bump('events'); break;
+      case 'slimeking': this.bump('slimeking'); break;
+      case 'star': this.bump('stars'); break;
+      case 'caravan': this.bump('caravans'); break;
+      case 'worldboss': this.bump('worldboss'); break;
       default: break;
     }
     this.check();

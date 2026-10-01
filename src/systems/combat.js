@@ -142,6 +142,7 @@ export class Combat {
     if (s.sync?.interceptHit?.(ed, dmg, fromRemote)) return true; // co-op: non-authority hits go to the area authority
     const now = s.time.now;
     if (ed.mode === 'return') { this.floatText(ed.x, ed.y - 20, 'Evade', '#c8c8c8', 'small'); return false; }
+    if (ed.invuln) { this.floatText(ed.x, ed.y - 22, 'Shielded', '#d0a0ff', 'small'); return false; } // MechBoss shield phase
     const dot = opts.dot || null;
     const crit = opts.crit ?? this.isCrit(dmg);
     if (!dot && !fromRemote && Math.random() < heroMissChance(p.level, ed.level)) {

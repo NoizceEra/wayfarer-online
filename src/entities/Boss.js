@@ -69,13 +69,14 @@ export class Boss extends Enemy {
   startAttack(scene, kind) {
     const p = scene.player;
     const fast = (this.phase === 2 ? 0.78 : 1) * (this.hardEnraged ? 0.8 : 1);
+    const kit = this.def.kit || {}; // optional per-boss tuning: slamR / len / wide / novaR
     if (kind === 'slam') {
-      this.plan = { kind, x: p.x, y: p.y + 2, r: 40, wind: 1150 * fast, t: 0 };
+      this.plan = { kind, x: p.x, y: p.y + 2, r: kit.slamR || 40, wind: 1150 * fast, t: 0 };
     } else if (kind === 'charge') {
       const a = Math.atan2(p.y - this.y, p.x - this.x);
-      this.plan = { kind, a, len: 170, wide: 28, wind: 950 * fast, t: 0, sx: this.x, sy: this.y, dashed: 0, hit: false };
+      this.plan = { kind, a, len: kit.len || 170, wide: kit.wide || 28, wind: 950 * fast, t: 0, sx: this.x, sy: this.y, dashed: 0, hit: false };
     } else {
-      this.plan = { kind: 'nova', x: this.x, y: this.y, r: 82, wind: 1350 * fast, t: 0 };
+      this.plan = { kind: 'nova', x: this.x, y: this.y, r: kit.novaR || 82, wind: 1350 * fast, t: 0 };
     }
     this.state = 'wind';
     audio.play('alert', 0.6);
@@ -225,7 +226,7 @@ export class Boss extends Enemy {
   onSlain(scene) {
     this.tele.clear();
     audio.play('quest');
-    bus.emit(Events.SYSTEM, `${this.def.name} crumbles! The crypt falls quiet.`);
+    bus.emit(Events.SYSTEM, this.def.slainMsg || `${this.def.name} crumbles! The crypt falls quiet.`);
     scene.cameras.main.shake(400, 0.006);
     scene.spawnFx(this.x, this.y - 8, 'fx.explosion', 3);
     scene.combat?.hitStop(120);
@@ -234,7 +235,7 @@ export class Boss extends Enemy {
       if (Math.random() < dr.chance) scene.time.delayedCall(250 + i * 220, () => scene.spawnDrop(this.x + (i - 1) * 14, this.y + 6, dr.id));
     });
     scene.player.potions += 2;
-    bus.emit(Events.SYSTEM, 'Loot: +2 potions from the Warden\'s hoard.');
+    bus.emit(Events.SYSTEM, this.def.hoardMsg || 'Loot: +2 potions from the Warden\'s hoard.');
   }
 
   destroy(fromScene) {

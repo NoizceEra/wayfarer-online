@@ -6,6 +6,8 @@
 import { ENEMY_TABLE } from './jobs.js';
 import { AREAS } from './areas.js';
 import { giveItem, ITEMS } from './items.js';
+import './enemiesExtra.js'; // world-expansion monsters (desert / marsh / caverns / Hollow Depths / world events)
+import './materialsExtra.js'; // their gather + drop materials
 
 Object.assign(ENEMY_TABLE, {
   // — Driftwood Beach (Dock Town) —

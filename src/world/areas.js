@@ -6,8 +6,11 @@ import { audio } from '../systems/audio.js';
 import { makeBiomeTextures } from './biomeTextures.js';
 import { makeProps } from './propsExtra.js';
 import { BUILDERS } from './areaBuilders.js';
+import { EXTRA_BUILDERS } from './areaBuildersExtra.js';
+import { HOLLOW_BUILDER } from './dungeons.js';
 import { populateArea } from './townfolk.js';
 
+Object.assign(BUILDERS, EXTRA_BUILDERS, HOLLOW_BUILDER); // desert / marsh / caverns / Hollow Depths (world expansion)
 const T = CONFIG.tile;
 const FONT = '"Silkscreen", monospace';
 
@@ -270,6 +273,9 @@ export class AreaManager {
       const def = AREAS[areaId];
       o?.banner(def.name, `Lv ${def.lv[0]}-${def.lv[1]}${def.safe ? '  ·  safe' : ''}`, def.safe ? 0x9bbc0f : 0xe67e22);
     }
+    // Hollow Depths: a fresh seeded run on every entry, torn down on exit (world/dungeons.js)
+    if (areaId === 'hollow') s.dungeon?.begin(this.built.hollow);
+    else if (prev?.id === 'hollow') s.dungeon?.end();
     if (areaId === 'crypt') audio.play('warp');
     audio.play(areaId && AREAS[areaId].kind === 'interior' ? 'door' : 'warp', 0.7);
     // snap remote players that teleported between spaces (handled in RemotePlayer too)
@@ -374,7 +380,7 @@ export class AreaManager {
       this._fitCamera(b);
       this._light(b, time);
       this._snow(b);
-      if (b.def.id === 'crypt') this._bossWatch(b);
+      if (b.def.id === 'crypt' || b.def.bossWatch) this._bossWatch(b);
     }
     if (this.busy || s.uiLock) { this._setPrompt(''); return; }
     // walk-on triggers

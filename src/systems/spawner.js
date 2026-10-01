@@ -64,6 +64,7 @@ export class Spawner {
   }
 
   onDeath(ed) {
+    if (ed.noRespawn) return; // dungeon / event / boss-add enemies never respawn
     const slot = ed.slot || { type: ed.typeId, zoneId: null, areaId: ed.areaId || null, home: { ...ed.home } };
     const base = ed.def.respawn || (ed.rank !== RANKS.normal ? 45000 : 20000 + Math.random() * 15000);
     this.pending.push({ slot, at: this.s.time.now + base });

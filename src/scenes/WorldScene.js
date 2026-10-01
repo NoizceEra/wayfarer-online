@@ -22,6 +22,9 @@ import { castFx } from '../systems/skillFx.js';
 import { castVfx, attachShotFx } from '../systems/skillVfx.js';
 import { skillDmgMul } from '../data/stats.js';
 import { Boss } from '../entities/Boss.js';
+import { MechBoss } from '../entities/MechBoss.js';
+import { DungeonRun } from '../world/dungeons.js';
+import { WorldEvents } from '../systems/worldEvents.js';
 import { AreaManager } from '../world/areas.js';
 import { buildOverworldFeatures, overworldClearings } from '../world/overworldFeatures.js';
 import { rollDefDrop, rollItemDrops, EXTRA_OVERWORLD_SPAWNS } from '../data/worldEnemies.js';
@@ -123,6 +126,8 @@ export class WorldScene extends Phaser.Scene {
     buildOverworldFeatures(this, this.areas, { spawn, houses, solids });
     placeGatherNodes(this, null);
     this.craft.buildStations(this, null, spawn);
+    this.dungeon = new DungeonRun(this); // Hollow Depths (world/dungeons.js)
+    this.worldEvents = new WorldEvents(this); // timed world events + world boss (systems/worldEvents.js)
     { // notice board (prop drawn by the overworld builder): bounties + '!' marker
       const bx = spawn.x - 118, by = spawn.y - 22;
       const bc = this.add.container(bx, by + 6).setDepth(by + 10);
@@ -212,11 +217,12 @@ export class WorldScene extends Phaser.Scene {
     const def = ENEMY_TABLE[typeId] || ENEMY_TABLE.dewslime;
     const rnd = opts.rnd || Math.random;
     const zoneLv = areaId ? AREAS[areaId]?.lv : this.zoneHere(x, y).lv;
-    const eo = { zoneLv, level: rollMobLevel(def, zoneLv, rnd), rank: def.boss ? RANKS.normal : rollRank(rnd) };
-    const e = def.boss ? new Boss(this, x, y, typeId, eo) : new Enemy(this, x, y, typeId, eo);
+    // opts.eo overrides level / rank / zoneLv (dungeon floors, boss adds); opts.local keeps the enemy out of co-op enemy sync
+    const eo = { zoneLv, level: rollMobLevel(def, zoneLv, rnd), rank: def.boss ? RANKS.normal : rollRank(rnd), ...(opts.eo || {}) };
+    const e = def.boss ? new (def.mech ? MechBoss : Boss)(this, x, y, typeId, eo) : new Enemy(this, x, y, typeId, eo);
     e.areaId = areaId;
     this.enemies.add(e);
-    this.sync?.registerEnemy(e); // net: stable id for co-op enemy sync
+    if (opts.local) e.localOnly = true; else this.sync?.registerEnemy(e); // net: stable id for co-op enemy sync
     return e;
   }
 
@@ -585,6 +591,7 @@ export class WorldScene extends Phaser.Scene {
     } else this.player.body.setVelocity(0, 0);
     this.player.setDepth(this.player.y); // y-sort against trees/props/NPCs
     this.areas.update(time, delta);
+    this.dungeon?.update(time, delta); this.worldEvents?.update(time, delta);
     this.life?.update(time, delta); this.townfolk?.update(time, delta); // ambient critters + NPC schedules
     this.gather.update();
     this.craft.update(dt);
