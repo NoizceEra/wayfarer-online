@@ -15,7 +15,7 @@ import { installSocialNet } from '../../net/socialNet.js';
 // ACTION REGISTRY (for the input/hotkey layer): social.registerAction(name, fn)
 // / social.act(name, ...args). Names: openChat(prefill?), closeChat, toggleChat,
 // openParty, openFriends, openEmotes, closeAll, contextMenu({id,name,x,y}).
-// Default keys: Enter chat (bound in UIScene), P party, O friends/players,
+// Default keys: Enter chat (bound in UIScene), P party, O or R people/friends,
 // G emote wheel, Esc close. There is no src/core/input.js yet, so
 // installFallbackKeys() below binds P/O/G/Esc on window; remove it once the
 // input registry lands and bind these actions there instead.
@@ -489,7 +489,7 @@ class Social {
     switch (cmd) {
       case 'help': case '?':
         this.system('Commands: /say /s /party /p /world /y /g(uild) /w name msg /r msg /me text /emote id /who /invite name /accept /decline /leave /kick name /promote name /friend name /unfriend name /friends /ignore name /unignore name /trade name /gift name [gold] /taccept /tdecline /duel name /dtaccept /dtdecline /dtend /gcreate TAG name /gjoin TAG /gleave /filter /time /clear /help');
-        this.system(`Emotes: ${EMOTES.map((e) => `/${e.id}`).join(' ')}. Keys: Enter chat · P party · O players · G emotes · Tab cycles channel.`);
+        this.system(`Emotes: ${EMOTES.map((e) => `/${e.id}`).join(' ')}. Keys: Enter chat · P party · O or R people · G emotes · Tab cycles channel.`);
         return;
       case 'say': case 's': return setCh('say');
       case 'party': case 'p': return setCh('party');

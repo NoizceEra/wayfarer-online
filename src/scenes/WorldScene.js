@@ -42,6 +42,7 @@ import { NPC_SPOTS } from '../data/quests.js';
 import { Combat } from '../systems/combat.js';
 import { Spawner } from '../systems/spawner.js';
 import { RANKS, rollRank, rollMobLevel } from '../data/combatMath.js';
+import { OnboardingPanel } from '../ui/OnboardingPanel.js';
 
 // Open world: town (safe) + meadow + woods + ruins in ONE 128×128 map.
 // Solo = full simulation. Host = authoritative + broadcasts. Guest = applies
@@ -207,6 +208,9 @@ export class WorldScene extends Phaser.Scene {
     initPrompt(this); showRoomCode(this);
     this.scene.launch('character'); // RPG panels (C / K) + level-up toasts, see CharacterScene.js
     this.scene.launch('overlay');
+    // First-run tour (src/ui/OnboardingPanel.js): only for a brand-new hero, taught by
+    // doing. It watches the bus + this scene's live state; `update` ticks it below.
+    this.onboarding = new OnboardingPanel(this, { fresh: !(saved && saved.job === this.player.job.id) });
   }
 
   // True when a pointer is over any interactive HUD object in the UI scenes.
@@ -399,6 +403,7 @@ export class WorldScene extends Phaser.Scene {
       p.setFacing(deg > -45 && deg <= 45 ? 'right' : deg > 45 && deg <= 135 ? 'down' : deg > -135 && deg <= -45 ? 'up' : 'left');
     }
     p.attackPose();
+    bus.emit(Events.ONBOARD, { act: 'attack' }); // first-run tour: a real swing happened
     if (bow || mage) {
       audio.play(mage ? 'cast' : 'arrow');
       if (step === 3 && bow) {
@@ -568,6 +573,7 @@ export class WorldScene extends Phaser.Scene {
     if (this.areas?.interact(best ? bd : 1e9)) return;
     if (best) {
       audio.play('npc');
+      bus.emit(Events.ONBOARD, { act: 'talk' }); // first-run tour: a townsperson was talked to
       this.spawnFx(best.x, best.y - 20, 'fx.spark', 0.9);
       const def = best.getData('def');
       const plain = () => {
@@ -675,6 +681,7 @@ export class WorldScene extends Phaser.Scene {
     this.combat.updateEnemies(time, delta);
 
     updatePrompt(this, dt);
+    this.onboarding?.update(dt); // first-run tour: ticks steps off on real actions
     this.fx.update(time, dt);
 
     // autosave progress every 10s

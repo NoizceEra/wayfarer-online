@@ -2,6 +2,7 @@ import { bus, Events } from '../core/events.js';
 import { social } from '../systems/social/index.js';
 import { socialRoot, el, escapeHtml, placeAt } from './socialDom.js';
 import { gearById } from '../data/gear.js';
+import { input } from '../core/input.js';
 
 // DOM panels: player/friends/ignore list (O), party panel (P), party-invite
 // toast and the per-player context menu (right-click a hero, click a name in
@@ -49,20 +50,27 @@ export class SocialPanels {
   // ── players / friends / ignored ──
   buildList() {
     const p = this.list = el('div', 'wf-panel wf-list'); p.style.display = 'none';
-    p.appendChild(this.titleBar('PLAYERS', () => this.setList(false)));
+    p.appendChild(this.titleBar('PEOPLE', () => this.setList(false)));
     const tabs = el('div', 'wf-tabs');
     this.listTabs = {};
-    for (const [id, label] of [['online', 'Online'], ['friends', 'Friends'], ['guild', 'Guild'], ['ignored', 'Ignored']]) {
+    for (const [id, label] of [['online', 'Online now'], ['friends', 'Friends'], ['guild', 'Guild'], ['ignored', 'Ignored']]) {
       const b = el('button', '', label); b.addEventListener('click', () => { this.listTab = id; this.renderList(); });
       tabs.appendChild(b); this.listTabs[id] = b;
     }
+    // One-click way to the rest of the social layer — plain words, real keys.
+    const quick = el('div', 'wf-foot');
+    const q = (label, fn) => { const b = el('button', '', label); b.addEventListener('click', fn); quick.appendChild(b); };
+    q(`Chat [${input.labelFor('chat')}]`, () => { this.setList(false); social.act('openChat'); });
+    q(`Party [${input.labelFor('party')}]`, () => social.act('openParty'));
+    q(`Emotes [${input.labelFor('emotes')}]`, () => { this.setList(false); social.act('openEmotes'); });
     this.listBody = el('div', 'wf-scroll');
+    const how = el('div', 'wf-hint', 'Click a name for Message, Party, Trade, Mail or Duel — or right-click a hero in the world.');
     const foot = el('div', 'wf-foot');
     this.listInput = el('input'); this.listInput.placeholder = 'name'; this.listInput.maxLength = 14;
     const addF = el('button', '', '+ Friend'); addF.addEventListener('click', () => { if (this.listInput.value.trim()) { social.addFriend(this.listInput.value); this.listInput.value = ''; this.renderList(); } });
-    const who = el('button', '', '/who'); who.addEventListener('click', () => social.who());
+    const who = el('button', '', 'Who is online?'); who.addEventListener('click', () => social.who());
     foot.append(this.listInput, addF, who);
-    p.append(tabs, this.listBody, foot);
+    p.append(tabs, quick, this.listBody, how, foot);
     this.root.appendChild(p);
   }
   setList(v) { this.listOpen = v; this.list.style.display = v ? 'flex' : 'none'; if (v) { this.setParty(false); this.renderList(); } bus.emit(Events.SOCIAL_UI, { panel: 'friends', open: v }); }
@@ -80,33 +88,41 @@ export class SocialPanels {
     const st = social.store;
     if (this.listTab === 'online') {
       const list = social.players();
-      this.list.querySelector('.wf-title span').textContent = `PLAYERS ONLINE (${social.online ? list.length : 1})`;
-      if (!social.online) { body.appendChild(el('div', 'wf-empty', `Offline — only you, ${escapeHtml(social.me.name)}.<br>Host or Join a room from the title screen.`)); }
+      this.list.querySelector('.wf-title span').textContent = `ONLINE NOW (${social.online ? list.length : 1})`;
+      if (!social.online) { body.appendChild(el('div', 'wf-empty', `Offline — it is just you, ${escapeHtml(social.me.name)}, for now.<br>Press Play Online (or Host / Join a room) on the title screen to meet people.`)); }
       for (const p of list) {
         const me = p.id === social.id;
         const rel = social.relation(p.id);
         const meta = `${p.guild ? `&lt;${escapeHtml(p.guild)}&gt; ` : ''}Lv${p.level} ${JOB_ICON[p.job] || ''}${cap(p.job)} · ${escapeHtml(p.zone || '?')}${p.party ? ' · in party' : ''}`;
-        const r = this.row(p.name + (me ? ' (you)' : ''), meta, me ? [] : [['…', () => {}]], true);
+        const acts = me ? [] : [
+          ['Message', () => social.act('openChat', `/w ${p.name} `)],
+          ['Party', () => social.invite(p.id)],
+          ['Trade', () => social.act('trade', p.id)],
+        ];
+        const r = this.row(p.name + (me ? ' (you)' : ''), meta, acts, true);
         r.querySelector('.wf-name').style.color = { party: '#7dff9a', friend: '#ff9ad5', guild: '#ffd84a', other: '#f4f0dc' }[rel];
         if (!me) r.addEventListener('click', (e) => this.showMenu({ id: p.id, name: p.name, x: e.clientX, y: e.clientY }));
         body.appendChild(r);
       }
     } else if (this.listTab === 'friends') {
       this.list.querySelector('.wf-title span').textContent = `FRIENDS (${st.friends.length})`;
-      if (!st.friends.length) body.appendChild(el('div', 'wf-empty', 'No friends yet.<br>Right-click a hero or use /friend name.'));
+      if (!st.friends.length) body.appendChild(el('div', 'wf-empty', 'No friends yet.<br>Click a name above, or right-click a hero in the world, and choose Add friend.'));
       for (const n of st.friends) {
         const p = social.findPlayer(n);
         const meta = p ? `Lv${p.level} ${cap(p.job)} · ${escapeHtml(p.zone || '')}` : 'offline';
         const r = this.row(n, meta, [
-          ['Whisper', () => social.act('openChat', `/w ${n} `)],
+          ['Message', () => social.act('openChat', `/w ${n} `)],
           ['Invite', () => social.invite(n)],
+          ['Trade', () => social.act('trade', n)],
           ['✕', () => { social.removeFriend(n); this.renderList(); }, 'wf-danger'],
         ], !!p);
         body.appendChild(r);
       }
     } else if (this.listTab === 'guild') {
       // persisted guilds (src/ui/GuildTab.js via the action registry)
-      if (!social.act('renderGuildTab', body, this.list.querySelector('.wf-title span'))) body.appendChild(el('div', 'wf-empty', 'Guilds are loading…'));
+      if (!social.act('renderGuildTab', body, this.list.querySelector('.wf-title span'))) body.appendChild(el('div', 'wf-empty', social.online
+        ? 'No guild yet.<br>Create one with /gcreate TAG Guild Name, or join with /gjoin TAG.'
+        : 'Guilds live in a shared world.<br>Press Play Online on the title screen, then /gcreate TAG Guild Name.'));
     } else {
       this.list.querySelector('.wf-title span').textContent = `IGNORED (${st.ignored.length})`;
       if (!st.ignored.length) body.appendChild(el('div', 'wf-empty', 'Nobody ignored. Peace and quiet.'));

@@ -27,6 +27,8 @@ export const Events = {
   NET_STATUS: 'net-status',       // {status: offline|connecting|online|reconnecting, ping, players, room}
   NET_RECONNECTED: 'net-reconnected', // {resumed: bool} seat resumed (true) or fresh rejoin (false)
   JOURNAL: 'journal',     // {open:true|false|'toggle', tab?} journal panel (L)
+  ONBOARD: 'onboard',     // {act:'attack'|'talk'|...} a real gameplay action, for the first-run tour;
+                          // {open:true} reopens the tour (Help overlay "How to play")
   CRAFT: 'craft',         // {open:true|false|'toggle', station?} crafting panel (U)
   TOAST: 'toast',         // {title, text, color?, icon?} achievement / quest toasts
   QUEST_CHANGED: 'quest-changed', // quest log / markers / tracker changed

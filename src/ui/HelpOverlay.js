@@ -1,5 +1,6 @@
 import { input, PAD_LABELS } from '../core/input.js';
 import { audio } from '../systems/audio.js';
+import { bus, Events } from '../core/events.js';
 
 // Hotkey help overlay (H / F1 / the "?" HUD button). Lists every registered
 // input action with its current bindings (live: rebinds and actions added by
@@ -47,6 +48,11 @@ export class HelpOverlay {
     x.on('pointerdown', () => this.close());
     c.add(x);
 
+    // "How to play" — replays the first-run tour (src/ui/OnboardingPanel.js).
+    const tour = s.add.text(-pw / 2 + 14, -ph / 2 + 16, '▶ HOW TO PLAY', T(9, '#3a1f00', { backgroundColor: '#9bbc0f', padding: { x: 6, y: 3 } })).setOrigin(0, 0.5).setInteractive({ useHandCursor: true });
+    tour.on('pointerdown', () => { audio.play('ui', 0.6); this.close(); bus.emit(Events.ONBOARD, { open: true }); });
+    c.add(tour);
+
     // columns of groups
     const groups = new Map();
     for (const a of input.list()) { if (!groups.has(a.group)) groups.set(a.group, []); groups.get(a.group).push(a); }
@@ -56,12 +62,18 @@ export class HelpOverlay {
         ['Skills 1-4', 'LB RB LT RT'], ['Skills 5-6', 'L3 R3'], ['Bag', PAD_LABELS.bag], ['Menu', PAD_LABELS.menu], ['Back / close', PAD_LABELS.back],
       ]],
       ['Touch', [['Move', 'left stick'], ['Skills / potion', 'tap hotbar'], ['Panels', 'CHAR / SKILL / MAP'], ['Menu / help', 'II  and  ?']]],
+      ['Community', [
+        ['Play as guest', 'no account needed'],
+        ['Backup code', 'move heroes over'],
+        ['X / Twitter', '@Wayfarer_Online'],
+        ['Discord', 'coming soon'],
+      ]],
     ];
     const blocks = [...[...groups.entries()].map(([g, list]) => [g, list.map((a) => [a.label, a.keys.slice(0, 2).map((k) => input.tokenLabel(k)).join(' / ') || '--'])]), ...extra];
     const cols = pw >= 560 ? 3 : pw >= 380 ? 2 : 1;
     const colW = (pw - 24) / cols;
     const lineH = 12;
-    const top = -ph / 2 + 36, bottom = ph / 2 - 26;
+    const top = -ph / 2 + 36, bottom = ph / 2 - 42;
     const colY = new Array(cols).fill(top);
     for (const [g, rows] of blocks) {
       const need = (rows.length + 1) * lineH + 6;
@@ -78,6 +90,16 @@ export class HelpOverlay {
       }
       colY[ci] = y + 6;
     }
-    c.add(s.add.text(0, ph / 2 - 13, `${input.labelFor('help', 2)} / ESC close  ·  rebind keys in Pause (${input.labelFor('menu')}) > Controls`, T(8, '#a0c4f0', { align: 'center', wordWrap: { width: pw - 20 } })).setOrigin(0.5));
+    // Footer row: the tour, the backup code, and the community link — clickable.
+    const rowY = ph / 2 - 28;
+    const chip = (x, label, cb, color, bg) => {
+      const t = s.add.text(x, rowY, label, T(9, color, { backgroundColor: bg, padding: { x: 7, y: 3 } })).setOrigin(0.5).setInteractive({ useHandCursor: true });
+      t.on('pointerdown', () => { audio.play('ui', 0.6); cb(); });
+      c.add(t);
+    };
+    chip(pw >= 520 ? -150 : -118, 'REPLAY TOUR', () => { this.close(); bus.emit(Events.ONBOARD, { open: true }); }, '#1a1024', '#9bbc0f');
+    chip(pw >= 520 ? -18 : 4, 'BACKUP CODE', () => { this.close(); this.scene.menu?.open('community'); }, '#ffe07a', '#2a2210');
+    chip(pw >= 520 ? 128 : 122, '@Wayfarer_Online', () => { try { window.open('https://x.com/Wayfarer_Online', '_blank', 'noopener,noreferrer'); } catch { /* blocked */ } }, '#a0c4f0', '#2a2210');
+    c.add(s.add.text(0, ph / 2 - 12, `No account needed to play  ·  ${input.labelFor('help', 2)} / ESC close  ·  rebind keys in Pause (${input.labelFor('menu')}) > Controls`, T(8, '#a0c4f0', { align: 'center', wordWrap: { width: pw - 20 } })).setOrigin(0.5));
   }
 }
