@@ -17,6 +17,12 @@
 //  party-status {hp,maxHp,mp,maxMp,level}  party-status {from,...}             (other members)
 //  guild-create {tag,name} / guild-join {tag} / guild-leave
 //                              guild-update {tag,name,members:[names]} (guild members) + presence broadcast
+//  trade-offer {to,gold,item}   trade-offer {from,fromName,gold,item} -> target, trade-sent {to,toName} -> sender
+//  trade-respond {to,accept,gold,item}  trade-done {from,gold,item} | {from,declined} -> offerer
+//  duel-challenge {to}         duel-challenge {from,fromName} -> target
+//  duel-respond {to,accept}     duel-start {a,b} -> both | duel-decline {from,fromName} -> challenger
+//  duel-end {}                 duel-end {a,b,reason} -> both (also on death/leave)
+//  pvp-hit {to,dmg,x,y}        pvp-hit {from,dmg,x,y} -> recorded opponent only
 //  (any)                       social-error {msg}
 
 const CHAT_MAX = 160;
@@ -107,7 +113,7 @@ function leaveGuild(room, sid, silent = false) {
 }
 
 export function installSocial(room) {
-  room.social = { players: new Map(), parties: new Map(), guilds: new Map(), rate: new Map(), nextParty: 1 };
+  room.social = { players: new Map(), parties: new Map(), guilds: new Map(), duels: new Map(), rate: new Map(), nextParty: 1 };
 
   room.onMessage('presence', (client, m) => {
     const p = info(room, client.sessionId); if (!p) return;
@@ -223,6 +229,71 @@ export function installSocial(room) {
     sendParty(room, party, 'party-status', s, client.sessionId);
   });
 
+  // ── trade (1:1 offers, co-op trust model: sender deducts on 'done') ──
+  room.onMessage('trade-offer', (client, m) => {
+    const p = info(room, client.sessionId); if (!p) return;
+    if (!bucket(room, client.sessionId)) { err(client, 'You are trading too fast.'); return; }
+    const sid = room.social.players.has(m?.to) ? m.to : findByName(room, m?.to);
+    if (!sid || sid === client.sessionId) { err(client, 'No such player to trade with.'); return; }
+    const gold = Math.max(0, Math.min(9999, m?.gold | 0));
+    const item = typeof m?.item === 'string' ? m.item.slice(0, 40) : null;
+    if (!gold && !item) { err(client, 'Offer gold or an item.'); return; }
+    clientById(room, sid)?.send('trade-offer', { from: client.sessionId, fromName: p.name, gold, item });
+    client.send('trade-sent', { to: sid, toName: info(room, sid)?.name || '???' });
+  });
+  room.onMessage('trade-respond', (client, m) => {
+    const p = info(room, client.sessionId); if (!p) return;
+    const sid = m?.to;
+    if (!sid || !room.social.players.has(sid)) { err(client, 'That trader is gone.'); return; }
+    if (m?.accept) {
+      const gold = Math.max(0, Math.min(9999, m?.gold | 0));
+      const item = typeof m?.item === 'string' ? m.item.slice(0, 40) : null;
+      clientById(room, sid)?.send('trade-done', { from: client.sessionId, gold, item });
+    } else {
+      clientById(room, sid)?.send('trade-done', { from: client.sessionId, declined: true });
+    }
+  });
+
+  // ── duels (consensual PvP; active pairs tracked so hits can be validated) ──
+  const duelKey = (a, b) => [a, b].sort().join('~');
+  const inDuel = (sid) => { for (const d of room.social.duels.values()) if (d.a === sid || d.b === sid) return d; return null; };
+  room.onMessage('duel-challenge', (client, m) => {
+    const p = info(room, client.sessionId); if (!p) return;
+    if (!bucket(room, client.sessionId)) { err(client, 'Slow down.'); return; }
+    const sid = room.social.players.has(m?.to) ? m.to : findByName(room, m?.to);
+    if (!sid || sid === client.sessionId) { err(client, 'No such duelist.'); return; }
+    if (inDuel(client.sessionId)) { err(client, 'Finish your current duel first.'); return; }
+    if (inDuel(sid)) { err(client, `${info(room, sid)?.name || '???'} is already dueling.`); return; }
+    clientById(room, sid)?.send('duel-challenge', { from: client.sessionId, fromName: p.name });
+    client.send('party-msg', { text: `Duel challenge sent to ${info(room, sid)?.name || '???'}.` });
+  });
+  room.onMessage('duel-respond', (client, m) => {
+    const p = info(room, client.sessionId); if (!p) return;
+    const sid = m?.to;
+    if (!sid || !room.social.players.has(sid)) { err(client, 'That challenger is gone.'); return; }
+    if (!m?.accept) { clientById(room, sid)?.send('duel-decline', { from: client.sessionId, fromName: p.name }); return; }
+    if (inDuel(client.sessionId) || inDuel(sid)) { err(client, 'Someone is already dueling.'); return; }
+    const d = { a: sid, b: client.sessionId, at: Date.now() };
+    room.social.duels.set(duelKey(sid, client.sessionId), d);
+    for (const s of [sid, client.sessionId]) clientById(room, s)?.send('duel-start', { a: d.a, b: d.b });
+  });
+  const endDuel = (sid, reason) => {
+    const d = inDuel(sid); if (!d) return false;
+    room.social.duels.delete(duelKey(d.a, d.b));
+    for (const s of [d.a, d.b]) clientById(room, s)?.send('duel-end', { a: d.a, b: d.b, reason: reason || '' });
+    return true;
+  };
+  room.onMessage('duel-end', (client, m) => { endDuel(client.sessionId, m?.reason || 'ended'); });
+  // Recipient-validated PvP hits: only the recorded opponent's hits land.
+  room.onMessage('pvp-hit', (client, m) => {
+    const d = inDuel(client.sessionId); if (!d) return;
+    const target = d.a === client.sessionId ? d.b : d.a;
+    const dmg = Math.max(1, Math.min(500, Math.round(+m?.dmg || 0)));
+    if (!dmg) return;
+    clientById(room, target)?.send('pvp-hit', { from: client.sessionId, dmg, x: +m?.x | 0, y: +m?.y | 0 });
+  });
+  room._endDuel = endDuel;
+
   // ── guild stub (in-memory) ──
   room.onMessage('guild-create', (client, m) => {
     const p = info(room, client.sessionId); if (!p) return;
@@ -267,6 +338,7 @@ export function socialJoin(room, client, options) {
 export function socialLeave(room, client) {
   removeFromParty(room, client.sessionId, 'went offline');
   leaveGuild(room, client.sessionId, true);
+  if (room._endDuel) room._endDuel(client.sessionId, 'left');
   room.social.players.delete(client.sessionId);
   room.social.rate.delete(client.sessionId);
   room.broadcast('presence-gone', { id: client.sessionId });

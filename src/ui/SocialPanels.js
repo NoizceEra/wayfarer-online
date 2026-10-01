@@ -1,6 +1,7 @@
 import { bus, Events } from '../core/events.js';
 import { social } from '../systems/social/index.js';
 import { socialRoot, el, escapeHtml, placeAt } from './socialDom.js';
+import { gearById } from '../data/gear.js';
 
 // DOM panels: player/friends/ignore list (O), party panel (P), party-invite
 // toast and the per-player context menu (right-click a hero, click a name in
@@ -15,11 +16,18 @@ export class SocialPanels {
     this.scene = scene;
     this.root = socialRoot();
     this.listTab = 'online';
-    this.buildList(); this.buildParty(); this.buildToast(); this.buildMenu();
+    this.buildList(); this.buildParty(); this.buildToast(); this.buildMenu(); this.buildOffer();
     this.off = [
       bus.on(Events.SOCIAL_ROSTER, () => { if (this.listOpen) this.renderList(); if (this.partyOpen) this.renderParty(); }),
       bus.on(Events.SOCIAL_PARTY, () => { if (this.partyOpen) this.renderParty(); if (this.listOpen) this.renderList(); }),
-      bus.on(Events.SOCIAL_UI, (m) => { if (m.panel === 'invite') this.showToast(m.open ? m.invite : null); }),
+      bus.on(Events.SOCIAL_UI, (m) => {
+        if (m.panel === 'invite') this.showToast(m.open ? m.invite : null);
+        else if (m.panel === 'trade' && m.open) this.showOffer({ kind: 'incoming' });
+        else if (m.panel === 'trade-compose' && m.open) this.showOffer({ kind: 'compose', to: m.to, gold: m.gold });
+        else if ((m.panel === 'trade' || m.panel === 'trade-compose') && !m.open) this.hideOffer();
+        else if (m.panel === 'duel' && m.open) this.showOffer({ kind: 'duel' });
+        else if (m.panel === 'duel' && !m.open) this.hideOffer();
+      }),
     ];
     this.offActs = [
       social.registerAction('openFriends', () => this.setList(!this.listOpen)),
@@ -29,8 +37,8 @@ export class SocialPanels {
     this.onDocDown = (e) => { if (this.menu.style.display !== 'none' && !this.menu.contains(e.target)) this.hideMenu(); };
     document.addEventListener('pointerdown', this.onDocDown, true);
   }
-  get anyOpen() { return this.listOpen || this.partyOpen || this.menu.style.display !== 'none'; }
-  closeAll() { let c = false; if (this.listOpen) { this.setList(false); c = true; } if (this.partyOpen) { this.setParty(false); c = true; } if (this.menu.style.display !== 'none') { this.hideMenu(); c = true; } return c; }
+  get anyOpen() { return this.listOpen || this.partyOpen || this.menu.style.display !== 'none' || (this.offer && this.offer.style.display !== 'none'); }
+  closeAll() { let c = false; if (this.listOpen) { this.setList(false); c = true; } if (this.partyOpen) { this.setParty(false); c = true; } if (this.menu.style.display !== 'none') { this.hideMenu(); c = true; } if (this.offer && this.offer.style.display !== 'none') { this.hideOffer(); c = true; } return c; }
 
   titleBar(text, onClose) {
     const t = el('div', 'wf-title', `<span>${text}</span>`);
@@ -170,6 +178,85 @@ export class SocialPanels {
     this.toast.style.display = 'flex';
   }
 
+  // ── trade composer + incoming trade/duel modals ──
+  // One shared modal shell; content depends on mode. Gear-only offers v1.
+  buildOffer() {
+    const m = this.offer = el('div', 'wf-panel wf-offer'); m.style.display = 'none';
+    this.root.appendChild(m);
+    this.offerState = null;
+  }
+  hideOffer() { if (this.offer) this.offer.style.display = 'none'; this.offerState = null; }
+  offerShell(title) {
+    const m = this.offer; m.innerHTML = '';
+    m.appendChild(el('div', 'wf-mh', title));
+    const body = el('div', 'wf-obody'); m.appendChild(body);
+    const row = el('div', 'wf-orow');
+    const back = el('button', 'wf-ghost', 'Cancel');
+    back.addEventListener('click', () => this.hideOffer());
+    row.appendChild(back); m.appendChild(row);
+    m.style.display = 'block';
+    return { body, row };
+  }
+  showOffer(spec) {
+    if (spec.kind === 'compose') return this.showCompose(spec.to, spec.gold | 0);
+    if (spec.kind === 'duel') {
+      const d = social.pendingDuel; if (!d) return;
+      const { body, row } = this.offerShell(`Duel challenge`);
+      body.appendChild(el('div', 'wf-otext', `<b>${escapeHtml(d.fromName)}</b> challenges you to a duel!<br>First to fall loses.`));
+      const ok = el('button', '', 'Accept'); ok.addEventListener('click', () => { social.acceptDuel(); this.hideOffer(); });
+      const no = el('button', 'wf-danger', 'Decline'); no.addEventListener('click', () => { social.declineDuel(); this.hideOffer(); });
+      row.prepend(ok, no);
+      return;
+    }
+    // incoming trade
+    const t = social.pendingTrade; if (!t) return;
+    const { body, row } = this.offerShell(`Trade offer`);
+    const item = t.item && gearById(t.item);
+    body.appendChild(el('div', 'wf-otext', `<b>${escapeHtml(t.fromName)}</b> offers ${t.gold}g${item ? ' + ' + escapeHtml(item.name) : ''}.`));
+    const ok = el('button', '', 'Accept'); ok.addEventListener('click', () => { social.acceptTrade(); this.hideOffer(); });
+    const no = el('button', 'wf-danger', 'Decline'); no.addEventListener('click', () => { social.declineTrade(); this.hideOffer(); });
+    row.prepend(ok, no);
+  }
+  showCompose(to, preGold = 0) {
+    const p = social.findPlayer(to);
+    const me = social.world?.player;
+    if (!p || !me) { social.system('No one to trade with.'); return; }
+    let gold = Math.max(0, Math.min(preGold | 0, me.gold | 0));
+    let item = null;
+    const { body, row } = this.offerShell(`Trade with ${escapeHtml(p.name || '???')}`);
+    const state = { to: p.id || to, gold, item };
+    this.offerState = state;
+    const goldLine = el('div', 'wf-otext', '');
+    const paint = () => { goldLine.innerHTML = `Offer: <b>${state.gold}g</b>${state.item ? ' + ' + escapeHtml(gearById(state.item)?.name || state.item) : ''} <span style="color:#8aa070">(you have ${me.gold}g)</span>`; };
+    paint();
+    const step = el('div', 'wf-orow');
+    const mkStep = (label, d) => { const b = el('button', 'wf-ghost', label); b.addEventListener('click', () => { state.gold = Math.max(0, Math.min(me.gold, state.gold + d)); paint(); }); step.appendChild(b); };
+    mkStep('-10', -10); mkStep('-1', -1); mkStep('+1', 1); mkStep('+10', 10);
+    body.append(goldLine, step);
+    const grid = el('div', 'wf-oitems');
+    const paintItems = () => {
+      grid.innerHTML = '';
+      const inv = [...new Set(me.inventory || [])].slice(0, 12);
+      if (!inv.length) grid.appendChild(el('div', 'wf-empty', 'No tradeable gear (materials stay home).'));
+      for (const id of inv) {
+        const g = gearById(id); if (!g) continue;
+        const b = el('button', 'wf-oitem' + (state.item === id ? ' sel' : ''), escapeHtml(g.name));
+        b.title = g.name;
+        b.addEventListener('click', () => { state.item = state.item === id ? null : id; paint(); paintItems(); });
+        grid.appendChild(b);
+      }
+    };
+    paintItems();
+    body.appendChild(grid);
+    const send = el('button', '', 'Send offer');
+    send.addEventListener('click', () => {
+      if (!state.gold && !state.item) { social.system('Offer gold or an item.'); return; }
+      social.offerTrade(state.to, state.gold, state.item);
+      this.hideOffer();
+    });
+    row.prepend(send);
+  }
+
   // ── context menu ──
   buildMenu() {
     const m = this.menu = el('div', 'wf-panel wf-menu'); m.style.display = 'none';
@@ -188,7 +275,9 @@ export class SocialPanels {
     if (inPartyWithThem) {
       if (social.isLeader()) { item('Promote to leader', () => social.promote(sid)); item('Kick from party', () => social.kick(sid)); }
     } else item('Invite to party', () => social.invite(sid || name), !social.online || (social.party && !social.isLeader()));
-    item('Trade', () => social.act('trade', sid || name), !social.online);
+    item('Trade', () => social.act('trade', sid || name), !social.online);   // server-checked trade window (economy)
+    item('Quick gift', () => bus.emit(Events.SOCIAL_UI, { panel: 'trade-compose', open: true, to: sid || name })); // 1 gear item + gold, trust model
+    item('Duel', () => social.challenge(sid || name));
     item('Send mail', () => social.act('mail', name), !social.online);
     if (st.isFriend(name)) item('Remove friend', () => social.removeFriend(name)); else item('Add friend', () => social.addFriend(name));
     if (st.isIgnored(name)) item('Unignore', () => social.unignore(name)); else item('Ignore', () => social.ignore(name));
@@ -201,6 +290,6 @@ export class SocialPanels {
   destroy() {
     this.off.forEach((f) => f()); this.offActs.forEach((f) => f());
     document.removeEventListener('pointerdown', this.onDocDown, true);
-    this.list.remove(); this.partyEl.remove(); this.toast.remove(); this.menu.remove();
+    this.list.remove(); this.partyEl.remove(); this.toast.remove(); this.menu.remove(); this.offer?.remove();
   }
 }

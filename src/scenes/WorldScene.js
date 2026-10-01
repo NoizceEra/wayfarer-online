@@ -28,7 +28,8 @@ import { WorldEvents } from '../systems/worldEvents.js';
 import { AreaManager } from '../world/areas.js';
 import { buildOverworldFeatures, overworldClearings } from '../world/overworldFeatures.js';
 import { rollDefDrop, rollItemDrops, EXTRA_OVERWORLD_SPAWNS } from '../data/worldEnemies.js';
-import { installSocialWorld } from '../systems/social/world.js';
+import { installSocialWorld, remoteAt } from '../systems/social/world.js';
+import { social } from '../systems/social/index.js';
 import { QuestSystem, BOARD } from '../systems/questSystem.js';
 import { GatherSystem, placeGatherNodes, contentClearings } from '../systems/gathering.js';
 import { CraftSystem } from '../systems/crafting.js';
@@ -158,6 +159,13 @@ export class WorldScene extends Phaser.Scene {
     this.input.on('pointerdown', (p) => {
       if (p.button !== 0 || this.chatOpen || this.uiLock || this.uiModal || input.modal) return;
       if (this.pointerOnHud(p)) return; // clicks on HUD panels/buttons never swing
+      // Tapping a fellow wayfarer opens their menu instead of attacking.
+      const peer = remoteAt(this, p.worldX, p.worldY);
+      if (peer) {
+        audio.play('ui', 0.5);
+        social.act('contextMenu', { id: peer.id, name: peer.name, x: p.event?.clientX ?? p.x, y: p.event?.clientY ?? p.y });
+        return;
+      }
       this.attack(p.worldX, p.worldY);
     });
 
@@ -384,6 +392,7 @@ export class WorldScene extends Phaser.Scene {
       } else if (step === 3) {
         this.fireShot(p.x, p.y - 8, a, dmg, 'fire', { status: { id: 'burn', chance: 0.6 }, scale: 1.4 });
       } else this.fireShot(p.x, p.y - 8, a, dmg, mage ? 'energy' : 'arrow');
+      this.pvpArc(a, 230, 0.22, dmg);
     } else {
       audio.play('swing');
       const range = step === 3 ? 40 : 32;
@@ -399,7 +408,27 @@ export class WorldScene extends Phaser.Scene {
         }
         return true;
       });
+      this.pvpArc(a, range, 1.9, dmg);
     }
+  }
+
+  // Consensual PvP: duel opponents inside the swing/shot arc take the hit via
+  // the relay (recipient validates the pairing before applying damage).
+  pvpArc(angle, range, halfArc, dmg) {
+    if (!net.connected || !this.sync) return;
+    const p = this.player;
+    let hitAny = false;
+    this.sync.remotes.forEach((r, id) => {
+      if (!social.duelingWith(id) || r.otherArea || r.dc) return;
+      const d = Phaser.Math.Distance.Between(p.x, p.y, r.x, r.y);
+      if (d > range) return;
+      const off = Math.abs(Phaser.Math.Angle.Wrap(Math.atan2(r.y - p.y, r.x - p.x) - angle));
+      if (d > 14 && off > halfArc) return;
+      net.send('pvp-hit', { to: id, dmg: Math.round(dmg), x: Math.round(p.x), y: Math.round(p.y) });
+      this.spawnFx(r.x, r.y - 8, 'fx.cut', 1);
+      hitAny = true;
+    });
+    return hitAny;
   }
 
   facingAngle() {

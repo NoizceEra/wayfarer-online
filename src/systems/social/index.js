@@ -60,6 +60,9 @@ class Social {
     this.party = null;            // {id, leader, members:[{id,name,hp,maxHp,mp,maxMp,level,job}]}
     this.guild = null;            // {tag, name, members:[names]}
     this.pendingInvite = null;    // {from, fromName, at}
+    this.pendingTrade = null;     // {from, fromName, gold, item, at}
+    this.pendingDuel = null;      // {from, fromName, at}
+    this.duel = null;             // {peerId, peerName} — active consensual PvP
     this.history = [];            // chat lines
     this.channel = 'say';         // active outgoing channel
     this.lastWhisperFrom = null;  // name for /r
@@ -313,6 +316,137 @@ class Social {
   // ── guild stub ──
   onGuildUpdate(m) { this.guild = m && m.tag ? m : null; bus.emit(Events.SOCIAL_ROSTER, this.players()); this.system(this.guild ? `Guild <${this.guild.tag}> ${this.guild.name}: ${this.guild.members.join(', ')}` : 'You are no longer in a guild.'); }
 
+  // ── trade (gold + one item, co-op trust model) ──
+  offerTrade(who, gold = 0, item = null) {
+    if (!this.online) { this.system('(offline) trading needs a room.'); return; }
+    const p = this.findPlayer(who);
+    if (!p) { this.system(`No player named "${esc(who)}" here.`); return; }
+    if (p.id === this.id) { this.system('You cannot trade with yourself.'); return; }
+    gold = Math.max(0, Math.min(9999, gold | 0));
+    if (typeof item === 'string') item = item.slice(0, 40); else item = null;
+    if (!gold && !item) { this.system('Offer gold or an item.'); return; }
+    const me = this.world?.player;
+    if (gold > (me?.gold || 0)) { this.system('You do not have that much gold.'); return; }
+    if (item && !me?.inventory?.includes(item)) { this.system(`You no longer have ${item}.`); return; }
+    net.send('trade-offer', { to: p.id, gold, item });
+  }
+  onTradeOffer(m) {
+    this.pendingTrade = { from: m.from, fromName: m.fromName || '???', gold: m.gold | 0, item: m.item || null, at: nowTs() };
+    const what = `${m.gold | 0}g${m.item ? ' + ' + m.item : ''}`;
+    this.system(`${m.fromName || '???'} offers you ${what}. /taccept or /tdecline`);
+    bus.emit(Events.SOCIAL_UI, { panel: 'trade', open: true, trade: this.pendingTrade });
+    clearTimeout(this._tradeT);
+    this._tradeT = setTimeout(() => { if (this.pendingTrade?.from === m.from) this.declineTrade(true); }, 45000);
+  }
+  onTradeSent(m) { this.system(`Offer sent to ${m.toName || '???'}.`); }
+  acceptTrade() {
+    const t = this.pendingTrade;
+    if (!t) { this.system('No pending trade.'); return; }
+    const w = this.world, p = w?.player;
+    if (p) {
+      p.gold += t.gold | 0;
+      if (t.item && !p.inventory.includes(t.item)) p.inventory.push(t.item);
+      bus.emit(Events.PLAYER_HP, w.hpPayload());
+      w.saveNow?.();
+    }
+    net.send('trade-respond', { to: t.from, accept: true, gold: t.gold | 0, item: t.item });
+    this.system(`Accepted ${t.fromName}'s trade (+${t.gold | 0}g${t.item ? ' + ' + t.item : ''}).`);
+    this.pendingTrade = null;
+    bus.emit(Events.SOCIAL_UI, { panel: 'trade', open: false });
+  }
+  declineTrade(silent = false) {
+    const t = this.pendingTrade;
+    if (!t) { if (!silent) this.system('No pending trade.'); return; }
+    this.pendingTrade = null;
+    bus.emit(Events.SOCIAL_UI, { panel: 'trade', open: false });
+    net.send('trade-respond', { to: t.from, accept: false });
+    if (!silent) this.system(`Declined ${t.fromName}'s trade.`);
+  }
+  onTradeDone(m) {
+    // We are the offerer: the recipient accepted (deduct) or declined.
+    if (m.declined) { this.system('Trade declined.'); return; }
+    const w = this.world, p = w?.player;
+    if (p) {
+      p.gold = Math.max(0, p.gold - (m.gold | 0));
+      if (m.item) {
+        const ix = p.inventory.indexOf(m.item);
+        if (ix >= 0) p.inventory.splice(ix, 1);
+        else {
+          const slot = Object.keys(p.equipped || {}).find((s) => p.equipped[s] === m.item);
+          if (slot && p.unequip) p.unequip(slot);
+        }
+        p.applyGearVisuals?.();
+      }
+      bus.emit(Events.PLAYER_HP, w.hpPayload());
+      bus.emit(Events.GEAR, { changed: true });
+      w.saveNow?.();
+    }
+    this.system(`Trade complete (${m.gold | 0}g${m.item ? ' + ' + m.item : ''}).`);
+  }
+
+  // ── duels (consensual PvP) ──
+  duelingWith(id) { return !!this.duel && this.duel.peerId === id; }
+  duelPeer() { return this.duel ? { id: this.duel.peerId, name: this.duel.peerName } : null; }
+  challenge(who) {
+    if (!this.online) { this.system('(offline) duels need a room.'); return; }
+    const p = this.findPlayer(who);
+    if (!p) { this.system(`No player named "${esc(who)}" here.`); return; }
+    if (p.id === this.id) { this.system('You cannot duel yourself.'); return; }
+    if (this.duel) { this.system('Finish your current duel first (/dtend).'); return; }
+    net.send('duel-challenge', { to: p.id });
+  }
+  onDuelChallenge(m) {
+    this.pendingDuel = { from: m.from, fromName: m.fromName || '???', at: nowTs() };
+    this.system(`${m.fromName || '???'} challenges you to a duel! /dtaccept or /dtdecline`);
+    bus.emit(Events.SOCIAL_UI, { panel: 'duel', open: true, duel: this.pendingDuel });
+    clearTimeout(this._duelT);
+    this._duelT = setTimeout(() => { if (this.pendingDuel?.from === m.from) this.declineDuel(true); }, 45000);
+  }
+  acceptDuel() {
+    const d = this.pendingDuel;
+    if (!d) { this.system('No pending duel.'); return; }
+    this.pendingDuel = null;
+    bus.emit(Events.SOCIAL_UI, { panel: 'duel', open: false });
+    net.send('duel-respond', { to: d.from, accept: true });
+  }
+  declineDuel(silent = false) {
+    const d = this.pendingDuel;
+    if (!d) { if (!silent) this.system('No pending duel.'); return; }
+    this.pendingDuel = null;
+    bus.emit(Events.SOCIAL_UI, { panel: 'duel', open: false });
+    net.send('duel-respond', { to: d.from, accept: false });
+    if (!silent) this.system(`Declined ${d.fromName}'s duel.`);
+  }
+  onDuelStart(m) {
+    const peerId = m.a === this.id ? m.b : m.a;
+    const peer = this.roster.get(peerId) || this.findPlayer(peerId);
+    this.duel = { peerId, peerName: peer?.name || '???' };
+    this.system(`DUEL vs ${this.duel.peerName}! First to fall loses. (/dtend to yield)`);
+    bus.emit(Events.SOCIAL_ROSTER, this.players());
+  }
+  onDuelEnd(m) {
+    if (!this.duel) return;
+    const reason = m?.reason === 'death' ? `${this.duel.peerName} won the duel.` : m?.reason === 'left' ? `${this.duel.peerName} left — duel over.` : 'Duel over.';
+    this.duel = null;
+    this.system(reason);
+    bus.emit(Events.SOCIAL_ROSTER, this.players());
+  }
+  endDuel(reason = 'ended') {
+    if (!this.duel) return;
+    net.send('duel-end', { reason });
+    this.duel = null;
+    this.system('You ended the duel.');
+    bus.emit(Events.SOCIAL_ROSTER, this.players());
+  }
+  onPvpHit(m) {
+    // Only the recorded opponent's hits land.
+    if (!this.duel || m.from !== this.duel.peerId) return;
+    const w = this.world;
+    if (!w?.combat || w.player.dead) return;
+    const dmg = Math.max(1, Math.min(500, Math.round(+m.dmg || 0)));
+    w.combat.hitPlayer(dmg, { x: +m.x || w.player.x, y: +m.y || w.player.y }, true);
+  }
+
   // ── friends / ignore ──
   addFriend(name) { name = esc(name); if (!name) return; if (name.toLowerCase() === this.me.name.toLowerCase()) return this.system('You are already your own best friend.'); this.system(this.store.add('friends', name) ? `${name} added to friends.` : `${name} is already a friend.`); bus.emit(Events.SOCIAL_ROSTER, this.players()); }
   removeFriend(name) { this.system(this.store.remove('friends', name) ? `${name} removed from friends.` : `${name} is not on your friends list.`); bus.emit(Events.SOCIAL_ROSTER, this.players()); }
@@ -334,7 +468,7 @@ class Social {
     const setCh = (ch) => { this.channel = ch; bus.emit(Events.SOCIAL_UI, { panel: 'channel', channel: ch }); if (arg) this.chat(ch, arg); else this.system(`Now talking in ${CHANNELS[ch].label}.`); };
     switch (cmd) {
       case 'help': case '?':
-        this.system('Commands: /say /s /party /p /world /y /g(uild) /w name msg /r msg /me text /emote id /who /invite name /accept /decline /leave /kick name /promote name /friend name /unfriend name /friends /ignore name /unignore name /gcreate TAG name /gjoin TAG /gleave /filter /time /clear /help');
+        this.system('Commands: /say /s /party /p /world /y /g(uild) /w name msg /r msg /me text /emote id /who /invite name /accept /decline /leave /kick name /promote name /friend name /unfriend name /friends /ignore name /unignore name /trade name /gift name [gold] /taccept /tdecline /duel name /dtaccept /dtdecline /dtend /gcreate TAG name /gjoin TAG /gleave /filter /time /clear /help');
         this.system(`Emotes: ${EMOTES.map((e) => `/${e.id}`).join(' ')}. Keys: Enter chat · P party · O players · G emotes · Tab cycles channel.`);
         return;
       case 'say': case 's': return setCh('say');
@@ -347,6 +481,14 @@ class Social {
       case 'emote': case 'e': return this.emote(first.toLowerCase());
       case 'who': case 'online': case 'players': return this.who();
       case 'invite': case 'inv': if (!first) return this.system('Usage: /invite name'); return this.invite(first);
+      // /trade is the server-checked trade window (ui/economyUI.js); the quick trust-model gift keeps its own command
+      case 'gift': case 'give': if (!first) return this.system('Usage: /gift name [gold] — pick one gear item in the gift window'); return socialTradeCmd(this, first, rest);
+      case 'taccept': return this.acceptTrade();
+      case 'tdecline': return this.declineTrade();
+      case 'duel': case 'dt': if (!first) return this.system('Usage: /duel name'); return this.challenge(first);
+      case 'dtaccept': return this.acceptDuel();
+      case 'dtdecline': return this.declineDuel();
+      case 'dtend': case 'yield': return this.endDuel('ended');
       case 'accept': case 'join': return this.accept();
       case 'decline': return this.decline();
       case 'leave': return this.leaveParty();
@@ -372,6 +514,15 @@ class Social {
 }
 
 const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : '');
+
+// /trade name [gold] → opens the trade composer modal for that player.
+function socialTradeCmd(social, first, rest) {
+  const p = social.findPlayer(first);
+  if (!p) return social.system(`No player named "${esc(first)}" here.`);
+  if (p.id === social.id) return social.system('You cannot trade with yourself.');
+  const gold = Math.max(0, parseInt(rest[0], 10) || 0);
+  bus.emit(Events.SOCIAL_UI, { panel: 'trade-compose', open: true, to: p.id, gold });
+}
 
 export const social = new Social();
 if (typeof window !== 'undefined') window.__social = social; // debug / automated tests
