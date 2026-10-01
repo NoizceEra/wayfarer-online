@@ -230,7 +230,12 @@ export class WorldScene extends Phaser.Scene {
     const e = def.boss ? new (def.mech ? MechBoss : Boss)(this, x, y, typeId, eo) : new Enemy(this, x, y, typeId, eo);
     e.areaId = areaId;
     this.enemies.add(e);
-    if (opts.local) e.localOnly = true; else this.sync?.registerEnemy(e); // net: stable id for co-op enemy sync
+    if (opts.netId) e.netId = String(opts.netId).slice(0, 64);
+    if (opts.local) e.localOnly = true;
+    else {
+      const existing = this.sync?.registerEnemy(e);
+      if (existing && existing !== e) { this.enemies.remove(e, true, true); return existing; }
+    }
     return e;
   }
 

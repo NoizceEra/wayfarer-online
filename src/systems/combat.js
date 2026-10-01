@@ -700,7 +700,7 @@ export class Combat {
     const wv = s.cameras.main.worldView;
     s.enemies.children.each((e) => {
       if (!(e instanceof Enemy) || e.dying) return true;
-      if ((e.areaId || null) !== here) { e.body.setVelocity(0, 0); return true; }
+      if ((e.areaId || null) !== here && !(here === 'hollow' && e.areaId && String(e.areaId).startsWith('h:'))) { e.body.setVelocity(0, 0); return true; }
       if (s.sync?.driveEnemy?.(e, time, delta)) return true; // co-op: replicas interpolate
       if (e.statuses.size) e.statuses.tick(time, (id, dmg) => this.damageEnemy(e, dmg, false, { dot: id }));
       if (!e.alive) return true;

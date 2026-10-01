@@ -8,6 +8,8 @@ import { grantLoot } from './lootUtil.js';
 import { giveItem, ITEMS } from '../data/items.js';
 import { addMat } from './pack.js';
 import { EventHudScene } from '../scenes/EventHudScene.js';
+import { net } from '../net/NetworkManager.js';
+import { eventNetId, creditTier } from './coopPve.js';
 
 const T = CONFIG.tile;
 const COMPASS = ['east', 'south-east', 'south', 'south-west', 'west', 'north-west', 'north', 'north-east'];
@@ -25,7 +27,8 @@ export class WorldEvents {
     this.acc = 0;
     this.skew = 0;         // tests: shift the clock
     this.override = null;  // tests: { active, boss } fake schedule entries
-    this.hud = { lines: [], boss: null };
+    this.hud = { lines: [], boss: null, progress: null };
+    this.netProgress = null;
     this.offKill = bus.on(Events.KILL, (k) => this.onKill(k));
     if (typeof window !== 'undefined') window.__worldEvents = this;
     const mgr = scene.scene;
@@ -136,9 +139,12 @@ export class WorldEvents {
     c.spawned = true;
     const p = this.posOf(def.at);
     if (def.kind === 'boss') {
-      const pos = this.freeSpot(p.x, p.y, 40);
+      const pos = p; // shared coords so every client registers the same net id
       const lv = Math.max(4, Math.min(10, s.player.level));
-      const e = s.makeEnemy(pos.x, pos.y, def.boss, null, { local: true, eo: { level: Math.max(4, lv), rank: RANKS.normal, zoneLv: [1, 99] } });
+      const e = s.makeEnemy(pos.x, pos.y, def.boss, null, {
+        netId: eventNetId(c.key, def.boss, 0),
+        eo: { level: Math.max(4, lv), rank: RANKS.normal, zoneLv: [1, 99] },
+      });
       e.noRespawn = true; e.eventKey = c.key;
       c.boss = e; c.objs.push(e);
       s.spawnFx?.(pos.x, pos.y - 10, 'fx.explosion', 3);
@@ -149,8 +155,12 @@ export class WorldEvents {
       const lv = Math.max(8, Math.min(14, s.player.level));
       for (let i = 0; i < 8; i++) {
         const a = (i / 8) * 6.283, d = 50 + (i % 2) * 28;
-        const pos = this.freeSpot(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d * 0.7);
-        const e = s.makeEnemy(pos.x, pos.y, def.types[i % def.types.length], null, { local: true, eo: { level: lv, rank: i === 0 ? RANKS.champion : RANKS.elite, zoneLv: [8, 14] } });
+        const pos = { x: p.x + Math.cos(a) * d, y: p.y + Math.sin(a) * d * 0.7 };
+        const type = def.types[i % def.types.length];
+        const e = s.makeEnemy(pos.x, pos.y, type, null, {
+          netId: eventNetId(c.key, type, i),
+          eo: { level: lv, rank: i === 0 ? RANKS.champion : RANKS.elite, zoneLv: [8, 14] },
+        });
         e.noRespawn = true; e.eventKey = c.key;
         c.objs.push(e);
       }
@@ -279,12 +289,17 @@ export class WorldEvents {
     this.boss = { key: ev.key, ev, arena: ev.arena, e: null, dealt: 0, over: false, music: false, joined: false };
     this.announce('WORLD BOSS', `${WORLD_BOSS.text} Find it in ${ev.arena.name}. (${fmt(ev.end - now)} left)`, '#ff6a4a');
     const p = this.posOf(ev.arena.at);
-    const pos = this.freeSpot(p.x, p.y, 60);
+    const pos = p;
     const near = this.remotesNear(pos.x, pos.y, 1400);
     const lv = Math.max(12, s.player.level);
-    const e = s.makeEnemy(pos.x, pos.y, WORLD_BOSS.type, null, { local: true, eo: { level: lv, rank: RANKS.normal, zoneLv: [1, 99] } });
-    const mul = 1 + WORLD_BOSS.hpPerPlayer * near;
-    e.maxHp = Math.round(e.maxHp * mul); e.hp = e.maxHp;
+    const e = s.makeEnemy(pos.x, pos.y, WORLD_BOSS.type, null, {
+      netId: eventNetId(ev.key, WORLD_BOSS.type, 0),
+      eo: { level: lv, rank: RANKS.normal, zoneLv: [1, 99] },
+    });
+    if (!net.connected || net.isAuthority(null)) {
+      const mul = 1 + WORLD_BOSS.hpPerPlayer * near;
+      e.maxHp = Math.round(e.maxHp * mul); e.hp = e.maxHp;
+    }
     e.noRespawn = true; e.worldBoss = true; e.isWorldBoss = true;
     this.boss.e = e;
     // the arena marker
@@ -379,12 +394,25 @@ export class WorldEvents {
     else if (sch.next && !this.override) lines.push({ text: `Next event: ${sch.next.def.name} in ${fmt(sch.next.start - now)}`, color: '#9fb0c0' });
     const b = this.boss;
     let bossBar = null;
+    let progress = null;
+    const np = this.netProgress;
+    if (c && !c.over && c.def.kind === 'raid') {
+      const mobs = (c.objs || []).filter((o) => o.eventKey === c.key);
+      const of = np?.k === c.key && np.of ? np.of : mobs.length;
+      const n = np?.k === c.key ? np.n : mobs.filter((o) => !(o.active && o.alive)).length;
+      lines.push({ text: `Raid progress  ${n}/${of} fallen`, color: '#ffb07a' });
+      progress = { n, of, label: 'community' };
+    }
     if (b && !b.over && b.e?.active) {
       const e = b.e; const showBar = this.overworld();
+      const hp = np?.k === b.key && np.max ? np.hp : Math.max(0, e.hp);
+      const max = np?.k === b.key && np.max ? np.max : e.maxHp;
+      const tier = creditTier({ dealt: b.dealt, killed: hp <= 0, minFrac: WORLD_BOSS.minDamageFrac });
       lines.push({ text: `WORLD BOSS  ${WORLD_BOSS.name}  ${fmt(b.ev.end - now)}${where(b.arena.at)}`, color: '#ff8a6a' });
-      if (showBar) bossBar = { name: `${WORLD_BOSS.name}  Lv${e.level}`, hp: Math.max(0, e.hp), max: e.maxHp, engaged: !!e.engaged, phase: e.phase || 1 };
+      if (tier) lines.push({ text: tier === 2 ? 'Your credit: kill' : 'Your credit: participation', color: '#9dffb0' });
+      if (showBar) bossBar = { name: `${WORLD_BOSS.name}  Lv${e.level}`, hp, max, engaged: !!e.engaged, phase: e.phase || 1 };
     } else if (sch.nextBoss && !this.override) lines.push({ text: `Next world boss in ${fmt(sch.nextBoss.start - now)}`, color: '#8a94a0' });
-    this.hud = { lines, boss: bossBar };
+    this.hud = { lines, boss: bossBar, progress };
   }
 }
 void BOSS_WINDOW_MS; void EVENT_TYPES;

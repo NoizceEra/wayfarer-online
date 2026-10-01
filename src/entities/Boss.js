@@ -127,7 +127,7 @@ export class Boss extends Enemy {
 
   aiUpdate(scene, delta) {
     if (this.hp <= 0) { this.tele.clear(); return; }
-    const p = scene.player;
+    const p = scene.sync?.focusTarget?.(this) || scene.player;
     const now = scene.time.now;
     const d = Phaser.Math.Distance.Between(p.x, p.y, this.x, this.y);
     if (!this.engaged) {
@@ -186,7 +186,7 @@ export class Boss extends Enemy {
             scene.spawnFx(pl.x, pl.y - 6, 'fx.explosion', pl.kind === 'nova' ? 3.2 : 2);
             this.impactRing(scene, pl.x, pl.y, pl.r);
             scene.cameras.main.shake(180, 0.006);
-            if (Phaser.Math.Distance.Between(p.x, p.y, pl.x, pl.y) < pl.r) {
+            if (Phaser.Math.Distance.Between(scene.player.x, scene.player.y, pl.x, pl.y) < pl.r) {
               this.damageToPlayer(scene, this.atk + (pl.kind === 'nova' ? 4 : 8), pl.kind === 'nova' ? { id: 'burn' } : { id: 'stun', secs: 0.8 });
             }
             this.state = 'recover'; this.timer = this.phase === 2 ? 650 : 950; this.plan = null;
@@ -200,9 +200,10 @@ export class Boss extends Enemy {
         if (!pl.hit) {
           const vx = this.x - pl.sx, vy = this.y - pl.sy;
           const L2 = vx * vx + vy * vy || 1;
-          const tt = Phaser.Math.Clamp(((p.x - pl.sx) * vx + (p.y - pl.sy) * vy) / L2, 0, 1);
-          const dd = Math.hypot(p.x - (pl.sx + vx * tt), p.y - (pl.sy + vy * tt));
-          if (dd < pl.wide / 2 + 6 && Math.hypot(p.x - this.x, p.y - this.y) < 26) { pl.hit = true; this.damageToPlayer(scene, this.atk + 6, { id: 'bleed' }); }
+          const me = scene.player;
+          const tt = Phaser.Math.Clamp(((me.x - pl.sx) * vx + (me.y - pl.sy) * vy) / L2, 0, 1);
+          const dd = Math.hypot(me.x - (pl.sx + vx * tt), me.y - (pl.sy + vy * tt));
+          if (dd < pl.wide / 2 + 6 && Math.hypot(me.x - this.x, me.y - this.y) < 26) { pl.hit = true; this.damageToPlayer(scene, this.atk + 6, { id: 'bleed' }); }
         }
         if (pl.t >= pl.wind) {
           this.body.setVelocity(0, 0);
