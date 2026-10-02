@@ -10,7 +10,7 @@ import { audio } from '../systems/audio.js';
 export class BootScene extends Phaser.Scene {
   constructor() { super('boot'); }
   create() {
-    this.cameras.main.setBackgroundColor(null);
+    this.cameras.main.setBackgroundColor('#0f380f');
     this.cameras.main.setRoundPixels(true);
     audio.host = this; // lazy music/jingle fetches use this scene's loader (it is never shut down)
     veil.show('LOADING');

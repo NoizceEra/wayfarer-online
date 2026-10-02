@@ -32,8 +32,7 @@ export class TitleScene extends Phaser.Scene {
   create() {
     audio.attach(this);
     audio.musicFor('title');
-    // Canvas must stay transparent so the HTML5 background video shows through
-    this.cameras.main.setBackgroundColor('rgba(0,0,0,0)');
+    this.cameras.main.setBackgroundColor(SOL.bg);
     const { W, H } = this.menuSize = setupMenuCamera(this, { minW: 360, minH: 420, maxW: 640, maxH: 560, data: this.sys.settings.data });
 
     const prof = loadProfile() || { name: '' };
@@ -44,12 +43,24 @@ export class TitleScene extends Phaser.Scene {
     this.busy = false;
     this.toastMsg = '';
 
-    // HTML5 video already exists in index.html (#bg-video). Just ensure it plays.
-    const existingVideo = document.getElementById('bg-video');
-    if (existingVideo) {
-      existingVideo.play().catch(() => {});
-      this.events.once('shutdown', () => { existingVideo.pause(); });
-    }
+    // Gradient fallback (drawn first, at very back) in case video fails
+    this.gradientBg = this.add.graphics().setDepth(-200);
+    this.drawGradient(W, H);
+
+    // Video background
+    this.trailerVideo = this.add.video(0, 0);
+    this.trailerVideo.setMute(true).setLoop(true).setDepth(-100).setOrigin(0.5);
+    this.trailerVideo.loadURL('/trailer/wayfarer_login_bg.mp4', false, true);
+    const trailerElement = this.trailerVideo.video;
+    trailerElement.muted = true;
+    trailerElement.defaultMuted = true;
+    trailerElement.playsInline = true;
+    trailerElement.loop = true;
+    trailerElement.addEventListener('loadeddata', () => {
+      trailerElement.play().catch(() => {});
+      this.trailerVideo.play(true);
+    }, { once: true });
+    this.events.once('shutdown', () => this.trailerVideo?.destroy());
 
     this.build();
 
@@ -60,6 +71,22 @@ export class TitleScene extends Phaser.Scene {
       if (this.rebuildTimer) this.rebuildTimer.remove(false);
     });
     bus.emit(Events.SYSTEM, 'title');
+  }
+
+  drawGradient(W, H) {
+    // Solana radial gradient fallback
+    const g = this.gradientBg;
+    g.clear();
+    // Dark center glow
+    for (let r = 0; r < Math.max(W, H); r += 4) {
+      const t = r / Math.max(W, H);
+      const a = 0.55 * (1 - t);
+      g.fillStyle(SOL.purpleHex, a);
+      g.fillCircle(W / 2, H / 2, r);
+    }
+    // Outer dark wash
+    g.fillStyle(SOL.bg, 0.92);
+    g.fillRect(0, 0, W, H);
   }
 
   onResize() {
@@ -75,6 +102,15 @@ export class TitleScene extends Phaser.Scene {
     this.items = {};
     const add = (o) => { this.root.add(o); return o; };
     const { W, H } = this.menuSize;
+
+    if (this.trailerVideo) {
+      this.trailerVideo.setPosition(W / 2, H / 2).setDisplaySize(W, H);
+      this.trailerVideo.setAlpha(0.80);
+    }
+    if (this.gradientBg) {
+      this.gradientBg.clear();
+      this.drawGradient(W, H);
+    }
 
     const small = W < 560;
     const short = H < 560;
