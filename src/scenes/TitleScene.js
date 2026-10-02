@@ -80,9 +80,9 @@ export class TitleScene extends Phaser.Scene {
     const b1Y = Math.round(H * (short ? 0.44 : 0.50));
     const bottom = H - 34;
 
-    // Semi-transparent panel so HTML5 video shows through
+    // Darker semi-transparent panel so video still shows through but UI is readable
     const panelTop = titleY - 34, panelBot = H - 12;
-    add(this.add.rectangle(W / 2, (panelTop + panelBot) / 2, Math.min(W - 16, Math.max(bw + 64, 560)), panelBot - panelTop, SOL.panelBg, 0.35).setStrokeStyle(2, SOL.cyanHex, 0.6));
+    add(this.add.rectangle(W / 2, (panelTop + panelBot) / 2, Math.min(W - 16, Math.max(bw + 64, 560)), panelBot - panelTop, SOL.panelBg, 0.55).setStrokeStyle(2, SOL.cyanHex, 0.6));
 
     const spacing = Math.max(bh + 16, Math.min(Math.round(H * 0.13) + 8, Math.floor((bottom - b1Y - bh / 2) / 2)));
     const capSize = small ? '11px' : '12px';
@@ -159,7 +159,18 @@ export class TitleScene extends Phaser.Scene {
       fontSize: small ? '10px' : '12px', color: '#ffb3b3', backgroundColor: '#000000aa',
       padding: { x: 8, y: 4 }, fontFamily: '"PixelifySans"', align: 'center', wordWrap: { width: W - 24 },
     }).setOrigin(0.5).setVisible(!!this.toastMsg));
-    add(this.add.text(W / 2, H - 16, 'Up/Down choose  Enter select  WASD move  J atk  E talk', {
+    // ─── Contract address box ───
+    const caY = H - 42;
+    const caBox = add(this.add.rectangle(W / 2, caY, bw - 20, 18, 0x05080f, 0.85).setStrokeStyle(1, SOL.cyanHex, 0.4));
+    const caText = add(this.add.text(W / 2, caY, 'CA: TBA', {
+      fontSize: small ? '8px' : '10px', color: SOL.muted, fontFamily: '"Silkscreen"',
+    }).setOrigin(0.5));
+    caBox.setInteractive({ useHandCursor: true });
+    caBox.on('pointerover', () => { caBox.setStrokeStyle(1, SOL.green, 0.8); caText.setColor(SOL.green); });
+    caBox.on('pointerout', () => { caBox.setStrokeStyle(1, SOL.cyanHex, 0.4); caText.setColor(SOL.muted); });
+    caBox.on('pointerup', () => { this.say('Contract address coming at launch!'); });
+
+    add(this.add.text(W / 2, H - 22, 'Up/Down choose  Enter select  WASD move  J atk  E talk', {
       fontSize: '9px', color: SOL.muted, fontFamily: '"Silkscreen"', align: 'center', wordWrap: { width: W - 24 },
     }).setOrigin(0.5));
 

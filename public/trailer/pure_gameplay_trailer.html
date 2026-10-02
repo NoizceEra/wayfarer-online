@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wayfarer Online — Pure Gameplay Background Trailer</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Jacquard+12&family=Press+Start+2P&family=Silkscreen:wght@400;700&display=swap');
+
+    @font-face {
+      font-family: 'Jacquard12';
+      src: url('/assets/fonts/jacquard12/Jacquard12-Regular.ttf') format('truetype');
+      font-weight: normal;
+      font-style: normal;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #000000;
+      color: #ffffff;
+      font-family: 'Jacquard12', 'Press Start 2P', monospace;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    #stage {
+      position: relative;
+      width: 1920px;
+      height: 1080px;
+      background: #030708;
+      overflow: hidden;
+      box-shadow: 0 0 100px rgba(0, 0, 0, 0.95);
+      transform-origin: center center;
+    }
+
+    /* Subtle Retro Scanlines & Vignette */
+    .scanlines {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(rgba(10, 20, 18, 0) 50%, rgba(2, 10, 8, 0.35) 50%);
+      background-size: 100% 4px;
+      pointer-events: none;
+      z-index: 100;
+      opacity: 0.4;
+    }
+
+    .vignette {
+      position: absolute;
+      inset: 0;
+      box-shadow: inset 0 0 180px rgba(2, 6, 8, 0.85);
+      pointer-events: none;
+      z-index: 99;
+    }
+
+    #flash-overlay {
+      position: absolute;
+      inset: 0;
+      background: #ffffff;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 95;
+    }
+
+    #particles-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    /* Scene Container */
+    .scene {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      opacity: 0;
+      visibility: hidden;
+      z-index: 10;
+    }
+
+    /* Video Player Styling */
+    .bg-video {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      filter: contrast(1.08) brightness(0.95) saturate(1.1);
+      z-index: 1;
+    }
+
+    /* Logo Card Scene (Scene 0) */
+    #scene-logo {
+      background: radial-gradient(circle at center, #0a1f18 0%, #030806 80%);
+      z-index: 20;
+    }
+
+    .logo-container {
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 60px 100px;
+      border: 4px solid #00f0b4;
+      border-radius: 12px;
+      background: rgba(3, 12, 10, 0.85);
+      box-shadow: 0 0 60px rgba(0, 240, 180, 0.35), inset 0 0 30px rgba(0, 240, 180, 0.15);
+      backdrop-filter: blur(8px);
+    }
+
+    .logo-title {
+      font-family: 'Jacquard12', cursive, serif;
+      font-size: 130px;
+      line-height: 1;
+      color: #9bbc0f;
+      text-shadow: 
+        0 4px 0 #051208,
+        0 0 25px rgba(155, 188, 15, 0.6),
+        0 0 50px rgba(0, 240, 180, 0.4);
+      letter-spacing: 4px;
+      margin-bottom: 20px;
+    }
+
+    .logo-subtitle {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 22px;
+      color: #00f0b4;
+      letter-spacing: 6px;
+      text-transform: uppercase;
+      text-shadow: 0 2px 10px rgba(0, 240, 180, 0.5);
+    }
+  </style>
+</head>
+<body>
+  <div id="stage">
+    <div class="scanlines"></div>
+    <div class="vignette"></div>
+    <div id="flash-overlay"></div>
+    <canvas id="particles-canvas"></canvas>
+
+    <!-- Scene 0: Elegant Logo Card (0s - 3s) -->
+    <div id="scene-logo" class="scene">
+      <div class="logo-container">
+        <h1 class="logo-title">Wayfarer Online</h1>
+        <p class="logo-subtitle">Pure Gameplay Showcase</p>
+      </div>
+    </div>
+
+    <!-- Scene 1: Town Exploration Gameplay (3s - 10.5s) -->
+    <div id="scene-town" class="scene">
+      <video id="video-town" class="bg-video" muted playsinline preload="auto">
+        <source src="/assets/custom/clips/pure_gameplay/clip_3_town.webm" type="video/webm">
+      </video>
+    </div>
+
+    <!-- Scene 2: Action Combat Gameplay (10.5s - 19.5s) -->
+    <div id="scene-combat" class="scene">
+      <video id="video-combat" class="bg-video" muted playsinline preload="auto">
+        <source src="/assets/custom/clips/pure_gameplay/clip_5_combat.webm" type="video/webm">
+      </video>
+    </div>
+
+    <!-- Scene 3: Gear & Inventory Gameplay (19.5s - 23s) -->
+    <div id="scene-gear" class="scene">
+      <video id="video-gear" class="bg-video" muted playsinline preload="auto">
+        <source src="/assets/custom/clips/pure_gameplay/clip_4_gear.webm" type="video/webm">
+      </video>
+    </div>
+
+    <!-- Scene 4: Shop & Trading Gameplay (23s - 26.5s) -->
+    <div id="scene-shop" class="scene">
+      <video id="video-shop" class="bg-video" muted playsinline preload="auto">
+        <source src="/assets/custom/clips/pure_gameplay/clip_6_shop.webm" type="video/webm">
+      </video>
+    </div>
+
+    <!-- Scene 5: Combat Climax (26.5s - 30s) -->
+    <div id="scene-climax" class="scene">
+      <video id="video-climax" class="bg-video" muted playsinline preload="auto">
+        <source src="/assets/custom/clips/pure_gameplay/clip_5_combat.webm" type="video/webm">
+      </video>
+    </div>
+  </div>
+
+  <script>
+    // Particle Canvas Animation
+    const canvas = document.getElementById('particles-canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = 1920;
+    canvas.height = 1080;
+
+    const particles = Array.from({ length: 40 }, () => ({
+      x: Math.random() * 1920,
+      y: Math.random() * 1080,
+      size: Math.random() * 3 + 1,
+      dx: (Math.random() - 0.5) * 0.8,
+      dy: -Math.random() * 1.2 - 0.3,
+      alpha: Math.random() * 0.5 + 0.2
+    }));
+
+    function renderParticles() {
+      ctx.clearRect(0, 0, 1920, 1080);
+      particles.forEach(p => {
+        ctx.fillStyle = `rgba(0, 240, 180, ${p.alpha})`;
+        ctx.fillRect(p.x, p.y, p.size, p.size);
+        p.x += p.dx;
+        p.y += p.dy;
+        if (p.y < 0) { p.y = 1080; p.x = Math.random() * 1920; }
+        if (p.x < 0 || p.x > 1920) p.dx *= -1;
+      });
+      requestAnimationFrame(renderParticles);
+    }
+    renderParticles();
+
+    // Sync video seek positions for timeline frame precision
+    const videoConfigs = [
+      { id: 'video-town', start: 3.0, end: 10.5, clipOffset: 1.0 },
+      { id: 'video-combat', start: 10.5, end: 19.5, clipOffset: 2.0 },
+      { id: 'video-gear', start: 19.5, end: 23.0, clipOffset: 0.5 },
+      { id: 'video-shop', start: 23.0, end: 26.5, clipOffset: 0.5 },
+      { id: 'video-climax', start: 26.5, end: 30.0, clipOffset: 14.0 }
+    ];
+
+    function updateVideosForTime(t) {
+      videoConfigs.forEach(cfg => {
+        const v = document.getElementById(cfg.id);
+        if (!v) return;
+        if (t >= cfg.start && t <= cfg.end) {
+          const targetTime = (t - cfg.start) + cfg.clipOffset;
+          if (Math.abs(v.currentTime - targetTime) > 0.04) {
+            v.currentTime = targetTime;
+          }
+          if (v.paused) {
+            v.play().catch(() => {});
+          }
+        } else {
+          if (!v.paused) v.pause();
+        }
+      });
+    }
+
+    window.setTrailerTime = function(t) {
+      if (window.tl) window.tl.seek(t, false);
+      updateVideosForTime(t);
+    };
+
+    // Master GSAP Timeline (30.0s total)
+    const tl = gsap.timeline({ repeat: -1 });
+    window.tl = tl;
+    window.__timelines = window.__timelines || {};
+    window.__timelines["pure-gameplay-trailer"] = tl;
+    window.__timelines["arcade-gameplay-trailer"] = tl;
+
+    // 0s - 3s: Scene 0 (Logo Card)
+    tl.to('#scene-logo', { autoAlpha: 1, duration: 0.3 }, 0)
+      .from('.logo-container', { scale: 0.85, autoAlpha: 0, duration: 1.0, ease: 'back.out(1.6)' }, 0.2)
+      .to('#flash-overlay', { opacity: 0.6, duration: 0.15, yoyo: true, repeat: 1 }, 2.7)
+      .to('#scene-logo', { autoAlpha: 0, duration: 0.3 }, 2.85);
+
+    // 3s - 10.5s: Scene 1 (Town Gameplay)
+    tl.to('#scene-town', { autoAlpha: 1, duration: 0.3 }, 3.0)
+      .to('#scene-town', { autoAlpha: 0, duration: 0.3 }, 10.2);
+
+    // 10.5s - 19.5s: Scene 2 (Combat Gameplay)
+    tl.to('#scene-combat', { autoAlpha: 1, duration: 0.3 }, 10.5)
+      .to('#scene-combat', { autoAlpha: 0, duration: 0.3 }, 19.2);
+
+    // 19.5s - 23s: Scene 3 (Gear Gameplay)
+    tl.to('#scene-gear', { autoAlpha: 1, duration: 0.3 }, 19.5)
+      .to('#scene-gear', { autoAlpha: 0, duration: 0.3 }, 22.7);
+
+    // 23s - 26.5s: Scene 4 (Shop Gameplay)
+    tl.to('#scene-shop', { autoAlpha: 1, duration: 0.3 }, 23.0)
+      .to('#scene-shop', { autoAlpha: 0, duration: 0.3 }, 26.2);
+
+    // 26.5s - 30s: Scene 5 (Combat Climax)
+    tl.to('#scene-climax', { autoAlpha: 1, duration: 0.3 }, 26.5)
+      .to('#scene-climax', { autoAlpha: 0, duration: 0.3 }, 29.7);
+
+    tl.eventCallback("onUpdate", () => {
+      updateVideosForTime(tl.time());
+    });
+  </script>
+</body>
+</html>
