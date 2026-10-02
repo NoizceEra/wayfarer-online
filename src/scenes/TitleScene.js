@@ -151,11 +151,18 @@ export class TitleScene extends Phaser.Scene {
   }
 
   refreshOnlineCap() {
+    this.onlineBtn?.setSub(this.enterSub(this._primaryHero));
+  }
+
+  // The sub-line of the ONE Enter button. Because there is no longer a mode to choose,
+  // the button itself has to say which world you are about to walk into — that is the
+  // trade for removing the choice at the door.
+  enterSub(hero) {
     const p = this.probe;
-    const cap = p.up == null ? 'Checking the public world…'
-      : p.up ? `Server up · ${p.ping != null ? p.ping + ' ms · ' : ''}${p.players} online`
-        : 'Server offline · solo still works';
-    this.onlineBtn?.setSub(cap);
+    const world = p?.up == null ? 'checking the world…'
+      : p.up ? `public world · ${p.players} online`
+        : 'offline · solo';
+    return hero ? `${hero.name} · Lv ${hero.level} · ${world}` : `one key · ${world}`;
   }
 
   onlineCap() {
@@ -263,17 +270,22 @@ export class TitleScene extends Phaser.Scene {
       });
     }
 
+    // ONE BUTTON. There is no solo/co-op mode to pick, because Embervale is one world and
+    // whether other players are in it with you is a fact about the network, not a decision
+    // at the door. We try the public world and fall back to solo silently — offline is not
+    // an error, and the relay's own disconnect path already says "continuing solo".
+    // Playing with friends is an action you take IN the world (the PEOPLE panel: message /
+    // party / trade), which is why a door-level co-op mode was never needed.
     const specs = [];
-    if (hero) {
-      specs.push({ id: 'play', label: 'Continue', kind: 'primary', sub: `${hero.name} · Lv ${hero.level} · ${jobName(hero.job)}`, click: () => this.continueHero(hero) });
-    } else {
-      specs.push({ id: 'play', label: 'Play', kind: 'primary', sub: 'one key · we pick your name', click: () => this.playGuest() });
-    }
+    this._primaryHero = hero || null;
+    specs.push({
+      id: 'play', label: 'Enter Embervale', kind: 'primary', sub: this.enterSub(hero),
+      click: () => this.enterWorld(hero),
+    });
     specs.push(
-      { id: 'online', label: 'Play Online', sub: this.onlineCap(), click: () => this.doOnline() },
       { id: 'journey', label: 'New Journey', sub: 'name and shape your wayfarer', click: () => this.goPage('journey') },
-      { id: 'join', label: 'Join with code', sub: "a friend's 5-letter room", click: () => this.goPage('join') },
-      { id: 'host', label: 'Host co-op', sub: 'share a room code', click: () => this.doHost() },
+      { id: 'join', label: 'Join a friend', sub: "their 5-letter room code", click: () => this.goPage('join') },
+      { id: 'host', label: 'Host a room', sub: 'invite friends with a code', click: () => this.doHost() },
     );
 
     // single-column layouts only get the extra guest row when it genuinely fits
@@ -289,7 +301,7 @@ export class TitleScene extends Phaser.Scene {
         id: s.id, x: rightX, y, w: bw, h: bh, label: s.label, sub: s.sub, kind: s.kind || 'normal',
         size: this.short ? 10 : 12, onClick: s.click,
       });
-      if (s.id === 'online') this.onlineBtn = b;
+      if (s.id === 'play') this.onlineBtn = b;
       y += need;
     });
 
@@ -785,6 +797,31 @@ export class TitleScene extends Phaser.Scene {
     saveProfile({ name: n });
     this.persist.page = 'home';
     this.fadeInto(() => this.scene.start('creator', { name: n, mode }));
+  }
+
+  // THE one entry point. Tries the public world; if no relay answers, enters solo. The
+  // player never picks a mode and never sees a failure for being offline — they just get
+  // Embervale, with or without other wayfarers in it.
+  async enterWorld(hero) {
+    if (this.busy) return;
+    const slot = activeSlot();
+    const name = slot?.name || this.guestName();
+    if (!slot) { const id = freeSlotId() || 1; setActiveSlot(id, name); }
+    saveProfile({ name });
+    // already in a room (joined/hosted from the Heroes or Join pages): keep that world
+    if (net.connected) return this.goCreator(net.isHost ? 'host' : 'guest', name);
+    this.busy = true;
+    this.say('Entering Embervale…');
+    try {
+      const h = loadHero() || hero || { name, job: 'wayfarer' };
+      const shard = await net.joinPublic(name, h);
+      this.busy = false;
+      return this.scene.start('creator', { name, mode: 'online', shard });
+    } catch {
+      // No relay answered — that is the solo path, not an error. Fall through.
+    }
+    this.busy = false;
+    this.goCreator('solo', name);
   }
 
   async doHost() {
