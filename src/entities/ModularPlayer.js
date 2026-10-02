@@ -99,6 +99,8 @@ export class ModularPlayer extends Phaser.GameObjects.Container {
     this.prog = newProg();   // RPG progression (stats/skills/advanced class), see data/stats.js
     this.buff = null;        // temporary skill buff {until, atkMul, spdMul}
     this.gold = 20; this.potions = 3;
+    this.tokenPoints = 0;
+    this.wayfarerTokens = 0;
     this.speed = job.spd || CONFIG.playerSpeed;
     this.facing = 'down';
     this.moving = false;

@@ -78,7 +78,7 @@ function charRec(p) {
   if (!rec?.progress || !Array.isArray(rec.progress.inventory)) return null;
   return rec;
 }
-const stateOf = (rec) => ({ rev: rec.rev || 0, gold: rec.progress.gold | 0, inventory: rec.progress.inventory.slice() });
+const stateOf = (rec) => ({ rev: rec.rev || 0, gold: rec.progress.gold | 0, inventory: rec.progress.inventory.slice(), tokenPoints: rec.progress.tokenPoints | 0, wayfarerTokens: rec.progress.wayfarerTokens | 0 });
 
 // Apply an economy mutation to a server copy: bumps rev, marks the device dirty.
 function mutate(p, rec, { gold = 0, add = [], remove = [] }) {
@@ -185,8 +185,14 @@ export function beforeSave(room, client, p, m, prev) {
       let extra = count(m.progress.inventory, m.progress.equipped, id) - allowed;
       while (extra > 0) {
         const i = m.progress.inventory.lastIndexOf(id);
-        if (i < 0) break; // equipped copy: leave it, it came from the bag we already checked
-        m.progress.inventory.splice(i, 1); extra--; stripped.push(id);
+        if (i >= 0) { m.progress.inventory.splice(i, 1); extra--; stripped.push(id); continue; }
+        // also strip from equipped map if the extra copy is hiding there
+        if (m.progress.equipped && typeof m.progress.equipped === 'object') {
+          for (const k of Object.keys(m.progress.equipped)) {
+            if (m.progress.equipped[k] === id) { delete m.progress.equipped[k]; extra--; stripped.push(id); break; }
+          }
+        }
+        break;
       }
     }
     if (stripped.length) suspicious(room, client, p, 'dupe', { stripped });
@@ -212,7 +218,7 @@ export function install(room) {
 
   // Server->client economy types must never ride the generic '*' passthrough
   // (a client could forge a trade-result / econ-sync for its peers): swallow them.
-  for (const t of ['econ-state', 'econ-sync', 'econ-msg', 'econ-error', 'trade-open', 'trade-update', 'trade-result', 'trade-closed', 'escrow-open', 'escrow-update', 'escrow-result', 'escrow-closed', 'market-page', 'mail-box', 'mail-unread', 'guild-info', 'guild-update']) {
+  for (const t of ['econ-state', 'econ-sync', 'econ-msg', 'econ-error', 'trade-open', 'trade-update', 'trade-result', 'trade-closed', 'trade-done', 'escrow-open', 'escrow-update', 'escrow-result', 'escrow-closed', 'market-page', 'mail-box', 'mail-unread', 'guild-info', 'guild-update', 'saved']) {
     room.onMessage(t, () => {});
   }
 
@@ -224,7 +230,7 @@ export function install(room) {
       hasSave: !!rec, ...(rec ? stateOf(rec) : { rev: 0 }),
       mailUnread: box.filter((x) => !x.read).length,
       guild: ck ? db.guilds.memberOf[ck] || '' : '',
-      cfg: { bag: ECON.BAG_SIZE, tradeItems: ECON.TRADE_ITEMS, tax: ECON.MARKET_TAX, hours: ECON.MARKET_HOURS, postage: ECON.MAIL_POSTAGE, mailItems: ECON.MAIL_ITEMS, priceMax: ECON.PRICE_MAX },
+      cfg: { bag: ECON.BAG_SIZE, tradeItems: ECON.TRADE_ITEMS, tax: ECON.MARKET_TAX, hours: ECON.MARKET_HOURS, postage: ECON.MAIL_POSTAGE, mailItems: ECON.MAIL_ITEMS, priceMax: ECON.PRICE_MAX, tokenClaimFee: ECON.TOKEN_CLAIM_FEE },
     });
   }, 'browse');
 
@@ -504,7 +510,8 @@ export function install(room) {
   on('market-buy', async (c, p, m) => {
     const rec = requireRec(c, p, m); if (!rec) return;
     const ck = ckOf(p);
-    const l = db.market.listings[String(m.id || '')];
+    const lid = String(m.id || '');
+    const l = Object.prototype.hasOwnProperty.call(db.market.listings, lid) ? db.market.listings[lid] : undefined;
     if (!l || l.expiresAt <= now()) { err(c, 'That listing is gone.', 'gone'); return; }
     if (l.seller === ck) { err(c, 'That is your own listing - cancel it instead.'); return; }
     if ((rec.progress.gold | 0) < l.price) { err(c, `You need ${l.price} gold.`, 'gold'); return; }
@@ -522,7 +529,8 @@ export function install(room) {
   on('market-cancel', async (c, p, m) => {
     const rec = requireRec(c, p, m); if (!rec) return;
     const ck = ckOf(p);
-    const l = db.market.listings[String(m.id || '')];
+    const lid = String(m.id || '');
+    const l = Object.prototype.hasOwnProperty.call(db.market.listings, lid) ? db.market.listings[lid] : undefined;
     if (!l || l.seller !== ck) { err(c, 'That is not your listing.', 'gone'); return; }
     delete db.market.listings[l.id]; markDirty('market');
     let delta = null;
@@ -571,7 +579,8 @@ export function install(room) {
     const rec = requireRec(c, p, m); if (!rec) return;
     const ck = ckOf(p);
     const toName = cleanCharName(m.to);
-    const to = db.names.names[toName.toLowerCase()];
+    const toKey = toName.toLowerCase();
+    const to = Object.prototype.hasOwnProperty.call(db.names.names, toKey) ? db.names.names[toKey] : undefined;
     if (!toName || !to) { err(c, `Nobody named "${toName}" has visited this world.`, 'noname'); return; }
     if (to === ck) { err(c, 'You cannot mail yourself.'); return; }
     const items = itemList(m.items, ECON.MAIL_ITEMS);
@@ -704,6 +713,29 @@ export function install(room) {
     refreshGuild(g.tag);
     await commit({ docs: ['guilds'], deviceKeys: [dkOf(p)] });
   });
+
+  // ── token-claim (Wayfarer Tokens) ──
+  on('token-claim', async (c, p, m) => {
+    const rec = requireRec(c, p, m); if (!rec) return;
+    const amount = goldAmount(m.amount); // token points to claim
+    if (!amount || amount <= 0) { err(c, 'Enter a whole number of token points to claim.', 'invalid'); return; }
+    if ((rec.progress.tokenPoints | 0) < amount) { err(c, `You only have ${rec.progress.tokenPoints | 0} token points.`, 'missing'); return; }
+    const fee = Math.max(1, Math.floor(amount * ECON.TOKEN_CLAIM_FEE));
+    const net = amount - fee;
+    if (net <= 0) { err(c, 'Amount too small after fee.', 'invalid'); return; }
+    if ((rec.progress.gold | 0) < fee) { err(c, `You need ${fee} gold to cover the claim fee.`, 'gold'); return; }
+    rec.progress.tokenPoints = (rec.progress.tokenPoints | 0) - amount;
+    rec.progress.wayfarerTokens = (rec.progress.wayfarerTokens | 0) + net;
+    rec.progress.gold = (rec.progress.gold | 0) - fee;
+    rec.rev = (rec.rev || 0) + 1;
+    rec.savedAt = now(); rec.progress.savedAt = rec.savedAt;
+    saveChar(p.token, p.name, rec);
+    const delta = { gold: -fee, tokenPoints: -amount, wayfarerTokens: net };
+    sync(c, rec, 'token-claim', delta);
+    note(c, `Claimed ${net} Wayfarer Token${net !== 1 ? 's' : ''} (fee ${fee}g).`);
+    ledger({ op: 'token-claim', ck: ckOf(p), name: p.name, amount, fee, net, rev: rec.rev });
+    await commit({ deviceKeys: [dkOf(p)] });
+  });
 }
 
 // ─── trade internals ──────────────────────────────────────────────────
@@ -751,6 +783,9 @@ function sweepTrades() {
 // Atomic swap against both server copies. Validation first, then all
 // mutations in one synchronous block, results out, then one durable commit.
 async function executeTrade(s) {
+  // Race guard: already executing or executed?
+  if (s.executing) return;
+  s.executing = true;
   const room = s.room;
   const pa = room.players.get(s.a.sid); const pb = room.players.get(s.b.sid);
   if (!pa || !pb || pa.dc || pb.dc) { closeTrade(s, 'Your partner disconnected.'); return; }

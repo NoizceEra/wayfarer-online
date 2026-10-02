@@ -37,7 +37,7 @@ export function normalizeGearState(s) {
   if (s?.dyes && typeof s.dyes === 'object') {
     for (const [id, d] of Object.entries(s.dyes)) if (gearById(id) && typeof d === 'string') dyes[id] = d;
   }
-  return { inventory, equipped, dyes };
+  return { inventory, equipped, dyes, tokenPoints: Math.max(0, Math.floor(Number(s?.tokenPoints)) || 0), wayfarerTokens: Math.max(0, Math.floor(Number(s?.wayfarerTokens)) || 0) };
 }
 
 // Per-hero progress (solo + guest-local): survives reloads, resumes Continue.

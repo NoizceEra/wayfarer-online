@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Wayfarer Online — $WAYFARER Token Economy Promo Trailer</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800;900&family=Press+Start+2P&family=Silkscreen:wght@400;700&display=swap');
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #03060a;
+      color: #ffffff;
+      font-family: 'Outfit', sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    #stage {
+      position: relative;
+      width: 1920px;
+      height: 1080px;
+      background: #050a12;
+      border: 12px solid #00f0b4;
+      overflow: hidden;
+      box-shadow: 0 0 120px rgba(0, 240, 180, 0.4), 0 0 90px rgba(0, 0, 0, 0.95);
+      transform-origin: center center;
+    }
+
+    /* Ambient CRT & Overlay FX */
+    .scanlines {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(rgba(10, 25, 20, 0) 50%, rgba(2, 12, 10, 0.5) 50%);
+      background-size: 100% 4px;
+      pointer-events: none;
+      z-index: 100;
+      opacity: 0.55;
+    }
+
+    .vignette {
+      position: absolute;
+      inset: 0;
+      box-shadow: inset 0 0 240px rgba(2, 8, 15, 0.95);
+      pointer-events: none;
+      z-index: 99;
+    }
+
+    #flash-overlay {
+      position: absolute;
+      inset: 0;
+      background: #ffffff;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 95;
+    }
+
+    #teal-flash {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 240, 180, 0.45);
+      opacity: 0;
+      pointer-events: none;
+      z-index: 94;
+    }
+
+    /* Floating particles canvas */
+    #particles-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    /* Scene containers */
+    .scene {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      opacity: 0;
+      visibility: hidden;
+      z-index: 10;
+    }
+
+    .bg-video {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      filter: contrast(1.15) brightness(0.85) saturate(1.2);
+      transform-origin: center center;
+    }
+
+    .video-dimmer {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at center, rgba(5, 20, 22, 0.45) 0%, rgba(2, 10, 12, 0.88) 100%);
+      z-index: 2;
+    }
+
+    /* Header badge styling */
+    .zone-badge {
+      position: absolute;
+      top: 60px;
+      left: 70px;
+      background: linear-gradient(135deg, #00f0b4 0%, #00a896 100%);
+      color: #021412;
+      padding: 14px 32px;
+      font-size: 22px;
+      font-weight: 900;
+      letter-spacing: 2px;
+      border-radius: 50px;
+      box-shadow: 0 0 35px rgba(0, 240, 180, 0.7), 0 6px 20px rgba(0,0,0,0.5);
+      z-index: 10;
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      border: 2px solid #a0ffe6;
+    }
+
+    .zone-badge img {
+      width: 32px;
+      height: 32px;
+      image-rendering: pixelated;
+    }
+
+    .action-banner {
+      position: absolute;
+      top: 60px;
+      right: 70px;
+      background: rgba(4, 18, 24, 0.9);
+      border: 2px solid #00f0b4;
+      border-radius: 14px;
+      padding: 12px 28px;
+      font-size: 20px;
+      font-weight: 700;
+      color: #00f0b4;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      box-shadow: 0 0 25px rgba(0, 240, 180, 0.3);
+      z-index: 10;
+    }
+
+    /* Scene 1: Arcade Intro */
+    .intro-title {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 64px;
+      color: #ffd700;
+      text-shadow: 0 0 30px rgba(255, 215, 0, 0.8), 6px 6px 0px #000;
+      text-align: center;
+      margin-bottom: 24px;
+      letter-spacing: 3px;
+    }
+
+    .intro-sub {
+      font-size: 32px;
+      font-weight: 800;
+      color: #00f0b4;
+      text-transform: uppercase;
+      letter-spacing: 4px;
+      text-shadow: 0 0 20px rgba(0, 240, 180, 0.6);
+      margin-bottom: 40px;
+    }
+
+    .token-main-badge {
+      width: 280px;
+      height: 280px;
+      object-fit: contain;
+      filter: drop-shadow(0 0 40px rgba(255, 215, 0, 0.7));
+      margin-bottom: 24px;
+    }
+
+    /* Cards Grid */
+    .cards-grid {
+      position: absolute;
+      bottom: 70px;
+      left: 70px;
+      right: 70px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 24px;
+      z-index: 10;
+    }
+
+    .info-card {
+      background: rgba(6, 18, 28, 0.92);
+      border: 2px solid #00f0b4;
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8), inset 0 0 20px rgba(0, 240, 180, 0.15);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }
+
+    .info-card img {
+      width: 72px;
+      height: 72px;
+      object-fit: contain;
+      margin-bottom: 12px;
+    }
+
+    .card-title {
+      font-size: 22px;
+      font-weight: 800;
+      color: #ffd700;
+      margin-bottom: 8px;
+    }
+
+    .card-desc {
+      font-size: 15px;
+      color: #a0c0d0;
+      line-height: 1.4;
+    }
+
+    /* Burn Counter Callout */
+    .burn-counter-box {
+      background: rgba(30, 10, 10, 0.92);
+      border: 3px solid #ff4500;
+      border-radius: 20px;
+      padding: 30px 60px;
+      box-shadow: 0 0 60px rgba(255, 69, 0, 0.5);
+      text-align: center;
+      margin-top: 20px;
+    }
+
+    .burn-number {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 44px;
+      color: #ff4500;
+      text-shadow: 0 0 20px rgba(255, 69, 0, 0.8);
+      margin-bottom: 12px;
+    }
+
+    .burn-text {
+      font-size: 24px;
+      font-weight: 800;
+      color: #ffd700;
+      letter-spacing: 2px;
+    }
+
+    /* CTA Scene */
+    .cta-title {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 48px;
+      color: #00f0b4;
+      text-shadow: 0 0 30px rgba(0, 240, 180, 0.8), 5px 5px 0px #000;
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    .cta-url {
+      background: linear-gradient(135deg, #ffd700 0%, #ff8c00 100%);
+      color: #050a12;
+      font-size: 36px;
+      font-weight: 900;
+      padding: 16px 48px;
+      border-radius: 50px;
+      letter-spacing: 3px;
+      box-shadow: 0 0 40px rgba(255, 215, 0, 0.6);
+      margin-top: 30px;
+    }
+
+    .contract-box {
+      margin-top: 24px;
+      font-size: 16px;
+      font-family: 'Silkscreen', monospace;
+      color: #00f0b4;
+      background: rgba(0, 240, 180, 0.1);
+      border: 1px dashed #00f0b4;
+      padding: 10px 24px;
+      border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div id="stage">
+    <div class="scanlines"></div>
+    <div class="vignette"></div>
+    <div id="flash-overlay"></div>
+    <div id="teal-flash"></div>
+    <canvas id="particles-canvas"></canvas>
+
+    <!-- SCENE 1: Intro (0s - 6s) -->
+    <div class="scene" id="scene1">
+      <video class="bg-video" autoplay loop muted playsinline src="/assets/custom/token/token_intro.webm"></video>
+      <div class="video-dimmer"></div>
+      <div style="position: relative; z-index: 10; display: flex; flex-direction: column; align-items: center;">
+        <img class="token-main-badge" id="s1-token" src="/assets/custom/token/wayfarer_golden_token_3d.png" alt="Wayfarer Token">
+        <div class="intro-title" id="s1-title">WAYFARER $TOKEN</div>
+        <div class="intro-sub" id="s1-sub">SOLANA POWERED COZY RPG ECONOMY</div>
+      </div>
+    </div>
+
+    <!-- SCENE 2: Utility & Economy (6s - 12s) -->
+    <div class="scene" id="scene2">
+      <video class="bg-video" autoplay loop muted playsinline src="/assets/custom/token/token_utility.webm"></video>
+      <div class="video-dimmer"></div>
+      <div class="zone-badge" id="s2-badge">
+        <img src="/assets/custom/token/token_badge_trading.png" alt="Badge">
+        <span>TOKEN UTILITY</span>
+      </div>
+      <div class="action-banner" id="s2-action">SOLANA ESCROW & CRAFTING</div>
+      <div class="cards-grid" id="s2-cards">
+        <div class="info-card">
+          <img src="/assets/custom/token/token_badge_trading.png" alt="Trading">
+          <div class="card-title">ESCROW TRADING</div>
+          <div class="card-desc">Peer-to-peer item & token swaps secured by Solana smart contracts</div>
+        </div>
+        <div class="info-card">
+          <img src="/assets/custom/token/token_badge_crafting.png" alt="Crafting">
+          <div class="card-title">RECIPE UNLOCKS</div>
+          <div class="card-desc">Unlock rare crafting schematics and artisan job perks</div>
+        </div>
+        <div class="info-card">
+          <img src="/assets/custom/token/token_badge_gear.png" alt="Gear">
+          <div class="card-title">LEGENDARY MINTING</div>
+          <div class="card-desc">Forge & mint rare gear directly into verified NFT assets</div>
+        </div>
+        <div class="info-card">
+          <img src="/assets/custom/token/token_badge_staking.png" alt="Staking">
+          <div class="card-title">GUILD STAKING</div>
+          <div class="card-desc">Stake tokens to boost guild perks, territory buffs & yields</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SCENE 3: Play to Earn (12s - 18s) -->
+    <div class="scene" id="scene3">
+      <video class="bg-video" autoplay loop muted playsinline src="/assets/custom/token/token_earn.webm"></video>
+      <div class="video-dimmer"></div>
+      <div class="zone-badge" id="s3-badge">
+        <img src="/assets/custom/token/token_badge_gear.png" alt="Badge">
+        <span>PLAY TO EARN</span>
+      </div>
+      <div class="action-banner" id="s3-action">COMBAT & CONTRACT REWARDS</div>
+      <div style="position: relative; z-index: 10; text-align: center;" id="s3-content">
+        <div class="intro-title" style="font-size: 42px; color: #00f0b4;">EARN ON EVERY SLAY</div>
+        <div class="intro-sub" style="color: #ffd700;">ACTIVE COMBAT LOOT • DAILY BOUNTIES • BOSS DROPS</div>
+        <div class="info-card" style="width: 700px; margin: 30px auto 0; padding: 32px;">
+          <img src="/assets/custom/token/wayfarer_golden_token_3d.png" style="width: 100px; height: 100px;" alt="Token">
+          <div class="card-title" style="font-size: 28px;">DIRECT WALLET REWARDS</div>
+          <div class="card-desc" style="font-size: 18px;">Claim your $WAYFARER token drops seamlessly to yourPhantom or Solflare wallet</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SCENE 4: Token Burn (18s - 24s) -->
+    <div class="scene" id="scene4">
+      <video class="bg-video" autoplay loop muted playsinline src="/assets/custom/token/token_burn.webm"></video>
+      <div class="video-dimmer"></div>
+      <div class="zone-badge" id="s4-badge" style="background: linear-gradient(135deg, #ff4500 0%, #ff8c00 100%); color: #fff;">
+        <img src="/assets/custom/token/token_badge_burn.png" alt="Badge">
+        <span>DEFLATIONARY BURN</span>
+      </div>
+      <div class="action-banner" id="s4-action" style="border-color: #ff4500; color: #ff4500;">MARKETPLACE BURN MECHANIC</div>
+      <div style="position: relative; z-index: 10; text-align: center;" id="s4-content">
+        <img src="/assets/custom/token/token_badge_burn.png" style="width: 140px; height: 140px; filter: drop-shadow(0 0 30px #ff4500);" alt="Burn">
+        <div class="burn-counter-box">
+          <div class="burn-number" id="burn-count">12,450,000</div>
+          <div class="burn-text">$WAYFARER TOKENS PERMANENTLY BURNED</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SCENE 5: CTA (24s - 30s) -->
+    <div class="scene" id="scene5">
+      <video class="bg-video" autoplay loop muted playsinline src="/assets/custom/token/token_cta.webm"></video>
+      <div class="video-dimmer"></div>
+      <div style="position: relative; z-index: 10; display: flex; flex-direction: column; align-items: center;">
+        <img src="/assets/custom/token/wayfarer_golden_token_3d.png" id="s5-token" style="width: 220px; height: 220px; margin-bottom: 20px; filter: drop-shadow(0 0 50px rgba(0, 240, 180, 0.8));" alt="Token">
+        <div class="cta-title" id="s5-title">JOIN THE WAYFARER ECONOMY</div>
+        <div class="intro-sub" id="s5-sub">PLAY FREE • CONNECT WALLET • EARN & TRADE</div>
+        <div class="cta-url" id="s5-url">WAYFARER.ONLINE</div>
+        <div class="contract-box" id="s5-contract">CONTRACT: SO11111111111111111111111111111111111111112</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Particle Canvas Animation
+    const canvas = document.getElementById('particles-canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = 1920;
+    canvas.height = 1080;
+
+    const particles = Array.from({ length: 60 }, () => ({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      radius: Math.random() * 3 + 1,
+      vx: (Math.random() - 0.5) * 0.8,
+      vy: -Math.random() * 1.5 - 0.5,
+      alpha: Math.random() * 0.6 + 0.2,
+      color: Math.random() > 0.5 ? '#00f0b4' : '#ffd700'
+    }));
+
+    function renderParticles() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      particles.forEach(p => {
+        p.x += p.vx;
+        p.y += p.vy;
+        if (p.y < 0) p.y = canvas.height;
+        if (p.x < 0) p.x = canvas.width;
+        if (p.x > canvas.width) p.x = 0;
+
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = p.alpha;
+        ctx.fill();
+      });
+      ctx.globalAlpha = 1.0;
+      requestAnimationFrame(renderParticles);
+    }
+    renderParticles();
+
+    // GSAP Timeline setup (30 seconds)
+    const tl = gsap.timeline({ paused: false });
+
+    // Expose timeline globally for Puppeteer frame recording
+    window.__timelines = {
+      'token-trailer': tl,
+      'token_trailer': tl
+    };
+
+    function showScene(sceneSelector) {
+      document.querySelectorAll('.scene').forEach(s => {
+        gsap.set(s, { opacity: 0, visibility: 'hidden' });
+      });
+      gsap.set(sceneSelector, { opacity: 1, visibility: 'visible' });
+    }
+
+    // 0s - 6s: Scene 1 Intro
+    tl.call(() => showScene('#scene1'), null, 0);
+    tl.fromTo('#s1-token', { scale: 0.2, rotation: -180, opacity: 0 }, { scale: 1, rotation: 0, opacity: 1, duration: 1.2, ease: 'back.out(1.7)' }, 0.2);
+    tl.fromTo('#s1-title', { y: 40, opacity: 0 }, { y: 0, opacity: 1, duration: 0.8, ease: 'power3.out' }, 0.8);
+    tl.fromTo('#s1-sub', { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.8, ease: 'power3.out' }, 1.2);
+    tl.to('#teal-flash', { opacity: 0.5, duration: 0.1, yoyo: true, repeat: 1 }, 5.8);
+
+    // 6s - 12s: Scene 2 Utility
+    tl.call(() => showScene('#scene2'), null, 6.0);
+    tl.fromTo('#s2-badge', { x: -100, opacity: 0 }, { x: 0, opacity: 1, duration: 0.6, ease: 'power3.out' }, 6.2);
+    tl.fromTo('#s2-action', { x: 100, opacity: 0 }, { x: 0, opacity: 1, duration: 0.6, ease: 'power3.out' }, 6.4);
+    tl.fromTo('#s2-cards', { y: 80, opacity: 0 }, { y: 0, opacity: 1, duration: 0.8, ease: 'power3.out' }, 6.8);
+    tl.to('#teal-flash', { opacity: 0.5, duration: 0.1, yoyo: true, repeat: 1 }, 11.8);
+
+    // 12s - 18s: Scene 3 Earn
+    tl.call(() => showScene('#scene3'), null, 12.0);
+    tl.fromTo('#s3-badge', { x: -100, opacity: 0 }, { x: 0, opacity: 1, duration: 0.6, ease: 'power3.out' }, 12.2);
+    tl.fromTo('#s3-action', { x: 100, opacity: 0 }, { x: 0, opacity: 1, duration: 0.6, ease: 'power3.out' }, 12.4);
+    tl.fromTo('#s3-content', { scale: 0.8, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.8, ease: 'back.out(1.5)' }, 12.8);
+    tl.to('#teal-flash', { opacity: 0.5, duration: 0.1, yoyo: true, repeat: 1 }, 17.8);
+
+    // 18s - 24s: Scene 4 Burn
+    tl.call(() => showScene('#scene4'), null, 18.0);
+    tl.fromTo('#s4-badge', { x: -100, opacity: 0 }, { x: 0, opacity: 1, duration: 0.6, ease: 'power3.out' }, 18.2);
+    tl.fromTo('#s4-action', { x: 100, opacity: 0 }, { x: 0, opacity: 1, duration: 0.6, ease: 'power3.out' }, 18.4);
+    tl.fromTo('#s4-content', { y: 60, opacity: 0 }, { y: 0, opacity: 1, duration: 0.8, ease: 'power3.out' }, 18.8);
+    tl.to('#teal-flash', { opacity: 0.5, duration: 0.1, yoyo: true, repeat: 1 }, 23.8);
+
+    // 24s - 30s: Scene 5 CTA
+    tl.call(() => showScene('#scene5'), null, 24.0);
+    tl.fromTo('#s5-token', { scale: 0.3, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.8, ease: 'back.out(1.7)' }, 24.2);
+    tl.fromTo('#s5-title', { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.8, ease: 'power3.out' }, 24.6);
+    tl.fromTo('#s5-sub', { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.8, ease: 'power3.out' }, 25.0);
+    tl.fromTo('#s5-url', { scale: 0.8, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.8, ease: 'back.out(1.7)' }, 25.4);
+    tl.fromTo('#s5-contract', { opacity: 0 }, { opacity: 1, duration: 0.6 }, 25.8);
+  </script>
+</body>
+</html>

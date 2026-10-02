@@ -172,7 +172,7 @@ async function main() {
     // Position player near Thistle Town plaza center
     worldScene.player.setPosition(2700, 1860);
 
-    const steps = 270; // ~4.5 seconds at 60 FPS
+    const steps = 300; // ~5 seconds at 60 FPS
     for (let i = 0; i < steps; i++) {
       const phase = Math.floor((i / steps) * 4);
       if (phase === 0) {
@@ -196,7 +196,7 @@ async function main() {
     }
   });
 
-  await new Promise(r => setTimeout(r, 300));
+  await new Promise(r => setTimeout(r, 500));
   timestamps.town.end = await getRelTimeSec();
 
   // -------------------------------------------------------------
@@ -295,7 +295,7 @@ async function main() {
     }
   });
 
-  await new Promise(r => setTimeout(r, 300));
+  await new Promise(r => setTimeout(r, 500));
   timestamps.meadow.end = await getRelTimeSec();
 
   // -------------------------------------------------------------
@@ -385,7 +385,7 @@ async function main() {
     }
   });
 
-  await new Promise(r => setTimeout(r, 300));
+  await new Promise(r => setTimeout(r, 500));
   timestamps.mosswood.end = await getRelTimeSec();
 
   // -------------------------------------------------------------
@@ -441,7 +441,7 @@ async function main() {
         }
       }
 
-      // Player dodges boss beam at tick 60
+      // Player dodges boss beam at tick 50
       if (tick === 50) {
         if (typeof worldScene.spawnFx === 'function') {
           worldScene.spawnFx(worldScene.player.x, worldScene.player.y, 'fx.dust', 1.8);
@@ -479,7 +479,7 @@ async function main() {
     }
   });
 
-  await new Promise(r => setTimeout(r, 300));
+  await new Promise(r => setTimeout(r, 500));
   timestamps.boss.end = await getRelTimeSec();
 
   // -------------------------------------------------------------
@@ -582,7 +582,7 @@ async function main() {
     }
   });
 
-  await new Promise(r => setTimeout(r, 300));
+  await new Promise(r => setTimeout(r, 500));
   timestamps.gear.end = await getRelTimeSec();
 
   // -------------------------------------------------------------
@@ -624,7 +624,7 @@ async function main() {
       worldScene.combat.floatText(worldScene.player.x, worldScene.player.y - 45, 'CLASS: RANGER', '#6fdc6a', 'big');
     }
 
-    for (let tick = 0; tick < 140; tick++) {
+    for (let tick = 0; tick < 150; tick++) {
       if (tick === 20) {
         // Leaf Volley
         if (typeof worldScene.player.attackPose === 'function') worldScene.player.attackPose();
@@ -637,7 +637,7 @@ async function main() {
           worldScene.combat.floatText(worldScene.player.x + 60, worldScene.player.y - 30, 'LEAF VOLLEY (5x)', '#6fdc6a', 'crit');
         }
       }
-      if (tick === 70) {
+      if (tick === 75) {
         // Snare Trap
         if (typeof worldScene.spawnFx === 'function') {
           worldScene.spawnFx(worldScene.player.x + 50, worldScene.player.y + 10, 'fx.aura', 1.8);
@@ -659,7 +659,7 @@ async function main() {
       worldScene.combat.floatText(worldScene.player.x, worldScene.player.y - 45, 'CLASS: ARCANIST', '#56a8ff', 'big');
     }
 
-    for (let tick = 0; tick < 140; tick++) {
+    for (let tick = 0; tick < 150; tick++) {
       if (tick === 20) {
         // Ember Bolt & Moss Burst
         if (typeof worldScene.spawnFx === 'function') {
@@ -669,7 +669,7 @@ async function main() {
           worldScene.combat.floatText(worldScene.player.x + 30, worldScene.player.y - 30, '-135 MOSS BURST', '#56a8ff', 'crit');
         }
       }
-      if (tick === 70) {
+      if (tick === 75) {
         // Wisp Blink & Tide Ward
         if (typeof worldScene.spawnFx === 'function') {
           worldScene.spawnFx(worldScene.player.x, worldScene.player.y - 8, 'fx.boost', 2.0);
@@ -691,7 +691,7 @@ async function main() {
       worldScene.combat.floatText(worldScene.player.x, worldScene.player.y - 45, 'CLASS: BANDIT', '#c07bff', 'big');
     }
 
-    for (let tick = 0; tick < 150; tick++) {
+    for (let tick = 0; tick < 160; tick++) {
       if (tick === 20) {
         // Fang Stab flurry
         if (typeof worldScene.player.attackPose === 'function') worldScene.player.attackPose();
@@ -703,7 +703,7 @@ async function main() {
           worldScene.combat.floatText(worldScene.player.x + 40, worldScene.player.y - 30, 'FANG STAB FLURRY', '#c07bff', 'crit');
         }
       }
-      if (tick === 75) {
+      if (tick === 80) {
         // Smoke Pouch & Crow Fan
         if (typeof worldScene.spawnFx === 'function') {
           worldScene.spawnFx(worldScene.player.x, worldScene.player.y - 8, 'fx.dust', 2.5);
@@ -716,8 +716,11 @@ async function main() {
     }
   });
 
-  await new Promise(r => setTimeout(r, 300));
+  await new Promise(r => setTimeout(r, 1500));
   timestamps.classes.end = await getRelTimeSec();
+
+  // Wait 1.5s extra for stream buffer flush
+  await new Promise(r => setTimeout(r, 1500));
 
   // -------------------------------------------------------------
   // Stop MediaRecorder & Retrieve Video Buffer

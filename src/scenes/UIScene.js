@@ -21,6 +21,7 @@ import { settings, uiZoomFor } from '../core/settings.js';
 import { PauseMenu } from '../ui/PauseMenu.js';
 import { HelpOverlay } from '../ui/HelpOverlay.js';
 import { WalletPanel } from '../ui/WalletPanel.js';
+import { econ } from '../net/economyNet.js';
 import { fullscreenSupported, isFullscreen, toggleFullscreen } from '../core/mobile.js';
 
 // HUD: HP/MP/XP bars, hotbar with cooldown sweep (clickable), minimap,
@@ -338,6 +339,10 @@ export class UIScene extends Phaser.Scene {
       this.resizeTimer?.remove(false);
       this.equip?.destroy(); this.shop?.destroy(); this.journal?.destroy(); this.craftPanel?.destroy(); this.fishing?.destroy(); this.toast?.destroy(); this.walletPanel?.destroy();
     });
+    // Mail unread indicator for the touch HUD
+    this.offs.push(
+      econ.on('mail-unread', () => { if (this.mailBtnText) this.mailBtnText.setText(econ.mailUnread ? `✉ ${econ.mailUnread}` : '✉'); })
+    );
 
     // ── HUD menu + help buttons (touch has no Esc/H) ─────────────────────────
     const hb = (x, label, cb) => {
@@ -459,7 +464,7 @@ export class UIScene extends Phaser.Scene {
     }).setOrigin(1, 0).setDepth(110).setInteractive({ useHandCursor: true });
     this.rewardsBtn.on('pointerover', () => this.rewardsBtn.setBackgroundColor('#3a2d20ee'));
     this.rewardsBtn.on('pointerout', () => this.rewardsBtn.setBackgroundColor('#2a1d10dd'));
-    this.rewardsBtn.on('pointerdown', () => { audio.play('ui', 0.6); bus.emit(Events.SYSTEM, 'Rewards panel coming soon — check your payouts!'); });
+    this.rewardsBtn.on('pointerdown', () => { audio.play('ui', 0.6); bus.emit('econ-ui', { panel: 'claim' }); });
 
     this.walletPanel = new WalletPanel(this);
   }
@@ -522,7 +527,20 @@ export class UIScene extends Phaser.Scene {
     mkBtn(colX, mmTop - 3 * R - 12, 'LOG', () => bus.emit(Events.JOURNAL, { open: 'toggle' }));
     mkBtn(colX, mmTop - R + 2, 'CFT', () => bus.emit(Events.CRAFT, { open: 'toggle' }));
     mkBtn(colX - 2 * R - 14, mmTop - 3 * R - 12, 'CHT', () => this.openChat());
+    const [mailC, mailT] = (() => {
+      const x = colX - 2 * R - 14, y = mmTop - R + 2;
+      const c = this.add.circle(x, y, R, 0x000000, 0.5).setStrokeStyle(2, 0xffffff, 0.25).setInteractive({ useHandCursor: true });
+      const t = this.add.text(x, y, '✉', { fontFamily: '"Silkscreen", monospace', fontSize: this.small ? '12px' : '11px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5);
+      c.on('pointerdown', () => { audio.play('ui', 0.5); c.setFillStyle(0xffffff, 0.35); this.openMail(); });
+      c.on('pointerup', () => c.setFillStyle(0x000000, 0.5));
+      c.on('pointerout', () => c.setFillStyle(0x000000, 0.5));
+      this.touchUI.add([c, t]);
+      return [c, t];
+    })();
+    this.mailBtn = mailC; this.mailBtnText = mailT;
+    if (econ.mailUnread) this.mailBtnText.setText(`✉ ${econ.mailUnread}`);
   }
+  openMail() { this.economy?.mail?.toggle(); }
 
   // ── equipment + shop panels (src/ui/EquipPanel.js, ShopPanel.js) ───────────
   buildPanels() {

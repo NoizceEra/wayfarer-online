@@ -63,6 +63,8 @@ export class WorldScene extends Phaser.Scene {
     if (saved && saved.job === this.player.job.id) {
       this.player.level = saved.level || 1; this.player.xp = saved.xp || 0;
       this.player.gold = saved.gold ?? 20; this.player.potions = saved.potions ?? 3;
+      this.player.tokenPoints = saved.tokenPoints ?? 0;
+      this.player.wayfarerTokens = saved.wayfarerTokens ?? 0;
       this.player.applyProgression(saved.prog); // derived HP/MP/ATK come from stats now
       this.player.hp = this.player.effMaxHp(); this.player.mp = this.player.effMaxMp();
       this.player.setPosition(saved.x || spawn.x, saved.y || spawn.y);
@@ -209,7 +211,7 @@ export class WorldScene extends Phaser.Scene {
     return false;
   }
 
-  hpPayload() { return { hp: Math.ceil(this.player.hp), maxHp: this.player.effMaxHp(), mp: Math.ceil(this.player.mp), maxMp: this.player.effMaxMp(), potions: this.player.potions, gold: this.player.gold, level: this.player.level, atk: Math.round(this.player.effAtk()), def: this.player.effDef() }; }
+  hpPayload() { return { hp: Math.ceil(this.player.hp), maxHp: this.player.effMaxHp(), mp: Math.ceil(this.player.mp), maxMp: this.player.effMaxMp(), potions: this.player.potions, gold: this.player.gold, level: this.player.level, atk: Math.round(this.player.effAtk()), def: this.player.effDef(), tokenPoints: this.player.tokenPoints, wayfarerTokens: this.player.wayfarerTokens }; }
   xpPayload() { return { xp: this.player.xp, xpNext: this.player.xpNext, level: this.player.level }; }
   questText() {
     return this.quests ? this.quests.trackerText() : '';
@@ -246,6 +248,7 @@ export class WorldScene extends Phaser.Scene {
     saveProgress(this.pname, {
       job: this.player.job.id, level: this.player.level, xp: this.player.xp, xpNext: this.player.xpNext,
       gold: this.player.gold, potions: this.player.potions,
+      tokenPoints: this.player.tokenPoints, wayfarerTokens: this.player.wayfarerTokens,
       maxHp: this.player.maxHp, maxMp: this.player.maxMp, atk: this.player.atk,
       x: Math.round(this.areas?.savePos()?.x ?? this.player.x), y: Math.round(this.areas?.savePos()?.y ?? this.player.y), quest: this.questState,
       inventory: [...this.player.inventory], equipped: { ...this.player.equipped }, dyes: { ...this.player.dyes },

@@ -218,6 +218,10 @@ export class Combat {
     }
     bus.emit(Events.KILL, payload);
     this.grantXp(myXp, ed.x, ed.y - 30);
+    // Token points from kills
+    const tp = Math.max(1, Math.round(ed.level * (ed.rank?.xp || 1)));
+    p.tokenPoints = (p.tokenPoints || 0) + tp;
+    this.floatText(ed.x, ed.y - 44, `+${tp} TP`, '#7dff9a', 'small');
     if (!fromRemote || !net.connected) this.dropLoot(ed);
     ed.onSlain?.(s);
     s.creditKill?.(ed.typeId, ed);

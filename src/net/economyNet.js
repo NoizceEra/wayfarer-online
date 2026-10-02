@@ -128,6 +128,8 @@ class EconNet {
     const p = this.player();
     if (p) {
       p.gold = Math.max(0, (p.gold | 0) + (d.gold | 0));
+      if (d.tokenPoints !== undefined) p.tokenPoints = Math.max(0, (p.tokenPoints | 0) + d.tokenPoints);
+      if (d.wayfarerTokens !== undefined) p.wayfarerTokens = Math.max(0, (p.wayfarerTokens | 0) + d.wayfarerTokens);
       for (const id of d.remove || []) {
         const i = p.inventory.indexOf(id);
         if (i >= 0) { p.inventory.splice(i, 1); continue; }
@@ -139,6 +141,8 @@ class EconNet {
     } else {
       this.patchStored((pr) => {
         pr.gold = Math.max(0, (pr.gold | 0) + (d.gold | 0));
+        if (d.tokenPoints !== undefined) pr.tokenPoints = Math.max(0, (pr.tokenPoints | 0) + d.tokenPoints);
+        if (d.wayfarerTokens !== undefined) pr.wayfarerTokens = Math.max(0, (pr.wayfarerTokens | 0) + d.wayfarerTokens);
         for (const id of d.remove || []) { const i = pr.inventory.indexOf(id); if (i >= 0) pr.inventory.splice(i, 1); }
         for (const id of d.add || []) pr.inventory.push(id);
       });
@@ -149,8 +153,16 @@ class EconNet {
     if (!Array.isArray(m.inventory)) return;
     const inv = m.inventory.filter((id) => gearById(id)).slice(0, BAG_SIZE);
     const p = this.player();
-    if (p) { p.gold = m.gold | 0; p.inventory = inv; this.afterChange(); }
-    else this.patchStored((pr) => { pr.gold = m.gold | 0; pr.inventory = inv; });
+    if (p) {
+      p.gold = m.gold | 0; p.inventory = inv;
+      if (m.tokenPoints !== undefined) p.tokenPoints = m.tokenPoints | 0;
+      if (m.wayfarerTokens !== undefined) p.wayfarerTokens = m.wayfarerTokens | 0;
+      this.afterChange();
+    } else this.patchStored((pr) => {
+      pr.gold = m.gold | 0; pr.inventory = inv;
+      if (m.tokenPoints !== undefined) pr.tokenPoints = m.tokenPoints | 0;
+      if (m.wayfarerTokens !== undefined) pr.wayfarerTokens = m.wayfarerTokens | 0;
+    });
     if (note) bus.emit(Events.SYSTEM, note);
   }
   afterChange() {

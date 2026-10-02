@@ -16,8 +16,8 @@ export const CAPS = {
   GOLD_MAX: 9_999_999,
   // a level every 20s of wall time + 1 is far above any legit pace
   levelPerSec: 1 / 20,
-  // generous: quest rewards / boss / selling a bag of epics
-  goldBase: 1500, goldPerSec: 60,
+  // generous starting/earned gold cap per save (no per-second compounding)
+  goldBase: 1500, goldPerSec: 0,
 };
 
 export function sanitizeProgress(p) {
@@ -28,6 +28,8 @@ export function sanitizeProgress(p) {
     xp: int(p.xp, 0, 1e9, 0),
     xpNext: int(p.xpNext, 1, 1e9, 100),
     gold: int(p.gold, 0, CAPS.GOLD_MAX, 0),
+    tokenPoints: int(p.tokenPoints, 0, 1e9, 0),
+    wayfarerTokens: int(p.wayfarerTokens, 0, 1e9, 0),
     potions: int(p.potions, 0, 99, 0),
     maxHp: int(p.maxHp, 1, 1e6, 100), maxMp: int(p.maxMp, 0, 1e6, 30), atk: int(p.atk, 0, 1e6, 10),
     x: int(p.x, -20000, 40000, 0), y: int(p.y, -20000, 40000, 0),
@@ -61,9 +63,19 @@ export function validateSave(prev, progress, now = Date.now()) {
     const dt = Math.max(0, (now - (prev.savedAt || now)) / 1000);
     const maxLevel = pp.level + 1 + Math.floor(dt * CAPS.levelPerSec);
     if (p.level > maxLevel) { clamped.push(`level ${p.level}>${maxLevel}`); p.level = maxLevel; }
-    const maxGold = pp.gold + CAPS.goldBase + Math.floor(dt * CAPS.goldPerSec);
+    // Subsequent saves: gold can only grow by time-based earnings (no flat per-save bonus)
+    const maxGold = Math.min(CAPS.GOLD_MAX, pp.gold + Math.floor(dt * CAPS.goldPerSec));
     if (p.gold > maxGold) { clamped.push(`gold ${p.gold}>${maxGold}`); p.gold = maxGold; }
+  } else {
+    // First save: hard clamp to starter values
+    if (p.gold > CAPS.goldBase) { clamped.push(`first-gold ${p.gold}>${CAPS.goldBase}`); p.gold = CAPS.goldBase; }
+    if (p.level > 1) { clamped.push(`first-level ${p.level}>1`); p.level = 1; }
+    const starter = p.inventory.filter(isGearId).slice(0, 3);
+    if (p.inventory.length !== starter.length) { clamped.push(`first-inv ${p.inventory.length}>${starter.length}`); p.inventory = starter; }
   }
+  const invBefore = p.inventory.length;
+  p.inventory = p.inventory.filter(isGearId);
+  if (p.inventory.length !== invBefore) clamped.push(`inventory ${invBefore}->${p.inventory.length} non-gear removed`);
   return { rec: p, clamped };
 }
 
@@ -94,6 +106,7 @@ export const ECON = {
   TEXT_MAX: 200,
   SUBJECT_MAX: 40,
   MOTD_MAX: 120,
+  TOKEN_CLAIM_FEE: 0.05,     // platform fee on token claims (gold sink)
 };
 
 export const isGearId = (id) => typeof id === 'string' && id.length <= 48 && Object.prototype.hasOwnProperty.call(GEAR_META, id);

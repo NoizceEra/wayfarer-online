@@ -16,17 +16,15 @@ const ROOT = path.dirname(__dirname);
 const PUBLIC_DIR = path.join(ROOT, 'public');
 const OUT_MP4 = path.join(PUBLIC_DIR, 'trailer', 'wayfarer_login_bg.mp4');
 const OUT_GIF = path.join(PUBLIC_DIR, 'trailer', 'wayfarer_login_bg.gif');
-const PALETTE_PNG = path.join(__dirname, '.tmp_palette.png');
+const TMP_DIR = fs.mkdtempSync(path.join(ROOT, 'tmp_trailer_render_'));
+const PALETTE_PNG = path.join(TMP_DIR, 'palette.png');
 
-const PORT = 5188;
 const FPS = 60;
-const DURATION_SEC = 30;
-const TOTAL_FRAMES = FPS * DURATION_SEC; // 1800 frames
 const WIDTH = 1920;
 const HEIGHT = 1080;
 
-// Simple static file server for local rendering
-function createStaticServer(rootPort) {
+// Static file server with range request support
+function createStaticServer() {
   const mimeTypes = {
     '.html': 'text/html',
     '.css': 'text/css',
@@ -56,25 +54,48 @@ function createStaticServer(rootPort) {
 
     const ext = path.extname(filePath).toLowerCase();
     const contentType = mimeTypes[ext] || 'application/octet-stream';
-    res.writeHead(200, { 'Content-Type': contentType });
+    const stat = fs.statSync(filePath);
+    const fileSize = stat.size;
+    const range = req.headers.range;
+
+    if (range && (ext === '.webm' || ext === '.mp4')) {
+      const parts = range.replace(/bytes=/, "").split("-");
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      const chunksize = (end - start) + 1;
+      const file = fs.createReadStream(filePath, { start, end });
+      const head = {
+        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunksize,
+        'Content-Type': contentType,
+      };
+      res.writeHead(206, head);
+      file.pipe(res);
+      return;
+    }
+
+    res.writeHead(200, {
+      'Content-Length': fileSize,
+      'Content-Type': contentType,
+      'Accept-Ranges': 'bytes'
+    });
     fs.createReadStream(filePath).pipe(res);
   });
 
   return new Promise((resolve) => {
-    server.listen(rootPort, () => {
-      console.log(`Static render server listening on http://localhost:${rootPort}`);
-      resolve(server);
+    server.listen(0, () => {
+      const port = server.address().port;
+      console.log(`Static render server listening on http://localhost:${port}`);
+      resolve({ server, port });
     });
   });
 }
 
-async function renderMp4(targetUrl) {
-  console.log(`\n=== 1. Rendering Pure Gameplay MP4 Video ===`);
-  console.log(`Resolution: ${WIDTH}x${HEIGHT} @ ${FPS} FPS`);
-  console.log(`Duration: ${DURATION_SEC}s (${TOTAL_FRAMES} frames)`);
-  console.log(`Output: ${OUT_MP4}`);
-
-  fs.mkdirSync(path.dirname(OUT_MP4), { recursive: true });
+async function renderLogoCard(targetUrl) {
+  console.log('\n--- 1. Rendering Jacquard12 Logo Card Intro (3.0s @ 60 FPS) ---');
+  const logoMp4 = path.join(TMP_DIR, 'seg_0_logo.mp4');
+  const LOGO_FRAMES = 180; // 3.0 seconds * 60 FPS
 
   const ffmpegArgs = [
     '-y',
@@ -82,153 +103,141 @@ async function renderMp4(targetUrl) {
     '-vcodec', 'mjpeg',
     '-framerate', String(FPS),
     '-i', '-',
+    '-vf', 'format=yuv420p,setsar=1',
     '-c:v', 'libx264',
     '-pix_fmt', 'yuv420p',
+    '-color_range', '1',
+    '-colorspace', 'bt709',
+    '-color_trc', 'bt709',
+    '-color_primaries', 'bt709',
     '-crf', '18',
     '-preset', 'fast',
-    '-an', // Silent, no audio stream
-    '-movflags', '+faststart',
-    OUT_MP4
+    '-an',
+    logoMp4
   ];
 
-  console.log('Spawning ffmpeg process for MP4 encoding...');
   const ffmpeg = spawn('ffmpeg', ffmpegArgs);
-
-  ffmpeg.stderr.on('data', (d) => {
-    // console.log(`[ffmpeg] ${d.toString()}`);
-  });
-
   const ffmpegDone = new Promise((resolve, reject) => {
-    ffmpeg.on('close', (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`ffmpeg exited with code ${code}`));
-    });
+    ffmpeg.on('close', (code) => code === 0 ? resolve() : reject(new Error(`Logo card ffmpeg exited code ${code}`)));
     ffmpeg.on('error', reject);
   });
 
-  console.log('Launching Puppeteer browser...');
   const browser = await puppeteer.launch({
     headless: 'new',
     defaultViewport: { width: WIDTH, height: HEIGHT, deviceScaleFactor: 1 },
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--autoplay-policy=no-user-gesture-required'
-    ]
+    args: ['--no-sandbox', '--disable-setuid-sandbox']
   });
 
   const page = await browser.newPage();
-  await page.setViewport({ width: WIDTH, height: HEIGHT, deviceScaleFactor: 1 });
+  await page.goto(targetUrl, { waitUntil: 'domcontentloaded' });
+  await page.evaluate(async () => { if (document.fonts) await document.fonts.ready; });
 
-  console.log(`Loading page ${targetUrl}...`);
-  await page.goto(targetUrl, { waitUntil: 'networkidle0' });
+  for (let i = 0; i < LOGO_FRAMES; i++) {
+    const t = i / FPS;
+    await page.evaluate((time) => {
+      if (window.setTrailerTime) window.setTrailerTime(time);
+    }, t);
 
-  await page.evaluate(async () => {
-    if (document.fonts && document.fonts.ready) {
-      await document.fonts.ready;
-    }
-  });
-
-  // Pre-load / buffer videos
-  await page.evaluate(() => {
-    document.querySelectorAll('video').forEach(v => {
-      v.play().catch(() => {});
-      v.pause();
-    });
-  });
-
-  await new Promise(r => setTimeout(r, 1000));
-
-  console.log(`Capturing ${TOTAL_FRAMES} frames at 60 FPS...`);
-  const startTime = Date.now();
-
-  for (let i = 0; i < TOTAL_FRAMES; i++) {
-    const time = i / FPS;
-
-    await page.evaluate((t) => {
-      if (typeof window.setTrailerTime === 'function') {
-        window.setTrailerTime(t);
-      } else {
-        const tl = window.tl || window.__timelines?.["pure-gameplay-trailer"];
-        if (tl) tl.seek(t, false);
-      }
-    }, time);
-
-    // Wait a tick for video frame seek settling
-    await page.evaluate(() => new Promise(r => requestAnimationFrame(r)));
-
-    const screenshotBuffer = await page.screenshot({ type: 'jpeg', quality: 95 });
-
-    const canWrite = ffmpeg.stdin.write(screenshotBuffer);
-    if (!canWrite) {
-      await new Promise(resolve => ffmpeg.stdin.once('drain', resolve));
-    }
-
-    if ((i + 1) % 120 === 0 || i + 1 === TOTAL_FRAMES) {
-      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-      const pct = (((i + 1) / TOTAL_FRAMES) * 100).toFixed(1);
-      const realFps = ((i + 1) / ((Date.now() - startTime) / 1000)).toFixed(1);
-      console.log(`Progress: frame ${i + 1}/${TOTAL_FRAMES} (${pct}%) - ${elapsed}s elapsed (${realFps} FPS)`);
-    }
+    const buf = await page.screenshot({ type: 'jpeg', quality: 95 });
+    const canWrite = ffmpeg.stdin.write(buf);
+    if (!canWrite) await new Promise(res => ffmpeg.stdin.once('drain', res));
   }
 
-  console.log('Frame capture completed. Closing browser and waiting for ffmpeg...');
   await browser.close();
   ffmpeg.stdin.end();
-
   await ffmpegDone;
 
+  console.log(`Logo Card Intro rendered: ${logoMp4}`);
+  return logoMp4;
+}
+
+function processGameplaySegments(logoMp4) {
+  console.log('\n--- 2. Processing Raw Gameplay Clips ---');
+
+  const clipsDir = path.join(PUBLIC_DIR, 'assets', 'custom', 'clips', 'pure_gameplay');
+  
+  // Total 30.0 seconds sequence:
+  // seg 0: logoMp4 (3.0s)
+  // seg 1: clip_3_town.webm (start: 1.0s, dur: 7.5s) -> 3.0s - 10.5s
+  // seg 2: clip_5_combat.webm (start: 2.0s, dur: 9.0s) -> 10.5s - 19.5s
+  // seg 3: clip_4_gear.webm (start: 0.5s, dur: 3.5s) -> 19.5s - 23.0s
+  // seg 4: clip_6_shop.webm (start: 0.5s, dur: 3.5s) -> 23.0s - 26.5s
+  // seg 5: clip_5_combat.webm (start: 14.0s, dur: 3.5s) -> 26.5s - 30.0s
+  const rawSegments = [
+    { type: 'file', path: logoMp4, start: 0, dur: 3.0 },
+    { type: 'clip', file: 'clip_3_town.webm', start: 1.0, dur: 7.5 },
+    { type: 'clip', file: 'clip_5_combat.webm', start: 2.0, dur: 9.0 },
+    { type: 'clip', file: 'clip_4_gear.webm', start: 0.5, dur: 3.5 },
+    { type: 'clip', file: 'clip_6_shop.webm', start: 0.5, dur: 3.5 },
+    { type: 'clip', file: 'clip_5_combat.webm', start: 14.0, dur: 3.5 }
+  ];
+
+  const processedFiles = [];
+
+  rawSegments.forEach((seg, idx) => {
+    const outFile = path.join(TMP_DIR, `seg_${idx}_encoded.mp4`);
+    const inFile = seg.type === 'file' ? seg.path : path.join(clipsDir, seg.file);
+
+    console.log(`Processing Segment ${idx}: ${seg.file || 'logo'} [${seg.start}s - ${seg.start + seg.dur}s]`);
+
+    const cmd = `ffmpeg -y -hide_banner -loglevel error -ss ${seg.start} -t ${seg.dur} -i "${inFile}" -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=60,format=yuv420p" -color_range 1 -colorspace bt709 -color_trc bt709 -color_primaries bt709 -c:v libx264 -preset fast -crf 18 -an "${outFile}"`;
+    execSync(cmd, { stdio: 'inherit' });
+    processedFiles.push(outFile);
+  });
+
+  // Concat list
+  const listFile = path.join(TMP_DIR, 'concat_list.txt');
+  const listLines = processedFiles.map(f => `file '${f.replace(/\\/g, '/')}'`);
+  fs.writeFileSync(listFile, listLines.join('\n') + '\n');
+
+  console.log('\n--- 3. Concatenating into 1080p 60 FPS MP4 Trailer ---');
+  const concatCmd = `ffmpeg -y -hide_banner -loglevel error -f concat -safe 0 -i "${listFile}" -c copy -movflags +faststart "${OUT_MP4}"`;
+  execSync(concatCmd, { stdio: 'inherit' });
+
   const stats = fs.statSync(OUT_MP4);
-  console.log(`MP4 Render complete: ${OUT_MP4} (${(stats.size / (1024 * 1024)).toFixed(2)} MB)`);
+  console.log(`SUCCESS! Pure gameplay trailer MP4 rendered: ${OUT_MP4} (${(stats.size / (1024 * 1024)).toFixed(2)} MB)`);
 }
 
 function convertMp4ToGif() {
-  console.log(`\n=== 2. Converting MP4 to Optimized GIF Fallback ===`);
+  console.log(`\n--- 4. Converting MP4 to Optimized GIF Fallback ---`);
   console.log(`Input: ${OUT_MP4}`);
   console.log(`Output: ${OUT_GIF}`);
 
-  if (fs.existsSync(PALETTE_PNG)) {
-    fs.rmSync(PALETTE_PNG, { force: true });
-  }
-
-  // Pass 1: Generate palette
+  // Pass 1: Palette Generation
   console.log('Generating optimized color palette...');
-  const paletteCmd = `ffmpeg -y -i "${OUT_MP4}" -vf "fps=15,scale=800:-1:flags=lanczos,palettegen=stats_mode=diff" "${PALETTE_PNG}"`;
+  const paletteCmd = `ffmpeg -y -hide_banner -loglevel error -i "${OUT_MP4}" -vf "fps=15,scale=800:-1:flags=lanczos,palettegen=stats_mode=diff" "${PALETTE_PNG}"`;
   execSync(paletteCmd, { stdio: 'inherit' });
 
-  // Pass 2: Generate GIF with palette
-  console.log('Encoding optimized GIF...');
-  const gifCmd = `ffmpeg -y -i "${OUT_MP4}" -i "${PALETTE_PNG}" -filter_complex "fps=15,scale=800:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle" "${OUT_GIF}"`;
+  // Pass 2: GIF Encoding with uniform color space
+  console.log('Encoding high-quality GIF fallback...');
+  const gifCmd = `ffmpeg -y -hide_banner -loglevel error -i "${OUT_MP4}" -i "${PALETTE_PNG}" -filter_complex "fps=15,scale=800:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=3" "${OUT_GIF}"`;
   execSync(gifCmd, { stdio: 'inherit' });
 
-  if (fs.existsSync(PALETTE_PNG)) {
-    fs.rmSync(PALETTE_PNG, { force: true });
-  }
-
   const stats = fs.statSync(OUT_GIF);
-  console.log(`GIF Conversion complete: ${OUT_GIF} (${(stats.size / (1024 * 1024)).toFixed(2)} MB)`);
+  console.log(`SUCCESS! Optimized GIF rendered: ${OUT_GIF} (${(stats.size / (1024 * 1024)).toFixed(2)} MB)`);
 }
 
 async function main() {
-  const server = await createStaticServer(PORT);
-  const targetUrl = `http://localhost:${PORT}/trailer/pure_gameplay_trailer.html`;
+  const { server, port } = await createStaticServer();
+  const targetUrl = `http://localhost:${port}/trailer/pure_gameplay_trailer.html`;
 
   try {
-    await renderMp4(targetUrl);
+    const logoMp4 = await renderLogoCard(targetUrl);
+    processGameplaySegments(logoMp4);
     convertMp4ToGif();
 
-    console.log('\n========================================');
-    console.log('ALL TASKS COMPLETED SUCCESSFULLY!');
-    console.log(`MP4: ${OUT_MP4} (${fs.existsSync(OUT_MP4) ? fs.statSync(OUT_MP4).size + ' bytes' : 'MISSING'})`);
-    console.log(`GIF: ${OUT_GIF} (${fs.existsSync(OUT_GIF) ? fs.statSync(OUT_GIF).size + ' bytes' : 'MISSING'})`);
-    console.log('========================================\n');
+    console.log('\n==================================================');
+    console.log('PURE GAMEPLAY TRAILER RENDER COMPLETE!');
+    console.log(`MP4: ${OUT_MP4} (${fs.statSync(OUT_MP4).size} bytes)`);
+    console.log(`GIF: ${OUT_GIF} (${fs.statSync(OUT_GIF).size} bytes)`);
+    console.log('==================================================\n');
   } finally {
     server.close();
+    fs.rmSync(TMP_DIR, { recursive: true, force: true });
   }
 }
 
 main().catch(err => {
-  console.error('Fatal error during rendering:', err);
+  console.error('Fatal error during pure gameplay trailer rendering:', err);
   process.exit(1);
 });

@@ -8,6 +8,7 @@ import { TradeEscrowPanel } from './TradeEscrowPanel.js';
 import { MarketPanel } from './MarketPanel.js';
 import { MailPanel } from './MailPanel.js';
 import { renderGuildTab, answerInvite } from './GuildTab.js';
+import { ClaimPanel } from './ClaimPanel.js';
 import { el, setIconScene } from './econDom.js';
 import { socialRoot } from './socialDom.js';
 
@@ -41,17 +42,19 @@ export function installEconomyUI(uiScene) {
   };
 
   input.registerAction({ id: 'mail', label: 'Mailbox', group: 'Social', keys: ['KeyV'], gameplay: true });
-  const anyOpen = () => tradeP.isOpen || escrowP.isOpen || market.isOpen || mail.isOpen;
+  const claimP = new ClaimPanel();
+  const anyOpen = () => tradeP.isOpen || escrowP.isOpen || market.isOpen || mail.isOpen || claimP.isOpen;
   const offs = [
     input.on('mail', () => { market.close(); escrowP.close(); tradeP.close(); mail.toggle(); return true; }, { scene: uiScene }),
-    input.addCloser({ id: 'economy', priority: 960, isOpen: anyOpen, close: () => { if (mail.isOpen) mail.close(); else if (market.isOpen) market.close(); else if (escrowP.isOpen) escrowP.close(); else tradeP.close(); }, scene: uiScene }),
+    input.addCloser({ id: 'economy', priority: 960, isOpen: anyOpen, close: () => { if (mail.isOpen) mail.close(); else if (market.isOpen) market.close(); else if (escrowP.isOpen) escrowP.close(); else if (claimP.isOpen) claimP.close(); else tradeP.close(); }, scene: uiScene }),
     social.registerAction('trade', (who) => trade.requestTrade(who)),
     social.registerAction('escrow', (who) => trade.requestEscrow(who)),
     social.registerAction('mail', (to) => mail.compose(to)),
     social.registerAction('renderGuildTab', (body, titleEl) => renderGuildTab(body, titleEl)),
     bus.on('econ-ui', (m) => {
-      if (m?.panel === 'market') { mail.close(); tradeP.close(); escrowP.close(); market.open(m.tab); }
-      else if (m?.panel === 'mail') { market.close(); tradeP.close(); escrowP.close(); mail.open(m.tab); }
+      if (m?.panel === 'market') { mail.close(); tradeP.close(); escrowP.close(); claimP.close(); market.open(m.tab); }
+      else if (m?.panel === 'mail') { market.close(); tradeP.close(); escrowP.close(); claimP.close(); mail.open(m.tab); }
+      else if (m?.panel === 'claim') { market.close(); tradeP.close(); escrowP.close(); mail.close(); claimP.open(); }
     }),
     econ.on('mail-unread', drawBadge), econ.on('state', drawBadge), econ.on('status', drawBadge),
     bus.on(Events.NET_STATUS, drawBadge),
@@ -60,8 +63,8 @@ export function installEconomyUI(uiScene) {
   installCommands(mail);
 
   const api = {
-    trade: tradeP, escrow: escrowP, market, mail, anyOpen,
-    destroy() { offs.forEach((o) => { try { o(); } catch { /* ignore */ } }); tradeP.destroy(); escrowP.destroy(); market.destroy(); mail.destroy(); badge.remove(); },
+    trade: tradeP, escrow: escrowP, market, mail, claim: claimP, anyOpen,
+    destroy() { offs.forEach((o) => { try { o(); } catch { /* ignore */ } }); tradeP.destroy(); escrowP.destroy(); market.destroy(); mail.destroy(); claimP.destroy(); badge.remove(); },
   };
   uiScene.events.once('shutdown', () => api.destroy());
   window.__econUI = api; // debug / automated tests
@@ -105,6 +108,7 @@ function installCommands(mail) {
       case 'gmotd': return econ.send('guild-motd', { text: arg });
       case 'gdeposit': return n > 0 ? econ.send('guild-deposit', { gold: n }, { rev: true, sync: true }) : say('Usage: /gdeposit gold');
       case 'gwithdraw': return n > 0 ? econ.send('guild-withdraw', { gold: n }, { rev: true, sync: true }) : say('Usage: /gwithdraw gold');
+      case 'claim': return bus.emit('econ-ui', { panel: 'claim' });
       case 'ginfo': case 'guildinfo': {
         const g = econ.guild;
         if (!g) return say(econ.online ? 'You are not in a guild. /gcreate TAG Name' : 'Play Online to use guilds.');
@@ -112,7 +116,7 @@ function installCommands(mail) {
       }
       case 'help': case '?':
         orig(raw);
-        return say(`Economy: /trade name · /mail [name] · /ginvite /gaccept /gkick /gpromote /gdemote /gleader /gmotd /gdeposit /gwithdraw /ginfo. Mailbox: ${input.labelFor('mail')}. Market: talk to the notice-board clerks.`);
+        return say(`Economy: /trade name · /mail [name] · /claim · /ginvite /gaccept /gkick /gpromote /gdemote /gleader /gmotd /gdeposit /gwithdraw /ginfo. Mailbox: ${input.labelFor('mail')}. Market: talk to the notice-board clerks.`);
       default: return orig(raw);
     }
   };

@@ -277,8 +277,8 @@ async function waitDisk(peer, want, wait = 4000) {
 const X = GEAR[0], Y = GEAR[1], Z = GEAR[2], W = GEAR[3], UNOWNED = GEAR[5];
 const tok = (s) => `${s}${crypto.randomBytes(12).toString('hex')}`; // matches server store.js TOKEN_RE
 let cfg = null;
-const A = new Peer({ name: 'Aldra', token: tok('econTestA'), gold: 5000, inventory: [X, Y, Z] });
-const B = new Peer({ name: 'Brann', token: tok('econTestB'), gold: 1000, inventory: [W] });
+const A = new Peer({ name: 'Aldra', token: tok('econTestA'), gold: 400, inventory: [X, Y, Z] });
+const B = new Peer({ name: 'Brann', token: tok('econTestB'), gold: 300, inventory: [W] });
 const sinks = [];   // fees the server reported, for the conservation invariant
 const fee = (price) => Math.max(1, Math.ceil(price * cfg.tax));
 
@@ -308,8 +308,8 @@ async function main() {
     assert(savedA && savedB, `save not acknowledged (A:${!!savedA} B:${!!savedB})`);
     const sa = await A.hello(); const sb = await B.hello();
     assert(sa.hasSave === true && sb.hasSave === true, `hasSave false (A:${sa.hasSave} B:${sb.hasSave})`);
-    assert(sa.gold === 5000 && ms(sa.inventory) === ms([X, Y, Z]), `A copy ${sa.gold}g [${sa.inventory}]`);
-    assert(sb.gold === 1000 && ms(sb.inventory) === ms([W]), `B copy ${sb.gold}g [${sb.inventory}]`);
+    assert(sa.gold === 400 && ms(sa.inventory) === ms([X, Y, Z]), `A copy ${sa.gold}g [${sa.inventory}]`);
+    assert(sb.gold === 300 && ms(sb.inventory) === ms([W]), `B copy ${sb.gold}g [${sb.inventory}]`);
     cfg = sa.cfg;
     eq({ bag: cfg.bag, tradeItems: cfg.tradeItems, tax: cfg.tax, postage: cfg.postage, priceMax: cfg.priceMax },
       { bag: 30, tradeItems: 8, tax: 0.05, postage: 5, priceMax: 1000000 }, 'econ-state cfg (mirrors validate.js ECON)');
@@ -357,21 +357,21 @@ async function main() {
     assert(resA && resB, `trade-result missing (A:${!!resA} B:${!!resB})`);
     assert(resA.ok === 1 && resB.ok === 1, `trade refused: A=${JSON.stringify(resA)} B=${JSON.stringify(resB)}`);
     // the server's absolute state
-    assert(resA.gold === 4700, `A gold ${resA.gold} != 4700 (5000-300)`);
-    assert(resB.gold === 1300, `B gold ${resB.gold} != 1300 (1000+300)`);
+    assert(resA.gold === 100, `A gold ${resA.gold} != 100 (400-300)`);
+    assert(resB.gold === 600, `B gold ${resB.gold} != 600 (300+300)`);
     eq(ms(resA.inventory), ms([X, Z, W]), 'A bag after the trade');
     eq(ms(resB.inventory), ms([Y]), 'B bag after the trade');
     // the delta the client is told to apply must agree with that absolute state
     eq(resA.delta, { gold: -300, add: [W], remove: [Y] }, 'A delta');
     eq(resB.delta, { gold: 300, add: [Y], remove: [W] }, 'B delta');
-    A.expectState({ gold: 4700, inventory: [X, Z, W] }, 'A');
-    B.expectState({ gold: 1300, inventory: [Y] }, 'B');
+    A.expectState({ gold: 100, inventory: [X, Z, W] }, 'A');
+    B.expectState({ gold: 600, inventory: [Y] }, 'B');
   });
   await t('durable commit: both player files on disk match the post-trade server copy', async () => {
-    const da = await waitDisk(A, { gold: 4700, inventory: [X, Z, W] });
-    const db = await waitDisk(B, { gold: 1300, inventory: [Y] });
-    assert(da, `A file on disk is not 4700g/[${X},${Z},${W}] (gold ${diskProgress(A.token, A.name)?.gold})`);
-    assert(db, `B file on disk is not 1300g/[${Y}] (gold ${diskProgress(B.token, B.name)?.gold})`);
+    const da = await waitDisk(A, { gold: 100, inventory: [X, Z, W] });
+    const db = await waitDisk(B, { gold: 600, inventory: [Y] });
+    assert(da, `A file on disk is not 100g/[${X},${Z},${W}] (gold ${diskProgress(A.token, A.name)?.gold})`);
+    assert(db, `B file on disk is not 600g/[${Y}] (gold ${diskProgress(B.token, B.name)?.gold})`);
   });
 
   // ── happy: market ────────────────────────────────────────────────
@@ -481,7 +481,7 @@ async function main() {
   await t('total gold = start minus reported fees (nothing created or destroyed)', async () => {
     await A.hello(); await B.hello();
     const sunk = sinks.reduce((s, x) => s + x.gold, 0);
-    assert(A.gold + B.gold === 6000 - sunk, `A(${A.gold}) + B(${B.gold}) != 6000 - ${sunk} sinks (= ${6000 - sunk})`);
+    assert(A.gold + B.gold === 700 - sunk, `A(${A.gold}) + B(${B.gold}) != 700 - ${sunk} sinks (= ${700 - sunk})`);
     assert(sunk === 18, `reported sinks ${sunk} != 13 (market fees) + 5 (postage)`);
   });
 
@@ -507,24 +507,24 @@ async function main() {
   });
   await t('guild-deposit moves gold from a member into the bank', async () => {
     const beforeA = A.gold, beforeB = B.gold;
-    await A.send('guild-deposit', { gold: 500, rev: A.rev });
+    await A.send('guild-deposit', { gold: 80, rev: A.rev });
     const sa = await A.expectSync('guild-deposit');
-    eq(sa.delta, { gold: -500, add: [], remove: [] }, 'A guild-deposit delta');
-    assert(await A.waitFor('guild-info', (m) => m.bank === 500, 5000), 'no guild-info with bank 500 after A deposited');
-    assert(A.gold === beforeA - 500, `A gold ${A.gold} != ${beforeA} - 500`);
-    await B.send('guild-deposit', { gold: 100, rev: B.rev });
+    eq(sa.delta, { gold: -80, add: [], remove: [] }, 'A guild-deposit delta');
+    assert(await A.waitFor('guild-info', (m) => m.bank === 80, 5000), 'no guild-info with bank 80 after A deposited');
+    assert(A.gold === beforeA - 80, `A gold ${A.gold} != ${beforeA} - 80`);
+    await B.send('guild-deposit', { gold: 40, rev: B.rev });
     const sb = await B.expectSync('guild-deposit');
-    eq(sb.delta, { gold: -100, add: [], remove: [] }, 'B guild-deposit delta');
-    assert(await B.waitFor('guild-info', (m) => m.bank === 600, 5000), 'no guild-info with bank 600 after B deposited');
-    assert(B.gold === beforeB - 100, `B gold ${B.gold} != ${beforeB} - 100`);
+    eq(sb.delta, { gold: -40, add: [], remove: [] }, 'B guild-deposit delta');
+    assert(await B.waitFor('guild-info', (m) => m.bank === 120, 5000), 'no guild-info with bank 120 after B deposited');
+    assert(B.gold === beforeB - 40, `B gold ${B.gold} != ${beforeB} - 40`);
   });
   await t('guild-withdraw pays the leader out of the bank', async () => {
     const before = A.gold;
-    await A.send('guild-withdraw', { gold: 200, rev: A.rev });
+    await A.send('guild-withdraw', { gold: 30, rev: A.rev });
     const sync = await A.expectSync('guild-withdraw');
-    eq(sync.delta, { gold: 200, add: [], remove: [] }, 'guild-withdraw delta');
-    assert(await A.waitFor('guild-info', (m) => m.bank === 400, 5000), 'no guild-info with bank 400 after the withdraw');
-    assert(A.gold === before + 200, `A gold ${A.gold} != ${before} + 200`);
+    eq(sync.delta, { gold: 30, add: [], remove: [] }, 'guild-withdraw delta');
+    assert(await A.waitFor('guild-info', (m) => m.bank === 90, 5000), 'no guild-info with bank 90 after the withdraw');
+    assert(A.gold === before + 30, `A gold ${A.gold} != ${before} + 30`);
   });
 
   // ── rejects: trade ───────────────────────────────────────────────
@@ -686,7 +686,7 @@ async function main() {
     assert(A.gold === gA && B.gold === gB, `refused guild ops moved gold: A ${A.gold}/${gA}, B ${B.gold}/${gB}`);
     await A.send('guild-info', {});
     const info = await A.waitFor('guild-info', (m) => m.tag === 'ECON', 4000);
-    assert(info && info.bank === 400, `bank changed to ${info && info.bank}, expected 400`);
+    assert(info && info.bank === 90, `bank changed to ${info && info.bank}, expected 90`);
   });
 
   // ── guards ───────────────────────────────────────────────────────

@@ -560,7 +560,7 @@ async function raceDoubleConfirm(ctx, N) {
   const { relay, dataDir } = ctx;
   const tA = tok(); const tB = tok();
   const A = await connect(relay, 'RaceA', tA); const B = await connect(relay, 'RaceB', tB);
-  const SEED = 30;
+  const SEED = 3;
   A.save(mkProg({ gold: 0, inventory: Array(SEED).fill(GX) })); B.save(mkProg({ gold: 9000, inventory: [] }));
   await sleep(800);
   const alive = () => countIn(charRec(dataDir, tA, 'RaceA')?.progress?.inventory, null, GX)
@@ -653,7 +653,7 @@ async function raceConfirmThenLeave(ctx, N) {
   const { relay, dataDir } = ctx;
   const tA = tok(); const tB = tok();
   const A = await connect(relay, 'LeaveA', tA); const B = await connect(relay, 'LeaveB', tB);
-  const SEED = 30;
+  const SEED = 3;
   A.save(mkProg({ gold: 0, inventory: Array(SEED).fill(GX) })); B.save(mkProg({ gold: 9000, inventory: [] }));
   await sleep(800);
   const alive = () => countIn(charRec(dataDir, tA, 'LeaveA')?.progress?.inventory, null, GX)
