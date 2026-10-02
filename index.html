@@ -6,7 +6,7 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="theme-color" content="#0f380f" />
+    <meta name="theme-color" content="#0a0e1a" />
     <title>Wayfarer Online</title>
     <!-- explicit icon: without it browsers request /favicon.ico -> startup 404 -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -54,7 +54,7 @@
         font-display: block;
       }
       html, body {
-        margin: 0; padding: 0; background: #0f380f; height: 100%; overflow: hidden;
+        margin: 0; padding: 0; background: #0a0e1a; height: 100%; overflow: hidden;
         position: fixed; inset: 0; width: 100%;
         overscroll-behavior: none;
         touch-action: none;
@@ -62,26 +62,34 @@
         -webkit-tap-highlight-color: transparent;
         font-family: 'Silkscreen', monospace;
       }
-      /* canvas sits inside the safe area (notch / home indicator); the margin shows the olive page background */
-      #game { position: fixed; top: env(safe-area-inset-top, 0px); right: env(safe-area-inset-right, 0px); bottom: env(safe-area-inset-bottom, 0px); left: env(safe-area-inset-left, 0px); background: #0f380f; }
+      /* Background video for title screen */
+      #bg-video-container {
+        position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 0; overflow: hidden; background: #0a0e1a;
+      }
+      #bg-video-container video {
+        position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; display: block; opacity: 0.75;
+      }
+      /* canvas sits inside the safe area (notch / home indicator); transparent canvas shows background video */
+      #game { position: fixed; top: env(safe-area-inset-top, 0px); right: env(safe-area-inset-right, 0px); bottom: env(safe-area-inset-bottom, 0px); left: env(safe-area-inset-left, 0px); background: transparent; z-index: 1; }
       #game canvas {
         image-rendering: pixelated; image-rendering: crisp-edges;
         touch-action: none; display: block; width: 100% !important; height: 100% !important;
+        background: transparent !important;
       }
       /* Instant DOM splash (painted before any JS runs); BootScene drives the bar and removes it. */
       #splash {
         position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center;
-        background: radial-gradient(ellipse at 50% 40%, #1a4d1a 0%, #0f380f 60%, #071c07 100%); color: #9bbc0f;
+        background: radial-gradient(ellipse at 50% 40%, #1a103c 0%, #0a0e1a 60%, #050714 100%); color: #14f195;
         padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
         transition: opacity .35s ease; text-align: center;
       }
       #splash.out { opacity: 0; pointer-events: none; }
-      #splash h1 { margin: 0 0 6px; font: 400 clamp(34px, 9vw, 64px)/1 'Jacquard12', 'Silkscreen', monospace; letter-spacing: 1px; color: #9bbc0f; text-shadow: 0 3px 0 #051208, 0 0 18px rgba(155,188,15,.25); }
-      #splash .sub { font: 400 11px 'Silkscreen', monospace; color: #6b8c0f; letter-spacing: 2px; margin-bottom: 26px; }
-      #splash .bar { width: min(260px, 70vw); height: 14px; background: #051208; border: 2px solid #306230; box-shadow: 3px 3px 0 #0a1e0a; padding: 2px; box-sizing: border-box; }
-      #splash .bar > i { display: block; height: 100%; width: 4%; background: linear-gradient(#c8e030, #9bbc0f 60%, #7fa00f); transition: width .15s linear; }
-      #splash .pct { margin-top: 8px; font: 400 10px 'Silkscreen', monospace; color: #8bac0f; }
-      #splash .tip { margin-top: 22px; max-width: min(380px, 84vw); min-height: 32px; font: 400 13px/1.35 'PixelifySans', monospace; color: #c9a23a; }
+      #splash h1 { margin: 0 0 6px; font: 400 clamp(34px, 9vw, 64px)/1 'Jacquard12', 'Silkscreen', monospace; letter-spacing: 1px; color: #14f195; text-shadow: 0 3px 0 #050714, 0 0 18px rgba(20,241,149,.25); }
+      #splash .sub { font: 400 11px 'Silkscreen', monospace; color: #6b7a99; letter-spacing: 2px; margin-bottom: 26px; }
+      #splash .bar { width: min(260px, 70vw); height: 14px; background: #050714; border: 2px solid #1a103c; box-shadow: 3px 3px 0 #0a0e1a; padding: 2px; box-sizing: border-box; }
+      #splash .bar > i { display: block; height: 100%; width: 4%; background: linear-gradient(#03e1ff, #14f195 60%, #0db87a); transition: width .15s linear; }
+      #splash .pct { margin-top: 8px; font: 400 10px 'Silkscreen', monospace; color: #6b7a99; }
+      #splash .tip { margin-top: 22px; max-width: min(380px, 84vw); min-height: 32px; font: 400 13px/1.35 'PixelifySans', monospace; color: #9945ff; }
       /* Force font preload — invisible spans make browser fetch the files early */
       #font-preload {
         position: absolute; opacity: 0; pointer-events: none;
@@ -90,6 +98,10 @@
     </style>
   </head>
   <body>
+    <!-- Full-screen background trailer video -->
+    <div id="bg-video-container">
+      <video id="bg-video" autoplay loop muted playsinline poster="/trailer/wayfarer_login_bg.gif" src="/trailer/wayfarer_login_bg.mp4" style="opacity:0.75;"></video>
+    </div>
     <!-- Force browser to fetch pixel fonts before Phaser starts -->
     <div id="font-preload" aria-hidden="true">
       <span style="font-family:'Jacquard12'">W</span>
