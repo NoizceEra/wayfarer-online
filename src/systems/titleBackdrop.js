@@ -77,7 +77,7 @@ export function addTitleBackdrop(scene, root, menu) {
   const vw = pw / zoom, vh = ph / zoom;
   const cx = mw / 2, cy = mh / 2;
   const s = Math.max(vw / W, vh / H);
-  root.add(scene.add.image(cx, cy, key).setScale(s).setDepth(-50));
+  root.add(scene.add.image(cx, cy, key).setScale(s).setAlpha(0.28).setDepth(-50));
   // fireflies
   const n = 22;
   for (let i = 0; i < n; i++) {

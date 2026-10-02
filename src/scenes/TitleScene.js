@@ -38,6 +38,25 @@ export class TitleScene extends Phaser.Scene {
     this.busy = false;
     this.toastMsg = '';
 
+    // The login screen uses the existing gameplay compilation as a muted, looping
+    // trailer. It stays behind the readable pixel UI and starts without requiring
+    // an extra click (muted autoplay is allowed on desktop and mobile).
+    this.trailerVideo = this.add.video(0, 0);
+    this.trailerVideo.setMute(true).setLoop(true).setDepth(-100).setOrigin(0.5);
+    this.trailerVideo.loadURL('/trailer/wayfarer_trailer.mp4', false, true);
+    // Phaser's audio mute flag and the browser's autoplay policy are separate;
+    // explicitly mute the underlying element so mobile browsers allow playback.
+    const trailerElement = this.trailerVideo.video;
+    trailerElement.muted = true;
+    trailerElement.defaultMuted = true;
+    trailerElement.playsInline = true;
+    trailerElement.loop = true;
+    trailerElement.addEventListener('loadeddata', () => {
+      trailerElement.play().catch(() => {});
+      this.trailerVideo.play(true);
+    }, { once: true });
+    this.events.once('shutdown', () => this.trailerVideo?.destroy());
+
     this.build();
 
     // Native listener: Phaser's generic 'keydown' fired several times per press
@@ -64,9 +83,13 @@ export class TitleScene extends Phaser.Scene {
     this.root = this.add.container(0, 0);
     this.items = {};
     const add = (o) => { this.root.add(o); return o; };
-    addTitleBackdrop(this, this.root, this.menuSize);
-
     const { W, H } = this.menuSize; // logical centered layout (camera zoom handled by setupMenuCamera)
+    addTitleBackdrop(this, this.root, this.menuSize);
+    if (this.trailerVideo) {
+      this.trailerVideo.setPosition(W / 2, H / 2).setDisplaySize(W, H);
+      // Keep the title readable while letting the gameplay motion show through.
+      this.trailerVideo.setAlpha(0.92);
+    }
     const small = W < 560;
     const short = H < 560;
     const bw = Math.min(300, W - 40);
@@ -154,6 +177,12 @@ export class TitleScene extends Phaser.Scene {
     add(this.add.text(W / 2, H - 16, 'Up/Down choose  Enter select  WASD move  J atk  E talk', {
       fontSize: '9px', color: '#4a7a2a', fontFamily: '"Silkscreen"', align: 'center', wordWrap: { width: W - 24 },
     }).setOrigin(0.5));
+    const social = add(this.add.text(W - 12, H - 16, '𝕏  @NoizceEra', {
+      fontSize: '9px', color: '#e8f5a0', fontFamily: '"Silkscreen"',
+    }).setOrigin(1, 0.5).setInteractive({ useHandCursor: true }));
+    social.on('pointerover', () => social.setColor('#ffffff'));
+    social.on('pointerout', () => social.setColor('#e8f5a0'));
+    social.on('pointerup', () => window.open('https://x.com/NoizceEra', '_blank', 'noopener,noreferrer'));
 
     this.refresh();
   }
