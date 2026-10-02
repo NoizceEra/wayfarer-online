@@ -6,7 +6,7 @@ Ragnarok Online / Heartwood Online fans: login → character creator → explore
 
 ## Play now
 
-- **Game:** https://wayfarer-online.vercel.app (works solo offline; co-op via relay below)
+- **Game:** https://wayfareronline.fun (works solo offline; co-op via relay below)
 - **Co-op relay:** `wss://wayfarer-relay-production.up.railway.app` (baked into the deploy via `VITE_SERVER_URL`)
 
 ## Quick start
@@ -42,7 +42,7 @@ lost progress or NaN/undefined HUD text.
 npx vite build
 node tools/smoke.mjs                                  # serves dist/ on :5499 by itself
 node tools/smoke.mjs --canvas --size 390x844 --touch  # canvas renderer, phone viewport
-node tools/smoke.mjs --url https://wayfarer-online.vercel.app/
+node tools/smoke.mjs --url https://wayfareronline.fun/
 ```
 
 Needs Playwright with Chromium (`npm i -D playwright && npx playwright install chromium`, or a

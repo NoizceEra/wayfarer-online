@@ -13,7 +13,7 @@ audience: cozy RPG fans, retro Game Boy lovers, RO / Heartwood-style players
 
 ## Intent
 
-Market promo (sell it) for Wayfarer Online — https://wayfarer-online.vercel.app. 30s YouTube 16:9 sizzle built from ACTUAL gameplay screenshots: Title/Login → Character Creator (jobs, modular look, Game Boy palette) → open world combat/explore → quests/bounties/journal → market stalls + vendors → gathering/crafting → earn gold/loot loop. Angle: quest, loot, earn, craft. Tone: cozy, nostalgic, adventurous.
+Market promo (sell it) for Wayfarer Online — https://wayfareronline.fun. 30s YouTube 16:9 sizzle built from ACTUAL gameplay screenshots: Title/Login → Character Creator (jobs, modular look, Game Boy palette) → open world combat/explore → quests/bounties/journal → market stalls + vendors → gathering/crafting → earn gold/loot loop. Angle: quest, loot, earn, craft. Tone: cozy, nostalgic, adventurous.
 
 ## Assets
 

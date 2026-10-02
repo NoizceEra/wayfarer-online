@@ -6,9 +6,9 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 
-const ROOT = 'D:/ai-studio/wayfarer-online';
-const OUT = 'D:/ai-studio/wayfarer-online/videos/wayfarer-promo/capture/gameplay';
-const URL = process.env.GAME_URL || 'https://wayfarer-online.vercel.app/';
+const ROOT = 'D:/ai-studio/wf-chain';
+const OUT = 'D:/ai-studio/wf-chain/videos/wayfarer-promo/capture/gameplay';
+const URL = process.env.GAME_URL || 'https://wayfareronline.fun/';
 const VW = 1920, VH = 1080;
 
 function loadPlaywright() {
