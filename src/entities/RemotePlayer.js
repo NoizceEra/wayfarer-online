@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { ModularPlayer } from './ModularPlayer.js';
 import { defaultHero } from '../data/customization.js';
 import { SnapBuffer } from '../net/interp.js';
+import { social } from '../systems/social/index.js';
 
 // Puppet for other players in the room.
 // The avatar is a physics-free ModularPlayer, so a remote hero wears exactly
@@ -48,7 +49,15 @@ export class RemotePlayer extends Phaser.GameObjects.Container {
     if (a === this.area) return;
     this.area = a; this.buf.clear(); this.placed = false;
   }
-  setDisconnected(dc) { this.dc = !!dc; this.label.setText(dc ? `${this.rname} (lag)` : this.rname); }
+  setDisconnected(dc) { this.dc = !!dc; this.refreshPlate(); }
+  refreshPlate() {
+    if (!social?.plateFor) { this.label.setText(this.dc ? `${this.rname} (lag)` : this.rname); return; }
+    const p = social.plateFor(this.rname, this.rname, { lag: this.dc });
+    this.label.setText(p.text);
+    this.label.setColor(p.color);
+    const bg = { party: '#0b2a10cc', friend: '#2a1020cc', guild: '#2a2210cc', other: '#00000088' }[p.rel];
+    this.label.setBackgroundColor(bg);
+  }
 
   // legacy direct set (old 'input' messages)
   remoteSet(x, y, facing, hp) {

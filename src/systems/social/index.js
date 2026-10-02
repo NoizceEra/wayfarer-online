@@ -3,6 +3,7 @@ import { net } from '../../net/NetworkManager.js';
 import { SocialStore } from './store.js';
 import { EMOTES, emoteById } from './emotes.js';
 import { installSocialNet } from '../../net/socialNet.js';
+import { JOBS } from '../../data/jobs.js';
 
 // Social layer (chat channels, whispers, party, emotes, friends/ignore,
 // roster, guild stub). Pure state + rules; no Phaser here. The UI
@@ -145,14 +146,17 @@ class Social {
     if (this.guild && p?.guild && p.guild === this.guild.tag) return 'guild';
     return 'other';
   }
-  plateFor(id, fallbackName) {
+  plateFor(id, fallbackName, opts = {}) {
     const p = this.roster.get(id);
     const name = p?.name || fallbackName || '???';
     const rel = this.relation(id);
     const color = { party: '#7dff9a', friend: '#ff9ad5', guild: '#ffd84a', other: '#ffffff' }[rel];
     const tag = p?.guild ? `<${p.guild}> ` : '';
-    const lv = p?.level ? ` Lv${p.level}` : '';
-    return { text: `${tag}${name}${lv}`, color, rel };
+    const lv = p?.level ? `Lv${p.level}` : '';
+    const jobName = p?.job ? (JOBS[p.job]?.name || cap(p.job)) : '';
+    const lag = opts.lag ? ' (lag)' : '';
+    const parts = [tag ? tag.trim() : null, name + lag, lv, jobName].filter(Boolean);
+    return { text: parts.join(' · '), color, rel };
   }
 
   // ── chat lines ──

@@ -86,9 +86,11 @@ export function installSocialWorld(scene) {
   const refreshPlates = () => {
     scene.sync?.remotes?.forEach((r, id) => {
       if (!r.label?.active) return;
-      const p = social.plateFor(id, r.rname);
+      const p = social.plateFor(id, r.rname, { lag: r.dc });
       if (r.label.text !== p.text) r.label.setText(p.text);
       if (r.label.style.color !== p.color) r.label.setColor(p.color);
+      const bg = { party: '#0b2a10cc', friend: '#2a1020cc', guild: '#2a2210cc', other: '#00000088' }[p.rel];
+      if (r.label.style.backgroundColor !== bg) r.label.setBackgroundColor(bg);
     });
   };
 
