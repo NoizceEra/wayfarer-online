@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js" integrity="sha384-sG0Hv1tP1lZCk9KQmrIbY/XNwi+OY84GQqhMscbnsoBFqAz8KNCil1kvfL3Hbbk2" crossorigin="anonymous"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #000;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0F380F;
+      }
+      .scene {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div data-hf-id="hf-j7pz" id="root" data-composition-id="main" data-start="0" data-duration="30" data-width="1920" data-height="1080">
+      <div data-hf-id="hf-c0nz" id="el-01-hook" class="scene" data-composition-id="01-hook" data-composition-src="compositions/frames/01-hook.html" data-start="0" data-duration="6.5" data-track-index="0"></div>
+
+      <div data-hf-id="hf-80zb" id="el-02-creator" class="scene" data-composition-id="02-creator" data-composition-src="compositions/frames/02-creator.html" data-start="6" data-duration="6" data-track-index="1"></div>
+
+      <div data-hf-id="hf-3xd5" id="el-03-combat" class="scene" data-composition-id="03-combat" data-composition-src="compositions/frames/03-combat.html" data-start="12" data-duration="6.5" data-track-index="0"></div>
+
+      <div data-hf-id="hf-vm0m" id="el-04-earn" class="scene" data-composition-id="04-earn" data-composition-src="compositions/frames/04-earn.html" data-start="18" data-duration="6" data-track-index="1"></div>
+
+      <div data-hf-id="hf-dd93" id="el-05-cta" class="scene" data-composition-id="05-cta" data-composition-src="compositions/frames/05-cta.html" data-start="24" data-duration="6" data-track-index="0"></div>
+
+      <audio data-hf-id="hf-jkjs" id="bgm" src="assets/audio/bgm.ogg" data-start="0" data-duration="30" data-track-index="11" data-volume="0.55"></audio>
+      <audio data-hf-id="hf-8pjl" id="sfx-swing" src="assets/audio/sfx_swing_1.ogg" data-start="13.2" data-duration="1" data-track-index="20" data-volume="0.9"></audio>
+      <audio data-hf-id="hf-vum8" id="sfx-hit" src="assets/audio/sfx_hit_1.ogg" data-start="14.6" data-duration="1" data-track-index="20" data-volume="0.9"></audio>
+      <audio data-hf-id="hf-xpgg" id="sfx-coin" src="assets/audio/sfx_coin.ogg" data-start="21.4" data-duration="1" data-track-index="20" data-volume="0.9"></audio>
+      <audio data-hf-id="hf-gh0y" id="sfx-accept" src="assets/audio/sfx_ui_accept.ogg" data-start="25.6" data-duration="1" data-track-index="20" data-volume="0.8"></audio>
+
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["main"] = gsap.timeline({ paused: true });
+      // ── frame transitions (injected by transitions.mjs) ──
+      (function () { var tl = window.__timelines["main"];
+        tl.to("#el-01-hook", { opacity: 0, duration: 0.5, ease: "power2.inOut" }, 6);
+        tl.fromTo("#el-02-creator", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "power2.inOut" }, 6);
+        tl.to("#el-03-combat", { opacity: 0, duration: 0.5, ease: "power2.inOut" }, 18);
+        tl.fromTo("#el-04-earn", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "power2.inOut" }, 18);
+        tl.to({}, { duration: 30 }, 0); // full-span anchor — main.duration() == composition total (Studio master duration)
+      })();
+    </script>
+  </body>
+</html>

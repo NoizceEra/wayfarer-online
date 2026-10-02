@@ -1,0 +1,49 @@
+<template>
+<style>
+@font-face { font-family: 'Jacquard12'; src: url('assets/fonts/Jacquard12-Regular.ttf') format('truetype'); font-weight: 400; }
+@font-face { font-family: 'Silkscreen'; src: url('assets/fonts/Silkscreen-Regular.ttf') format('truetype'); font-weight: 400; }
+@font-face { font-family: 'Silkscreen'; src: url('assets/fonts/Silkscreen-Bold.ttf') format('truetype'); font-weight: 700; }
+#root { position: absolute; inset: 0; overflow: hidden; background: #0F380F; font-family: 'Silkscreen', monospace; }
+#f4-bg { position: absolute; inset: 0; }
+#f4-bg img { width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; display: block; }
+#f4-shade { position: absolute; inset: 0; background: rgba(5,18,8,0.55); }
+#f4-copy { position: absolute; top: 100px; left: 0; width: 100%; text-align: center; }
+#f4-eyebrow { display: inline-block; font-size: 26px; letter-spacing: 6px; color: #0F380F; background: #E8C33A; border: 3px solid #051208; padding: 12px 28px; box-shadow: 6px 6px 0 #051208; }
+#f4-title { margin: 30px 0 0; font-family: 'Jacquard12', monospace; font-size: 140px; line-height: 0.95; color: #FFFFFF; text-shadow: 0 6px 0 #051208; }
+#f4-cards { position: absolute; top: 560px; left: 0; width: 100%; text-align: center; }
+.f4-card { display: inline-block; vertical-align: top; width: 430px; margin: 0 20px; background: #051208; border: 4px solid #E7E7E5; box-shadow: 8px 8px 0 #051208; }
+.f4-card img { width: 422px; height: 170px; object-fit: cover; object-position: center 30%; display: block; }
+.f4-card p { margin: 0; padding: 14px 10px; font-size: 24px; letter-spacing: 2px; color: #E7E7E5; }
+.f4-card b { color: #9BBC0F; }
+#f4-gold { position: absolute; top: 420px; left: 0; width: 100%; text-align: center; }
+#f4-coin { display: inline-block; font-family: 'Jacquard12', monospace; font-size: 92px; color: #0F380F; background: #E8C33A; border: 4px solid #051208; padding: 6px 40px; box-shadow: 8px 8px 0 #051208; }
+</style>
+<div data-hf-id="hf-cz7o" id="root" data-composition-id="04-earn" data-width="1920" data-height="1080" data-duration="6">
+<section data-hf-id="hf-7fdo" id="f4-bg" class="clip" data-start="0" data-duration="6" data-track-index="0">
+<div data-hf-id="hf-zytv" id="f4-kb"><img data-hf-id="hf-k7fg" id="f4-shot" src="assets/gameplay/08-gear.png" alt="Gear panel"></div>
+<div data-hf-id="hf-zfez" id="f4-shade"></div>
+</section>
+<section data-hf-id="hf-ijdr" id="f4-fg" class="clip" data-start="0" data-duration="6" data-track-index="1">
+<div data-hf-id="hf-95zz" id="f4-copy"><span data-hf-id="hf-5zvc" id="f4-eyebrow">QUESTS → GOLD → GEAR</span><h1 data-hf-id="hf-et3c" id="f4-title">EARN GOLD. GEAR UP.</h1></div>
+<div data-hf-id="hf-dfqq" id="f4-gold"><span data-hf-id="hf-fhdv" id="f4-coin">G 20</span></div>
+<div data-hf-id="hf-h2ed" id="f4-cards">
+<div data-hf-id="hf-sek5" class="f4-card" id="f4-card1"><img data-hf-id="hf-zoqy" src="assets/gameplay/07-quests.png" alt="Quest journal"><p data-hf-id="hf-8sv3"><b data-hf-id="hf-ho5q">BOUNTIES</b> + JOURNAL L</p></div>
+<div data-hf-id="hf-wco6" class="f4-card" id="f4-card2"><img data-hf-id="hf-im76" src="assets/gameplay/09-craft.png" alt="Crafting"><p data-hf-id="hf-ssmv"><b data-hf-id="hf-j5fl">CRAFT</b> CAMPFIRE/ANVIL</p></div>
+</div>
+</section>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+<script>
+const f4tl = gsap.timeline({ paused: true });
+const f4gold = { v: 20 };
+function f4paint() { document.querySelector('#f4-coin').textContent = 'G ' + Math.round(f4gold.v).toLocaleString('en-US'); }
+f4tl.fromTo('#f4-kb', { scale: 1.06 }, { scale: 1, duration: 6, ease: 'power1.inOut' }, 0);
+f4tl.fromTo('#f4-eyebrow', { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: 'power3.out' }, 0.1);
+f4tl.fromTo('#f4-title', { y: 60, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: 'power3.out' }, 0.4);
+f4tl.fromTo('#f4-card1', { x: -80, opacity: 0 }, { x: 0, opacity: 1, duration: 0.55, ease: 'power3.out' }, 1.5);
+f4tl.fromTo('#f4-card2', { x: 80, opacity: 0 }, { x: 0, opacity: 1, duration: 0.55, ease: 'power3.out' }, 2.1);
+f4tl.fromTo('#f4-coin', { scale: 0.6, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.5, ease: 'back.out(2)' }, 3.0);
+f4tl.to(f4gold, { v: 1050, duration: 1.6, ease: 'power2.out', onUpdate: f4paint }, 3.5);
+window.__timelines['04-earn'] = f4tl;
+</script>
+</template>

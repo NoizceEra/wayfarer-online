@@ -1,0 +1,19 @@
+# The rendered video is large and fully reproducible from the composition + the real
+# captures below, so it is not versioned. Everything needed to re-render IS committed:
+# compositions/, assets/gameplay/, capture/gameplay/, scripts/, BRIEF.md, frame.md.
+renders/
+node_modules/
+
+# capture/ is a working mirror of assets/gameplay/ written by the capture scripts; the
+# canonical copies the composition actually references live in assets/.
+capture/
+
+# tool caches — regenerated on preview/render, never worth versioning
+.thumbnails/
+.waveform-cache/
+.hyperframes/preview/
+.media/
+
+# local npm/npx noise
+.npm/
+package-lock.json

@@ -1,0 +1,44 @@
+<template>
+<style>
+@font-face { font-family: 'Jacquard12'; src: url('assets/fonts/Jacquard12-Regular.ttf') format('truetype'); font-weight: 400; }
+@font-face { font-family: 'Silkscreen'; src: url('assets/fonts/Silkscreen-Regular.ttf') format('truetype'); font-weight: 400; }
+@font-face { font-family: 'Silkscreen'; src: url('assets/fonts/Silkscreen-Bold.ttf') format('truetype'); font-weight: 700; }
+#root { position: absolute; inset: 0; overflow: hidden; background: #0F380F; font-family: 'Silkscreen', monospace; }
+#f3-bg { position: absolute; inset: 0; }
+#f3-bg img { width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; display: block; }
+#f3-shade { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(5,18,8,0.8) 0%, rgba(5,18,8,0.25) 38%, rgba(5,18,8,0.15) 60%, rgba(5,18,8,0.6) 100%); }
+#f3-strikes { position: absolute; top: 100px; left: 0; width: 100%; text-align: center; }
+.f3-strike { display: inline-block; margin: 0 18px; font-family: 'Jacquard12', monospace; font-size: 110px; line-height: 1; color: #FFFFFF; text-shadow: 0 5px 0 #051208; }
+#f3-dot { color: #9BBC0F; }
+#f3-inset { position: absolute; left: 1230px; top: 470px; width: 500px; }
+#f3-inset img { width: 500px; height: 281px; object-fit: cover; display: block; border: 4px solid #9BBC0F; box-shadow: 8px 8px 0 #051208; }
+#f3-inset figcaption { margin-top: 12px; font-size: 22px; letter-spacing: 4px; color: #0F380F; background: #9BBC0F; display: inline-block; padding: 8px 16px; }
+#f3-strip { position: absolute; top: 700px; left: 180px; width: 760px; }
+#f3-strip img { width: 760px; height: 160px; object-fit: cover; object-position: center 60%; display: block; border: 4px solid #E7E7E5; box-shadow: 8px 8px 0 #051208; }
+#f3-tag { position: absolute; top: 640px; left: 180px; font-size: 24px; letter-spacing: 4px; color: #E7E7E5; background: #051208; padding: 8px 16px; }
+</style>
+<div data-hf-id="hf-u4ic" id="root" data-composition-id="03-combat" data-width="1920" data-height="1080" data-duration="6.5">
+<section data-hf-id="hf-bl6w" id="f3-bg" class="clip" data-start="0" data-duration="6.5" data-track-index="0">
+<div data-hf-id="hf-vlla" id="f3-kb"><img data-hf-id="hf-0r6t" id="f3-shot" src="assets/gameplay/05-combat.png" alt="Mosswood combat"></div>
+<div data-hf-id="hf-0g90" id="f3-shade"></div>
+</section>
+<section data-hf-id="hf-avl7" id="f3-fg" class="clip" data-start="0" data-duration="6.5" data-track-index="1">
+<div data-hf-id="hf-9wbi" id="f3-strikes"><span data-hf-id="hf-r09d" class="f3-strike" id="f3-s1">QUEST</span><span data-hf-id="hf-0tfz" class="f3-strike" id="f3-dot">·</span><span data-hf-id="hf-m8b8" class="f3-strike" id="f3-s2">FIGHT</span><span data-hf-id="hf-x79k" class="f3-strike">·</span><span data-hf-id="hf-y05h" class="f3-strike" id="f3-s3">LOOT</span></div>
+<figure data-hf-id="hf-bih3" id="f3-inset"><img data-hf-id="hf-uxc0" id="f3-insetimg" src="assets/gameplay/06-skill.png" alt="Skill cast"><figcaption data-hf-id="hf-xmrf">SKILLS 1-4 + DODGE</figcaption></figure>
+<div data-hf-id="hf-ogkx" id="f3-tag">MOSSWOOD WILDS</div>
+<div data-hf-id="hf-5t71" id="f3-strip"><img data-hf-id="hf-04cn" id="f3-stripimg" src="assets/gameplay/04-explore.png" alt="Exploring"></div>
+</section>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+<script>
+const f3tl = gsap.timeline({ paused: true });
+f3tl.fromTo('#f3-kb', { scale: 1 }, { scale: 1.12, duration: 6, ease: 'power1.inOut' }, 0);
+f3tl.fromTo('#f3-s1', { y: 60, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: 'power3.out' }, 0.1);
+f3tl.fromTo('#f3-s2', { y: 60, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: 'power3.out' }, 0.7);
+f3tl.fromTo('#f3-s3', { y: 60, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: 'power3.out' }, 1.3);
+f3tl.fromTo('#f3-inset', { x: 90, opacity: 0 }, { x: 0, opacity: 1, duration: 0.6, ease: 'power3.out' }, 1.8);
+f3tl.fromTo('#f3-tag', { opacity: 0 }, { opacity: 1, duration: 0.4 }, 2.6);
+f3tl.fromTo('#f3-strip', { y: 50, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: 'power3.out' }, 2.8);
+window.__timelines['03-combat'] = f3tl;
+</script>
+</template>

@@ -1,0 +1,11 @@
+{
+  "provider": "auto",
+  "speed": 1,
+  "lines": [],
+  "bgm": {
+    "mode": "retrieve",
+    "query": "cozy chiptune adventure",
+    "blob": "Quest, loot, earn gold, craft — cozy Game Boy open world, solo offline or together online",
+    "arc": "Hook → Creator → Combat → Earn loop → CTA"
+  }
+}

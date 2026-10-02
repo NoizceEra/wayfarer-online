@@ -1,0 +1,38 @@
+<template>
+<style>
+@font-face { font-family: 'Jacquard12'; src: url('assets/fonts/Jacquard12-Regular.ttf') format('truetype'); font-weight: 400; }
+@font-face { font-family: 'Silkscreen'; src: url('assets/fonts/Silkscreen-Regular.ttf') format('truetype'); font-weight: 400; }
+@font-face { font-family: 'Silkscreen'; src: url('assets/fonts/Silkscreen-Bold.ttf') format('truetype'); font-weight: 700; }
+#root { position: absolute; inset: 0; overflow: hidden; background: #0F380F; font-family: 'Silkscreen', monospace; }
+#f5-bg { position: absolute; inset: 0; }
+#f5-bg img { width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; display: block; }
+#f5-shade { position: absolute; inset: 0; background: rgba(5,18,8,0.62); }
+#f5-copy { position: absolute; top: 150px; left: 0; width: 100%; text-align: center; }
+#f5-eyebrow { display: inline-block; font-size: 26px; letter-spacing: 6px; color: #9BBC0F; background: #051208; border: 3px solid #9BBC0F; padding: 12px 28px; box-shadow: 6px 6px 0 #051208; }
+#f5-title { margin: 32px 0 0; font-family: 'Jacquard12', monospace; font-size: 170px; line-height: 0.95; color: #FFFFFF; text-shadow: 0 6px 0 #051208, 0 0 34px rgba(155,188,15,0.4); }
+#f5-url { position: absolute; top: 620px; left: 0; width: 100%; text-align: center; }
+#f5-url span { display: inline-block; font-size: 40px; font-weight: 700; letter-spacing: 2px; color: #0F380F; background: #9BBC0F; border: 4px solid #051208; padding: 20px 54px; box-shadow: 9px 9px 0 #051208; }
+#f5-controls { position: absolute; top: 770px; left: 0; width: 100%; text-align: center; font-size: 26px; letter-spacing: 3px; color: #E7E7E5; }
+</style>
+<div data-hf-id="hf-ht4b" id="root" data-composition-id="05-cta" data-width="1920" data-height="1080" data-duration="6">
+<section data-hf-id="hf-63vn" id="f5-bg" class="clip" data-start="0" data-duration="6" data-track-index="0">
+<div data-hf-id="hf-9vdc" id="f5-kb"><img data-hf-id="hf-h6yh" id="f5-shot" src="assets/gameplay/10-world-hud.png" alt="World HUD"></div>
+<div data-hf-id="hf-ycpq" id="f5-shade"></div>
+</section>
+<section data-hf-id="hf-gv8g" id="f5-fg" class="clip" data-start="0" data-duration="6" data-track-index="1">
+<div data-hf-id="hf-kiro" id="f5-copy"><span data-hf-id="hf-pxts" id="f5-eyebrow">THE ROAD IS OPEN</span><h1 data-hf-id="hf-redn" id="f5-title">PLAY NOW</h1></div>
+<div data-hf-id="hf-11jm" id="f5-url"><span data-hf-id="hf-te3g" id="f5-pill">WAYFARER-ONLINE.VERCEL.APP</span></div>
+<div data-hf-id="hf-edif" id="f5-controls">WASD MOVE · E TALK · J ATTACK · Q POTION</div>
+</section>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+<script>
+const f5tl = gsap.timeline({ paused: true });
+f5tl.fromTo('#f5-kb', { scale: 1.1 }, { scale: 1.02, duration: 6, ease: 'power1.inOut' }, 0);
+f5tl.fromTo('#f5-eyebrow', { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: 'power3.out' }, 0.1);
+f5tl.fromTo('#f5-title', { y: 70, opacity: 0 }, { y: 0, opacity: 1, duration: 0.7, ease: 'power3.out' }, 0.4);
+f5tl.fromTo('#f5-pill', { y: 44, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: 'power3.out' }, 1.5);
+f5tl.fromTo('#f5-controls', { opacity: 0 }, { opacity: 1, duration: 0.6, ease: 'power2.out' }, 2.4);
+window.__timelines['05-cta'] = f5tl;
+</script>
+</template>
