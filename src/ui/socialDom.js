@@ -90,7 +90,7 @@ function injectCss() {
 #wf-social .wf-wheel .wf-em .k{position:absolute;left:2px;top:1px;color:#ffd84a;font-size:8px}
 #wf-social .wf-wheel .wf-center{position:absolute;left:-40px;top:-10px;width:80px;text-align:center;color:#ffe8a0;font-size:9px;pointer-events:none}
 #wf-social .wf-shade{pointer-events:auto;position:absolute;inset:0;background:rgba(0,0,0,.25)}
-@media (max-width:560px){#wf-social .wf-chat{width:min(300px,calc(100vw - 16px));bottom:170px}#wf-social .wf-log{height:70px}#wf-social .wf-list{width:min(300px,calc(100vw - 16px))}}
+@media (max-width:560px){#wf-social .wf-chat{width:min(340px,calc(100vw - 16px));bottom:190px}#wf-social .wf-log{height:90px;font-size:11px}#wf-social .wf-tabs button{font-size:10px;padding:3px 6px}#wf-social .wf-inrow input{font-size:12px;padding:4px 6px}#wf-social .wf-list{width:min(340px,calc(100vw - 16px))}}
 `;
   document.head.appendChild(style);
 }

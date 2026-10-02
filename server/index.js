@@ -5,7 +5,7 @@ import { Server, matchMaker } from 'colyseus';
 import { WebSocketTransport } from '@colyseus/ws-transport';
 import { CFG } from './config.js';
 import { log } from './log.js';
-import { initStore, flushAll, storeStats, stopStore } from './store.js';
+import { initStore, flushAll, storeStats, stopStore, initSqlite } from './store.js';
 import { WayfarerRoom, LIVE_ROOMS, STATS, setSocialModule, addRoomModule } from './WayfarerRoom.js';
 
 // Wayfarer relay: public persistent world shards + private co-op rooms,
@@ -27,6 +27,7 @@ try { economy = await import('./economy.js'); } catch (e) {
   if (e?.code !== 'ERR_MODULE_NOT_FOUND') log.error('economy.js failed to load', { err: e.message });
 }
 
+await initSqlite();
 initStore();
 if (economy) {
   try { economy.init?.(); addRoomModule(economy); log.info('economy module loaded'); } catch (e) { log.error('economy init failed', { err: e.message }); economy = null; }

@@ -46,17 +46,19 @@ function readDoc(key) {
 
 export function loadChar(token, name) {
   if (!TOKEN_RE.test(String(token || ''))) return null;
+  if (_db) { const { loadCharDb } = require('./db.js'); return loadCharDb(token, name); }
   const doc = readDoc(deviceKey(token));
   return doc.chars[String(name || '').toLowerCase()] || null;
 }
 
 export function saveChar(token, name, rec) {
   if (!TOKEN_RE.test(String(token || ''))) return false;
+  if (_db) { const { saveCharDb } = require('./db.js'); return saveCharDb(token, name, rec); }
   const key = deviceKey(token);
   const doc = readDoc(key);
   const names = Object.keys(doc.chars);
   const lower = String(name || '').toLowerCase();
-  if (!doc.chars[lower] && names.length >= 12) return false; // per-device character cap
+  if (!doc.chars[lower] && names.length >= 12) return false;
   doc.chars[lower] = rec;
   dirty.add(key);
   return true;
@@ -89,6 +91,17 @@ export function storeStats() {
   return { devices: files, cached: cache.size, dirty: dirty.size };
 }
 
+
+// --- SQLite bridge (opt-in via USE_SQLITE env) ---
+let _db = null;
+export async function initSqlite() {
+  if (!process.env.USE_SQLITE) return false;
+  const { initDb } = await import('./db.js');
+  initDb();
+  _db = true;
+  log.info('sqlite store active');
+  return true;
+}
 export function stopStore() { if (timer) clearInterval(timer); timer = null; }
 
 // ─── hooks for server/econStore.js (multi-file atomic commits) ──────────

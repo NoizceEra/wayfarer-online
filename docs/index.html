@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Wayfarer Online - a cozy Game Boy-style open-world action RPG. Solo or together." />
+  <meta property="og:title" content="Wayfarer Online" />
+  <meta property="og:description" content="A cozy Game Boy-style open-world action RPG. Solo or together." />
+  <title>Wayfarer Online - Docs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Pixelify+Sans:wght@400;600&display=swap" rel="stylesheet" />
+  <style>
+    :root { --bg:#0f380f; --bg2:#1a4d1a; --fg:#9bbc0f; --fg2:#8bac0f; --accent:#c9a23a; --panel:#071c07; --border:#306230; }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    html,body { background:var(--bg); color:var(--fg); font-family:'Pixelify Sans',sans-serif; line-height:1.6; }
+    body { min-height:100vh; }
+    header { background:radial-gradient(ellipse at 50% 40%,var(--bg2) 0%,var(--bg) 60%,var(--panel) 100%); padding:60px 20px 40px; text-align:center; border-bottom:2px solid var(--border); }
+    header h1 { font-family:'Silkscreen',monospace; font-size:clamp(32px,6vw,64px); color:var(--fg); text-shadow:0 3px 0 var(--panel),0 0 18px rgba(155,188,15,.25); letter-spacing:2px; }
+    header p { font-size:18px; color:var(--fg2); margin-top:8px; }
+    header .cta { margin-top:24px; display:inline-flex; gap:12px; flex-wrap:wrap; justify-content:center; }
+    .btn { font-family:'Silkscreen',monospace; font-size:13px; color:var(--panel); background:var(--fg); border:2px solid var(--border); padding:10px 22px; text-decoration:none; box-shadow:3px 3px 0 var(--panel); transition:transform .1s; }
+    .btn:hover { transform:translate(-1px,-1px); background:#b4cc22; }
+    .btn.secondary { background:transparent; color:var(--fg); }
+    .btn.secondary:hover { background:rgba(155,188,15,.1); }
+    nav { display:flex; justify-content:center; gap:24px; padding:14px; background:var(--panel); border-bottom:1px solid var(--border); flex-wrap:wrap; }
+    nav a { color:var(--fg2); text-decoration:none; font-family:'Silkscreen',monospace; font-size:11px; }
+    nav a:hover { color:var(--fg); text-decoration:underline; }
+    main { max-width:860px; margin:0 auto; padding:40px 20px; }
+    section { margin-bottom:48px; }
+    h2 { font-family:'Silkscreen',monospace; font-size:22px; color:var(--accent); margin-bottom:14px; border-bottom:1px solid var(--border); padding-bottom:6px; }
+    h3 { font-family:'Silkscreen',monospace; font-size:15px; color:var(--fg); margin:18px 0 8px; }
+    p,li { font-size:15px; color:#b8d48a; }
+    ul { padding-left:22px; margin:8px 0; }
+    li { margin:4px 0; }
+    code { background:var(--panel); padding:2px 6px; border-radius:3px; font-family:'Silkscreen',monospace; font-size:11px; color:var(--fg); border:1px solid var(--border); }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:16px; margin-top:16px; }
+    .card { background:var(--panel); border:1px solid var(--border); padding:16px; }
+    .card h4 { font-family:'Silkscreen',monospace; font-size:12px; color:var(--accent); margin-bottom:6px; }
+    .card p { font-size:13px; color:#8bac0f; }
+    footer { text-align:center; padding:30px 20px; border-top:1px solid var(--border); color:#4a7a2a; font-size:12px; font-family:'Silkscreen',monospace; }
+    footer a { color:var(--fg2); }
+    .social { display:flex; justify-content:center; gap:16px; margin-top:12px; }
+    .social a { color:var(--fg); font-family:'Silkscreen',monospace; font-size:11px; text-decoration:none; }
+    .social a:hover { color:#fff; }
+    @media (max-width:560px) { header h1 { font-size:28px; } .grid { grid-template-columns:1fr; } main { padding:24px 14px; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>WAYFARER ONLINE</h1>
+    <p>A cozy Game Boy-style open-world action RPG - solo or together</p>
+    <div class="cta">
+      <a class="btn" href="https://wayfareronline.fun" target="_blank" rel="noopener">Play Now</a>
+      <a class="btn secondary" href="https://github.com/NoizceEra/wayfarer-online" target="_blank" rel="noopener">GitHub</a>
+      <a class="btn secondary" href="https://x.com/NoizceEra" target="_blank" rel="noopener">X @NoizceEra</a>
+    </div>
+  </header>
+  <nav>
+    <a href="#about">About</a>
+    <a href="#features">Features</a>
+    <a href="#controls">Controls</a>
+    <a href="#coop">Co-op</a>
+    <a href="#economy">Economy</a>
+    <a href="#roadmap">Roadmap</a>
+    <a href="#tech">Tech</a>
+  </nav>
+  <main>
+    <section id="about">
+      <h2>About</h2>
+      <p>Wayfarer Online is a pixel-art action RPG inspired by the Game Boy aesthetic. Explore Thistle Town and the surrounding wilds, slay monsters, collect loot, craft gear, and team up with friends in real-time co-op.</p>
+      <p>The game runs entirely in your browser - no downloads, no installs. Works on desktop and mobile.</p>
+    </section>
+    <section id="features">
+      <h2>Features</h2>
+      <div class="grid">
+        <div class="card"><h4>[+] Open World</h4><p>Explore meadows, woods, ruins, and towns. Seamless overworld with no loading screens.</p></div>
+        <div class="card"><h4>[+] Action Combat</h4><p>Real-time slashes, abilities, and dodging. Skill-based, not turn-based.</p></div>
+        <div class="card"><h4>[+] Deep Gear</h4><p>Loot, equip, dye, and upgrade helmets, blades, charms, and more.</p></div>
+        <div class="card"><h4>[+] Co-op Multiplayer</h4><p>Host private rooms with codes, or join the persistent public world.</p></div>
+        <div class="card"><h4>[+] Player Economy</h4><p>Trade directly, use the market board, send mail, or join a guild.</p></div>
+        <div class="card"><h4>[+] Character Creator</h4><p>Pick a class, customize your palette, and forge your hero.</p></div>
+      </div>
+    </section>
+    <section id="controls">
+      <h2>Controls</h2>
+      <ul>
+        <li><code>WASD</code> / Arrow keys - Move</li>
+        <li><code>J</code> / <code>Space</code> - Attack</li>
+        <li><code>E</code> - Interact / Talk</li>
+        <li><code>1-4</code> - Abilities</li>
+        <li><code>Q</code> - Potion</li>
+        <li><code>B</code> - Inventory / Equip</li>
+        <li><code>L</code> - Quest Log</li>
+        <li><code>U</code> - Crafting</li>
+        <li><code>Enter</code> - Chat</li>
+        <li><code>Esc</code> - Pause / Close panels</li>
+        <li><code>M</code> - Toggle minimap size</li>
+        <li><code>V</code> - Mailbox</li>
+      </ul>
+      <p>On mobile: virtual joystick (bottom-left), action buttons (bottom-right), tap the hotbar for skills.</p>
+    </section>
+    <section id="coop">
+      <h2>Co-op</h2>
+      <p>From the title screen, choose <strong>Play Online</strong> to join the public persistent world, or <strong>Host Co-op</strong> to create a private room with a shareable code.</p>
+      <p>Party members share enemy aggro, loot drops are instanced per player, and experience is pooled. Up to 8 players per private room.</p>
+    </section>
+    <section id="economy">
+      <h2>Economy</h2>
+      <p>Wayfarer has a full player-driven economy:</p>
+      <ul>
+        <li><strong>Direct Trade</strong> - Right-click a player and request a trade. Both sides lock their offer, then confirm.</li>
+        <li><strong>Market Board</strong> - List items for sale at notice boards in towns. Buy from other players 24/7.</li>
+        <li><strong>Mail</strong> - Send items and gold to offline players.</li>
+        <li><strong>Guild Bank</strong> - Deposit and withdraw gold for your guild.</li>
+      </ul>
+    </section>
+    <section id="roadmap">
+      <h2>Roadmap</h2>
+      <ul>
+        <li>[x] Open world + combat</li>
+        <li>[x] Character creator + classes</li>
+        <li>[x] Co-op multiplayer</li>
+        <li>[x] Player economy (trade / market / mail / guilds)</li>
+        <li>[ ] Wallet connect + on-chain settlements</li>
+        <li>[ ] Mining &amp; resource gathering</li>
+        <li>[ ] Seasonal events &amp; bestiary</li>
+        <li>[ ] Mobile app (PWA)</li>
+      </ul>
+    </section>
+    <section id="tech">
+      <h2>Tech Stack</h2>
+      <ul>
+        <li><strong>Client:</strong> Phaser 3 + Vite - compiles to a static SPA</li>
+        <li><strong>Server:</strong> Colyseus (Node.js) - real-time game relay</li>
+        <li><strong>Store:</strong> SQLite (WAL mode) - character persistence</li>
+        <li><strong>Deploy:</strong> Vercel (client) + Railway (server)</li>
+      </ul>
+    </section>
+  </main>
+  <footer>
+    <p>Wayfarer Online - Built by <a href="https://x.com/NoizceEra" target="_blank" rel="noopener">@NoizceEra</a></p>
+    <div class="social">
+      <a href="https://x.com/NoizceEra" target="_blank" rel="noopener">X / Twitter</a>
+      <a href="https://github.com/NoizceEra/wayfarer-online" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://wayfareronline.fun" target="_blank" rel="noopener">Play</a>
+    </div>
+  </footer>
+</body>
+</html>

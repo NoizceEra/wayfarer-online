@@ -20,6 +20,7 @@ import { input } from '../core/input.js';
 import { settings, uiZoomFor } from '../core/settings.js';
 import { PauseMenu } from '../ui/PauseMenu.js';
 import { HelpOverlay } from '../ui/HelpOverlay.js';
+import { WalletPanel } from '../ui/WalletPanel.js';
 import { fullscreenSupported, isFullscreen, toggleFullscreen } from '../core/mobile.js';
 
 // HUD: HP/MP/XP bars, hotbar with cooldown sweep (clickable), minimap,
@@ -298,6 +299,7 @@ export class UIScene extends Phaser.Scene {
     // Esc closes the topmost panel first (see core/input.js closers); only then pauses.
     this.offs.push(
       input.addCloser({ id: 'help', priority: 900, isOpen: () => this.help.isOpen, close: () => this.help.close() }),
+      input.addCloser({ id: 'wallet', priority: 880, isOpen: () => this.walletPanel?.isOpen, close: () => this.walletPanel?.close() }),
       input.addCloser({ id: 'pause-sub', priority: 850, isOpen: () => this.menu.isOpen && this.menu.page !== 'main', close: () => this.menu.goto('main') }),
       input.addCloser({ id: 'shop', priority: 450, isOpen: () => !!this.shop?.isOpen, close: () => this.shop.close() }),
       input.addCloser({ id: 'equip', priority: 400, isOpen: () => !!this.equip?.isOpen, close: () => this.equip.toggle(false) }),
@@ -334,7 +336,7 @@ export class UIScene extends Phaser.Scene {
       this.offs.forEach((off) => { try { off(); } catch { /* ignore */ } });
       this.offs = [];
       this.resizeTimer?.remove(false);
-      this.equip?.destroy(); this.shop?.destroy(); this.journal?.destroy(); this.craftPanel?.destroy(); this.fishing?.destroy(); this.toast?.destroy();
+      this.equip?.destroy(); this.shop?.destroy(); this.journal?.destroy(); this.craftPanel?.destroy(); this.fishing?.destroy(); this.toast?.destroy(); this.walletPanel?.destroy();
     });
 
     // ── HUD menu + help buttons (touch has no Esc/H) ─────────────────────────
@@ -361,6 +363,7 @@ export class UIScene extends Phaser.Scene {
 
     this.buildTouch();
     this.buildPanels();
+    this.buildWalletRewards();
     // Social UI: chat window, party frames, players/friends, emote wheel (src/ui/socialUI.js)
     this.social = installSocialUI(this, { name: this.pname, job: this.job.id, framesY: this.small ? 136 : 134 });
     this.economy = installEconomyUI(this); // trade / market board / mail / guild tab (src/ui/economyUI.js)
@@ -431,6 +434,36 @@ export class UIScene extends Phaser.Scene {
 
   togglePause() { this.menu.toggle(); } // back-compat
 
+
+  // ─── Wallet + Rewards HUD icons (top-right) ───
+  buildWalletRewards() {
+    const { w: W } = this.view();
+    const iconSize = 22;
+    const gap = 6;
+    const baseX = W - 12;
+    const startY = 72; // below quest panel header area
+
+    // Wallet icon
+    this.walletBtn = this.add.text(baseX, startY, '🔐', {
+      fontFamily: '"Silkscreen", monospace', fontSize: '16px', color: '#ffd84a',
+      backgroundColor: '#2a1d10dd', padding: { x: 4, y: 2 },
+    }).setOrigin(1, 0).setDepth(110).setInteractive({ useHandCursor: true });
+    this.walletBtn.on('pointerover', () => this.walletBtn.setBackgroundColor('#3a2d20ee'));
+    this.walletBtn.on('pointerout', () => this.walletBtn.setBackgroundColor('#2a1d10dd'));
+    this.walletBtn.on('pointerdown', () => { audio.play('ui', 0.6); this.walletPanel.toggle(); });
+
+    // Rewards icon
+    this.rewardsBtn = this.add.text(baseX - iconSize - gap, startY, '🏆', {
+      fontFamily: '"Silkscreen", monospace', fontSize: '16px', color: '#7dff9a',
+      backgroundColor: '#2a1d10dd', padding: { x: 4, y: 2 },
+    }).setOrigin(1, 0).setDepth(110).setInteractive({ useHandCursor: true });
+    this.rewardsBtn.on('pointerover', () => this.rewardsBtn.setBackgroundColor('#3a2d20ee'));
+    this.rewardsBtn.on('pointerout', () => this.rewardsBtn.setBackgroundColor('#2a1d10dd'));
+    this.rewardsBtn.on('pointerdown', () => { audio.play('ui', 0.6); bus.emit(Events.SYSTEM, 'Rewards panel coming soon — check your payouts!'); });
+
+    this.walletPanel = new WalletPanel(this);
+  }
+
   buildTouch() {
     const { w: W, h: H } = this.view();
     this.touchUI = this.add.container(0, 0).setDepth(150);
@@ -488,6 +521,7 @@ export class UIScene extends Phaser.Scene {
     const qx = W - 50 - 2 * R - 18, colX = qx - 2 * R - 14;
     mkBtn(colX, mmTop - 3 * R - 12, 'LOG', () => bus.emit(Events.JOURNAL, { open: 'toggle' }));
     mkBtn(colX, mmTop - R + 2, 'CFT', () => bus.emit(Events.CRAFT, { open: 'toggle' }));
+    mkBtn(colX - 2 * R - 14, mmTop - 3 * R - 12, 'CHT', () => this.openChat());
   }
 
   // ── equipment + shop panels (src/ui/EquipPanel.js, ShopPanel.js) ───────────

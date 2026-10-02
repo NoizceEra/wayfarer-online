@@ -2,7 +2,7 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "installCommand": "npm install",
-  "rewrites": [{ "source": "/((?!assets/|icons/|trailer/|sw\\.js|manifest\\.webmanifest|favicon\\.svg).*)", "destination": "/index.html" }],
+  "rewrites": [{ "source": "/((?!assets/|icons/|trailer/|sw\\.js|manifest\\.webmanifest|favicon\\.svg|docs/.*).*)", "destination": "/index.html" }],
   "headers": [
     {
       "source": "/assets/:file(.*\\.(?:js|css))",

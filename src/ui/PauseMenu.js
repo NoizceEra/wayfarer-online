@@ -103,7 +103,6 @@ export class PauseMenu {
       ['Settings', () => this.goto('settings')],
       ['Controls / rebind keys', () => this.goto('controls')],
       [`Help & hotkeys [${input.labelFor('help')}]`, () => h.help()],
-      ['Cycle Game Boy palette', () => h.cyclePalette()],
       [h.leaveLabel(), () => h.leave()],
     ];
     rows.forEach(([label, cb], i) => this.button(0, -ph / 2 + 58 + i * 34, 220, 26, label, cb, { size: 10 }));
