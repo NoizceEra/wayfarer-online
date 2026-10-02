@@ -35,10 +35,10 @@ const game = new Phaser.Game({
   resolution: dpr,
   disableContextMenu: true,
   fps: { target: 60, smoothStep: true },
-  render: { antialias: false, roundPixels: true },
+  render: { antialias: false, roundPixels: true, transparent: true },
   physics: { default: 'arcade', arcade: { gravity: { y: 0 }, debug: false, fps: 60 } },
   scene: [BootScene, TitleScene, CreatorScene], // world/ui/character/overlay are lazy (scenes/lazy.js)
-  backgroundColor: '#0f380f',
+  backgroundColor: 0x00000000,
   // RESIZE: canvas always fills the window; scenes pick integer zooms (core/display.js)
   scale: { mode: Phaser.Scale.RESIZE, width: window.innerWidth, height: window.innerHeight, autoCenter: Phaser.Scale.NO_CENTER },
 });

@@ -32,7 +32,7 @@ export class TitleScene extends Phaser.Scene {
   create() {
     audio.attach(this);
     audio.musicFor('title');
-    this.cameras.main.setBackgroundColor(SOL.bg);
+    // Canvas is transparent; HTML5 video behind it shows through
     const { W, H } = this.menuSize = setupMenuCamera(this, { minW: 360, minH: 420, maxW: 640, maxH: 560, data: this.sys.settings.data });
 
     const prof = loadProfile() || { name: '' };
@@ -43,25 +43,6 @@ export class TitleScene extends Phaser.Scene {
     this.busy = false;
     this.toastMsg = '';
 
-    // Gradient fallback (drawn first, at very back) in case video fails
-    this.gradientBg = this.add.graphics().setDepth(-200);
-    this.drawGradient(W, H);
-
-    // Video background
-    this.trailerVideo = this.add.video(0, 0);
-    this.trailerVideo.setMute(true).setLoop(true).setDepth(-100).setOrigin(0.5);
-    this.trailerVideo.loadURL('/trailer/wayfarer_login_bg.mp4', false, true);
-    const trailerElement = this.trailerVideo.video;
-    trailerElement.muted = true;
-    trailerElement.defaultMuted = true;
-    trailerElement.playsInline = true;
-    trailerElement.loop = true;
-    trailerElement.addEventListener('loadeddata', () => {
-      trailerElement.play().catch(() => {});
-      this.trailerVideo.play(true);
-    }, { once: true });
-    this.events.once('shutdown', () => this.trailerVideo?.destroy());
-
     this.build();
 
     this.domKey = (ev) => { if (!ev.repeat || this.editing) this.onKey(ev); };
@@ -71,22 +52,6 @@ export class TitleScene extends Phaser.Scene {
       if (this.rebuildTimer) this.rebuildTimer.remove(false);
     });
     bus.emit(Events.SYSTEM, 'title');
-  }
-
-  drawGradient(W, H) {
-    // Solana radial gradient fallback
-    const g = this.gradientBg;
-    g.clear();
-    // Dark center glow
-    for (let r = 0; r < Math.max(W, H); r += 4) {
-      const t = r / Math.max(W, H);
-      const a = 0.55 * (1 - t);
-      g.fillStyle(SOL.purpleHex, a);
-      g.fillCircle(W / 2, H / 2, r);
-    }
-    // Outer dark wash
-    g.fillStyle(SOL.bg, 0.92);
-    g.fillRect(0, 0, W, H);
   }
 
   onResize() {
@@ -103,15 +68,6 @@ export class TitleScene extends Phaser.Scene {
     const add = (o) => { this.root.add(o); return o; };
     const { W, H } = this.menuSize;
 
-    if (this.trailerVideo) {
-      this.trailerVideo.setPosition(W / 2, H / 2).setDisplaySize(W, H);
-      this.trailerVideo.setAlpha(0.80);
-    }
-    if (this.gradientBg) {
-      this.gradientBg.clear();
-      this.drawGradient(W, H);
-    }
-
     const small = W < 560;
     const short = H < 560;
     const bw = Math.min(300, W - 40);
@@ -124,9 +80,9 @@ export class TitleScene extends Phaser.Scene {
     const b1Y = Math.round(H * (short ? 0.44 : 0.50));
     const bottom = H - 34;
 
-    // Dark glass panel behind menu
+    // Semi-transparent panel so HTML5 video shows through
     const panelTop = titleY - 34, panelBot = H - 12;
-    add(this.add.rectangle(W / 2, (panelTop + panelBot) / 2, Math.min(W - 16, Math.max(bw + 64, 560)), panelBot - panelTop, SOL.panelBg, 0.72).setStrokeStyle(2, SOL.cyanHex, 0.6));
+    add(this.add.rectangle(W / 2, (panelTop + panelBot) / 2, Math.min(W - 16, Math.max(bw + 64, 560)), panelBot - panelTop, SOL.panelBg, 0.35).setStrokeStyle(2, SOL.cyanHex, 0.6));
 
     const spacing = Math.max(bh + 16, Math.min(Math.round(H * 0.13) + 8, Math.floor((bottom - b1Y - bh / 2) / 2)));
     const capSize = small ? '11px' : '12px';
