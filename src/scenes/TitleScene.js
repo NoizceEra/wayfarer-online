@@ -3,7 +3,6 @@ import { loadProfile, saveProfile, loadHero } from '../core/save.js';
 import { net } from '../net/NetworkManager.js';
 import { bus, Events } from '../core/events.js';
 import { audio } from '../systems/audio.js';
-import { addTitleBackdrop } from '../systems/titleBackdrop.js';
 import { setupMenuCamera } from '../core/display.js';
 
 // Title screen — Solana-inspired teal / purple / dark aesthetic.
@@ -112,8 +111,6 @@ export class TitleScene extends Phaser.Scene {
       this.gradientBg.clear();
       this.drawGradient(W, H);
     }
-
-    addTitleBackdrop(this, this.root, this.menuSize);
 
     const small = W < 560;
     const short = H < 560;
