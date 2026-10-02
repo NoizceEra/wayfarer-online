@@ -6,19 +6,26 @@ import { audio } from '../systems/audio.js';
 import { addTitleBackdrop } from '../systems/titleBackdrop.js';
 import { setupMenuCamera } from '../core/display.js';
 
-// Title screen — pixel-art Game Boy aesthetic.
+// Title screen — Solana-inspired teal / purple / dark aesthetic.
 // Fonts: Jacquard12 (display title), Silkscreen (buttons/labels), PixelifySans (body/hints).
-//
-// Input notes (why clicks used to feel flaky):
-//  * Layout was built once for the launch size and never rebuilt, so after a
-//    window resize the drawn buttons and the canvas no longer agreed. The scene
-//    now rebuilds itself on scale 'resize'.
-//  * Name / room-code entry relied on window.prompt(), which many browsers and
-//    embedded webviews silently suppress (click "does nothing"). Text entry is
-//    now in-canvas and keyboard driven.
-//  * Each button is ONE interactive rectangle (no stacked decorative objects
-//    above it), with hover / pressed / keyboard-focus states.
-const FOCUS_ORDER = ['name', 'play', 'online', 'host', 'join', 'creator'];
+const FOCUS_ORDER = ['name', 'play', 'online'];
+
+// Solana palette
+const SOL = {
+  bg: 0x0A0E1A,
+  bgLight: 0x1A103C,
+  green: '#14F195',
+  greenHex: 0x14F195,
+  purple: '#9945FF',
+  purpleHex: 0x9945FF,
+  cyan: '#03E1FF',
+  cyanHex: 0x03E1FF,
+  magenta: '#DC1FFF',
+  white: '#E1E8F0',
+  muted: '#6B7A99',
+  darkText: '#0A0E1A',
+  panelBg: 0x0A0E1A,
+};
 
 export class TitleScene extends Phaser.Scene {
   constructor() { super('title'); }
@@ -26,26 +33,25 @@ export class TitleScene extends Phaser.Scene {
   create() {
     audio.attach(this);
     audio.musicFor('title');
-    this.cameras.main.setBackgroundColor('#0f380f');
-    // Integer-zoomed, centered logical layout (640x560 max) — see core/display.js
+    this.cameras.main.setBackgroundColor(SOL.bg);
     const { W, H } = this.menuSize = setupMenuCamera(this, { minW: 360, minH: 420, maxW: 640, maxH: 560, data: this.sys.settings.data });
 
     const prof = loadProfile() || { name: '' };
     this.nameValue = (prof.name || 'Pip').slice(0, 14);
     this.codeValue = '';
-    this.focus = 'play';      // keyboard focus item
-    this.editing = null;      // 'name' | 'code' | null (text entry mode)
+    this.focus = 'play';
+    this.editing = null;
     this.busy = false;
     this.toastMsg = '';
 
-    // The login screen uses the existing gameplay compilation as a muted, looping
-    // trailer. It stays behind the readable pixel UI and starts without requiring
-    // an extra click (muted autoplay is allowed on desktop and mobile).
+    // Gradient fallback (drawn first, at very back) in case video fails
+    this.gradientBg = this.add.graphics().setDepth(-200);
+    this.drawGradient(W, H);
+
+    // Video background
     this.trailerVideo = this.add.video(0, 0);
     this.trailerVideo.setMute(true).setLoop(true).setDepth(-100).setOrigin(0.5);
     this.trailerVideo.loadURL('/trailer/wayfarer_login_bg.mp4', false, true);
-    // Phaser's audio mute flag and the browser's autoplay policy are separate;
-    // explicitly mute the underlying element so mobile browsers allow playback.
     const trailerElement = this.trailerVideo.video;
     trailerElement.muted = true;
     trailerElement.defaultMuted = true;
@@ -59,8 +65,6 @@ export class TitleScene extends Phaser.Scene {
 
     this.build();
 
-    // Native listener: Phaser's generic 'keydown' fired several times per press
-    // for us (repeated letters while typing), so text entry uses the DOM event.
     this.domKey = (ev) => { if (!ev.repeat || this.editing) this.onKey(ev); };
     window.addEventListener('keydown', this.domKey);
     this.events.once('shutdown', () => {
@@ -70,8 +74,23 @@ export class TitleScene extends Phaser.Scene {
     bus.emit(Events.SYSTEM, 'title');
   }
 
+  drawGradient(W, H) {
+    // Solana radial gradient fallback
+    const g = this.gradientBg;
+    g.clear();
+    // Dark center glow
+    for (let r = 0; r < Math.max(W, H); r += 4) {
+      const t = r / Math.max(W, H);
+      const a = 0.55 * (1 - t);
+      g.fillStyle(SOL.purpleHex, a);
+      g.fillCircle(W / 2, H / 2, r);
+    }
+    // Outer dark wash
+    g.fillStyle(SOL.bg, 0.92);
+    g.fillRect(0, 0, W, H);
+  }
+
   onResize() {
-    // Debounce: RESIZE mode fires many events while dragging a window edge.
     if (this.rebuildTimer) this.rebuildTimer.remove(false);
     this.rebuildTimer = this.time.delayedCall(60, () => { if (this.scene.isActive()) this.build(); });
   }
@@ -83,13 +102,19 @@ export class TitleScene extends Phaser.Scene {
     this.root = this.add.container(0, 0);
     this.items = {};
     const add = (o) => { this.root.add(o); return o; };
-    const { W, H } = this.menuSize; // logical centered layout (camera zoom handled by setupMenuCamera)
-    addTitleBackdrop(this, this.root, this.menuSize);
+    const { W, H } = this.menuSize;
+
     if (this.trailerVideo) {
       this.trailerVideo.setPosition(W / 2, H / 2).setDisplaySize(W, H);
-      // Keep the title readable while letting the gameplay motion show through.
-      this.trailerVideo.setAlpha(0.55);
+      this.trailerVideo.setAlpha(0.80);
     }
+    if (this.gradientBg) {
+      this.gradientBg.clear();
+      this.drawGradient(W, H);
+    }
+
+    addTitleBackdrop(this, this.root, this.menuSize);
+
     const small = W < 560;
     const short = H < 560;
     const bw = Math.min(300, W - 40);
@@ -100,33 +125,38 @@ export class TitleScene extends Phaser.Scene {
     const labelY = Math.round(H * (short ? 0.255 : 0.30));
     const fieldY = Math.round(H * (short ? 0.325 : 0.38));
     const b1Y = Math.round(H * (short ? 0.44 : 0.50));
-    const bottom = H - 34; // keep clear of help text / toast
-    // dark glass panel behind the menu column so olive text stays readable on the sky
+    const bottom = H - 34;
+
+    // Dark glass panel behind menu
     const panelTop = titleY - 34, panelBot = H - 12;
-    add(this.add.rectangle(W / 2, (panelTop + panelBot) / 2, Math.min(W - 16, Math.max(bw + 64, 560)), panelBot - panelTop, 0x051208, 0.68).setStrokeStyle(2, 0x3e7a2a, 0.9));
-    const spacing = Math.max(bh + 10, Math.min(Math.round(H * 0.115) + 8, Math.floor((bottom - b1Y - bh / 2) / 4)));
+    add(this.add.rectangle(W / 2, (panelTop + panelBot) / 2, Math.min(W - 16, Math.max(bw + 64, 560)), panelBot - panelTop, SOL.panelBg, 0.72).setStrokeStyle(2, SOL.cyanHex, 0.6));
+
+    const spacing = Math.max(bh + 16, Math.min(Math.round(H * 0.13) + 8, Math.floor((bottom - b1Y - bh / 2) / 2)));
     const capSize = small ? '11px' : '12px';
     this.cx = W / 2;
 
+    // ─── Title ───
     add(this.add.text(W / 2, titleY, 'WAYFARER ONLINE', {
-      fontSize: small ? '34px' : short ? '44px' : '56px', color: '#9bbc0f', fontFamily: '"Jacquard12"',
-    }).setOrigin(0.5));
+      fontSize: small ? '34px' : short ? '44px' : '56px', color: SOL.green, fontFamily: '"Jacquard12"',
+    }).setOrigin(0.5).setShadow(0, 2, SOL.cyan, 0.5, false, true));
+
     add(this.add.text(W / 2, subY, 'a cozy open world  ~  solo or together', {
-      fontSize: small ? '10px' : '13px', color: '#8bac0f', fontFamily: '"PixelifySans"',
+      fontSize: small ? '10px' : '13px', color: SOL.cyan, fontFamily: '"PixelifySans"',
     }).setOrigin(0.5));
 
     // ─── Name field ───
     add(this.add.text(W / 2 - bw / 2, labelY, 'WAYFARER NAME', {
-      fontSize: small ? '9px' : '11px', color: '#6b8c0f', fontFamily: '"Silkscreen"',
+      fontSize: small ? '9px' : '11px', color: SOL.muted, fontFamily: '"Silkscreen"',
     }).setOrigin(0, 0.5));
+
     const fieldH = small || short ? 28 : 34;
-    add(this.add.rectangle(W / 2 + 3, fieldY + 3, bw, fieldH, 0x0a1e0a));
-    const fieldBorder = add(this.add.rectangle(W / 2, fieldY, bw, fieldH, 0x9bbc0f).setStrokeStyle(2, 0x306230));
+    add(this.add.rectangle(W / 2 + 3, fieldY + 3, bw, fieldH, 0x05080f));
+    const fieldBorder = add(this.add.rectangle(W / 2, fieldY, bw, fieldH, SOL.greenHex).setStrokeStyle(2, SOL.cyanHex));
     const nameText = add(this.add.text(W / 2 - bw / 2 + 10, fieldY, this.nameValue, {
-      fontSize: small ? '14px' : '18px', color: '#0f380f', fontFamily: '"Silkscreen"',
+      fontSize: small ? '14px' : '18px', color: SOL.darkText, fontFamily: '"Silkscreen"',
     }).setOrigin(0, 0.5));
     const cursor = add(this.add.text(0, fieldY, '_', {
-      fontSize: small ? '14px' : '18px', color: '#0f380f', fontFamily: '"Silkscreen"',
+      fontSize: small ? '14px' : '18px', color: SOL.darkText, fontFamily: '"Silkscreen"',
     }).setOrigin(0, 0.5));
     this.blinkTimer = this.time.addEvent({ delay: 530, loop: true, callback: () => { cursor.setAlpha(cursor.alpha ? 0 : 1); } });
     fieldBorder.setInteractive({ useHandCursor: true });
@@ -135,29 +165,31 @@ export class TitleScene extends Phaser.Scene {
     fieldBorder.on('pointerdown', () => { audio.ui(); this.setFocus('name'); this.editing = 'name'; this.refresh(); });
     this.items.name = { kind: 'field', border: fieldBorder, nameText, cursor, fieldW: bw };
 
-    // ─── Buttons + captions ───
+    // ─── Subtle note under name ───
+    add(this.add.text(W / 2, fieldY + fieldH / 2 + 10, 'Customize appearance in-game', {
+      fontSize: small ? '9px' : '10px', color: SOL.muted, fontFamily: '"PixelifySans"',
+    }).setOrigin(0.5));
+
+    // ─── Buttons (only 2: Continue/New + Play Online) ───
+    const hasHero = !!loadHero();
     const specs = [
-      { id: 'play', label: loadHero() ? '> Continue Journey' : '> New Journey', cap: '' },
+      { id: 'play', label: hasHero ? '> Continue Journey' : '> New Journey', cap: hasHero ? '' : 'Forge your hero, then enter the world' },
       { id: 'online', label: '@ Play Online', cap: 'Public world: meet other wayfarers' },
-      { id: 'host', label: '+ Host Co-op', cap: 'Host: get a room code to share' },
-      { id: 'join', label: '~ Join Co-op', cap: "Join: enter a friend's code" },
-      { id: 'creator', label: '* Character Creator', cap: '' },
     ];
     specs.forEach((s, i) => {
       const y = b1Y + spacing * i;
       const x = W / 2;
-      add(this.add.rectangle(x + 3, y + 3, bw, bh, 0x0a1e0a));
-      const bg = add(this.add.rectangle(x, y, bw, bh, 0x8bac0f).setStrokeStyle(2, 0x306230));
-      add(this.add.rectangle(x, y - Math.round(bh / 2) + 3, bw - 8, 2, 0xb4cc22, 0.55));
+      add(this.add.rectangle(x + 3, y + 3, bw, bh, 0x05080f));
+      const bg = add(this.add.rectangle(x, y, bw, bh, SOL.greenHex).setStrokeStyle(2, SOL.cyanHex));
+      add(this.add.rectangle(x, y - Math.round(bh / 2) + 3, bw - 8, 2, 0xffffff, 0.35));
       const label = add(this.add.text(x, y, s.label, {
-        fontSize: small || short ? '12px' : '16px', color: '#0f380f', fontFamily: '"Silkscreen"', align: 'center',
+        fontSize: small || short ? '12px' : '16px', color: SOL.darkText, fontFamily: '"Silkscreen"', align: 'center',
       }).setOrigin(0.5));
-      const arrowL = add(this.add.text(x - bw / 2 - 8, y, '>', { fontSize: '16px', color: '#9bbc0f', fontFamily: '"Silkscreen"' }).setOrigin(1, 0.5));
-      const arrowR = add(this.add.text(x + bw / 2 + 8, y, '<', { fontSize: '16px', color: '#9bbc0f', fontFamily: '"Silkscreen"' }).setOrigin(0, 0.5));
+      const arrowL = add(this.add.text(x - bw / 2 - 8, y, '>', { fontSize: '16px', color: SOL.green, fontFamily: '"Silkscreen"' }).setOrigin(1, 0.5));
+      const arrowR = add(this.add.text(x + bw / 2 + 8, y, '<', { fontSize: '16px', color: SOL.green, fontFamily: '"Silkscreen"' }).setOrigin(0, 0.5));
       const cap = add(this.add.text(x, y + bh / 2 + 9, s.cap, {
-        fontSize: capSize, color: '#7fa00f', fontFamily: '"PixelifySans"', align: 'center', wordWrap: { width: W - 24 },
+        fontSize: capSize, color: SOL.muted, fontFamily: '"PixelifySans"', align: 'center', wordWrap: { width: W - 24 },
       }).setOrigin(0.5));
-      // the background rectangle itself is the hit area: one object, no overlap games
       bg.setInteractive({ useHandCursor: true });
       bg.on('pointerover', () => { this.hover = s.id; this.refresh(); });
       bg.on('pointerout', () => { if (this.hover === s.id) this.hover = null; this.pressed = null; this.refresh(); });
@@ -171,29 +203,28 @@ export class TitleScene extends Phaser.Scene {
 
     // toast + help
     this.toast = add(this.add.text(W / 2, H - 50, this.toastMsg, {
-      fontSize: small ? '10px' : '12px', color: '#ffdddd', backgroundColor: '#000000aa',
+      fontSize: small ? '10px' : '12px', color: '#ffb3b3', backgroundColor: '#000000aa',
       padding: { x: 8, y: 4 }, fontFamily: '"PixelifySans"', align: 'center', wordWrap: { width: W - 24 },
     }).setOrigin(0.5).setVisible(!!this.toastMsg));
     add(this.add.text(W / 2, H - 16, 'Up/Down choose  Enter select  WASD move  J atk  E talk', {
-      fontSize: '9px', color: '#4a7a2a', fontFamily: '"Silkscreen"', align: 'center', wordWrap: { width: W - 24 },
+      fontSize: '9px', color: SOL.muted, fontFamily: '"Silkscreen"', align: 'center', wordWrap: { width: W - 24 },
     }).setOrigin(0.5));
+
     // ─── Social links row ───
     const socialY = H - 18;
-    // social row container keeps bottom links grouped
-    // Twitter/X — prominent, clickable
     const social = add(this.add.text(W - 12, socialY, '𝕏  @Wayfarer_Online', {
-      fontSize: small ? '10px' : '12px', color: '#e8f5a0', fontFamily: '"Silkscreen"',
+      fontSize: small ? '10px' : '12px', color: SOL.green, fontFamily: '"Silkscreen"',
     }).setOrigin(1, 0.5).setInteractive({ useHandCursor: true }));
     social.on('pointerover', () => social.setColor('#ffffff'));
-    social.on('pointerout', () => social.setColor('#e8f5a0'));
+    social.on('pointerout', () => social.setColor(SOL.green));
     social.on('pointerup', () => window.open('https://x.com/Wayfarer_Online', '_blank', 'noopener,noreferrer'));
-    // Docs link
+
     const docs = add(this.add.text(12, socialY, '📖 Docs', {
-      fontSize: small ? '10px' : '12px', color: '#8bac0f', fontFamily: '"Silkscreen"',
+      fontSize: small ? '10px' : '12px', color: SOL.cyan, fontFamily: '"Silkscreen"',
     }).setOrigin(0, 0.5).setInteractive({ useHandCursor: true }));
-    docs.on('pointerover', () => docs.setColor('#b4cc22'));
-    docs.on('pointerout', () => docs.setColor('#8bac0f'));
-    docs.on('pointerup', () => window.open('https://noizceera.github.io/wayfarer-online', '_blank', 'noopener,noreferrer'));
+    docs.on('pointerover', () => docs.setColor('#ffffff'));
+    docs.on('pointerout', () => docs.setColor(SOL.cyan));
+    docs.on('pointerup', () => window.open('/docs/', '_blank', 'noopener,noreferrer'));
 
     this.refresh();
   }
@@ -208,17 +239,16 @@ export class TitleScene extends Phaser.Scene {
       const hot = this.hover === id;
       if (it.kind === 'btn') {
         const pressed = this.pressed === id;
-        it.bg.setFillStyle(pressed ? 0x6a8c0f : hot || focused ? 0x9bbc0f : 0x8bac0f);
-        it.bg.setStrokeStyle(focused ? 3 : 2, focused ? 0xe8f5a0 : 0x306230);
+        it.bg.setFillStyle(pressed ? 0x0db87a : hot || focused ? SOL.greenHex : 0x0db87a);
+        it.bg.setStrokeStyle(focused ? 3 : 2, focused ? SOL.cyanHex : SOL.purpleHex);
         it.label.setY(it.y + (pressed ? 1 : 0));
         it.arrowL.setVisible(focused); it.arrowR.setVisible(focused);
         let cap = it.baseCap;
-        if (id === 'join' && this.editing === 'code') cap = `CODE: ${this.codeValue}_   Enter = join   Esc = cancel`;
-        it.cap.setText(cap); it.cap.setColor(id === 'join' && this.editing === 'code' ? '#e8f5a0' : (focused || hot) ? '#b4cc22' : '#7fa00f');
+        it.cap.setText(cap); it.cap.setColor((focused || hot) ? SOL.cyan : SOL.muted);
       } else {
         const editing = this.editing === 'name';
-        it.border.setStrokeStyle(focused || editing ? 3 : 2, focused || editing ? 0xe8f5a0 : 0x306230);
-        it.border.setFillStyle(editing || hot ? 0xb4cc22 : 0x9bbc0f);
+        it.border.setStrokeStyle(focused || editing ? 3 : 2, focused || editing ? SOL.cyanHex : SOL.purpleHex);
+        it.border.setFillStyle(editing || hot ? 0x0db87a : SOL.greenHex);
         it.nameText.setText(this.nameValue);
         it.cursor.setX(it.nameText.x + it.nameText.displayWidth + 2);
         it.cursor.setVisible(editing || focused);
@@ -228,7 +258,6 @@ export class TitleScene extends Phaser.Scene {
 
   setFocus(id) {
     if (id !== 'name' && this.editing === 'name') this.editing = null;
-    if (id !== 'join' && this.editing === 'code') this.editing = null;
     this.focus = id;
   }
 
@@ -241,17 +270,15 @@ export class TitleScene extends Phaser.Scene {
   onKey(ev) {
     const k = ev.key;
     if (this.editing) {
-      const field = this.editing; // 'name' | 'code'
-      const cur = field === 'name' ? this.nameValue : this.codeValue;
+      const field = this.editing;
+      const cur = this.nameValue;
       if (k === 'Enter') {
-        if (field === 'name') { this.editing = null; if (!this.nameValue.trim()) this.nameValue = 'Pip'; this.refresh(); }
-        else this.doJoin();
+        this.editing = null; if (!this.nameValue.trim()) this.nameValue = 'Pip'; this.refresh();
       } else if (k === 'Escape') { this.editing = null; this.refresh(); }
-      else if (k === 'Backspace') { this.setField(field, cur.slice(0, -1)); }
+      else if (k === 'Backspace') { this.setField('name', cur.slice(0, -1)); }
       else if (k === 'ArrowUp' || k === 'ArrowDown') { this.editing = null; this.moveFocus(k === 'ArrowUp' ? -1 : 1); }
       else if (k.length === 1 && /[\w \-']/.test(k)) {
-        if (field === 'name' && cur.length < 14) this.setField('name', cur + k);
-        else if (field === 'code' && cur.length < 8 && /[A-Za-z0-9]/.test(k)) this.setField('code', (cur + k).toUpperCase());
+        if (cur.length < 14) this.setField('name', cur + k);
       }
       ev.preventDefault?.();
       return;
@@ -259,11 +286,10 @@ export class TitleScene extends Phaser.Scene {
     if (k === 'ArrowUp' || k === 'w' || k === 'W') this.moveFocus(-1);
     else if (k === 'ArrowDown' || k === 's' || k === 'S') this.moveFocus(1);
     else if (k === 'Enter' || k === ' ') { audio.ui(); this.activate(this.focus); }
-    else if (k === 'c' || k === 'C') this.activate('creator');
   }
 
   setField(field, v) {
-    if (field === 'name') this.nameValue = v; else this.codeValue = v;
+    if (field === 'name') this.nameValue = v;
     this.refresh();
   }
 
@@ -279,14 +305,14 @@ export class TitleScene extends Phaser.Scene {
   activate(id) {
     if (this.busy) return;
     if (id === 'name') { this.editing = 'name'; this.refresh(); return; }
-    if (id === 'play') return this.goCreator('solo');
-    if (id === 'creator') return this.goCreator(net.connected ? (net.isHost ? 'host' : 'guest') : 'solo');
-    if (id === 'host') return this.doHost();
-    if (id === 'online') return this.doOnline();
-    if (id === 'join') {
-      if (this.editing === 'code') return this.doJoin();
-      this.editing = 'code'; this.say(''); this.refresh();
+    if (id === 'play') {
+      const hasHero = !!loadHero();
+      // New Journey always goes through creator first
+      if (!hasHero) return this.goCreator('solo');
+      // Continue Journey skips creator and goes straight to world
+      return this.goWorld('solo');
     }
+    if (id === 'online') return this.doOnline();
   }
 
   goCreator(mode) {
@@ -295,19 +321,11 @@ export class TitleScene extends Phaser.Scene {
     this.scene.start('creator', { name, mode });
   }
 
-  async doHost() {
+  goWorld(mode) {
     const name = this.cleanName();
     saveProfile({ name });
-    this.busy = true; this.say('Creating room...');
-    try {
-      const hero = loadHero() || { name, job: 'wayfarer' };
-      await net.host(name, hero);
-      this.say(`ROOM CODE ${net.code} -- tell your friends!  Starting...`);
-      setTimeout(() => { this.busy = false; this.scene.start('creator', { name, mode: 'host' }); }, 1400);
-    } catch (e) {
-      this.busy = false;
-      this.say(`Host failed: ${e.message} (server up? try Solo)`); audio.error();
-    }
+    // Continue: skip creator, go straight to gameplay
+    this.scene.start('world', { name, mode, hero: loadHero() });
   }
 
   async doOnline() {
@@ -322,23 +340,6 @@ export class TitleScene extends Phaser.Scene {
     } catch (e) {
       this.busy = false;
       this.say(`Online failed: ${e.message} (server up? try Solo)`); audio.error();
-    }
-  }
-
-  async doJoin() {
-    const code = this.codeValue.trim();
-    if (!code) { this.say("Type your friend's room code first."); audio.error(); return; }
-    const name = this.cleanName();
-    saveProfile({ name });
-    this.busy = true; this.say('Joining...');
-    try {
-      const hero = loadHero() || { name, job: 'wayfarer' };
-      await net.join(code, name, hero);
-      this.busy = false; this.editing = null;
-      this.scene.start('creator', { name, mode: 'guest' });
-    } catch (e) {
-      this.busy = false;
-      this.say(`Join failed: ${e.message}`); audio.error();
     }
   }
 }

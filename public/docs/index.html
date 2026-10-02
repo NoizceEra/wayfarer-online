@@ -10,18 +10,18 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Pixelify+Sans:wght@400;600&display=swap" rel="stylesheet" />
   <style>
-    :root { --bg:#0f380f; --bg2:#1a4d1a; --fg:#9bbc0f; --fg2:#8bac0f; --accent:#c9a23a; --panel:#071c07; --border:#306230; }
+    :root { --bg:#0a0a12; --bg2:#12122a; --fg:#14f195; --fg2:#00d4aa; --accent:#9945ff; --panel:#070710; --border:#1e1e3a; }
     * { box-sizing:border-box; margin:0; padding:0; }
     html,body { background:var(--bg); color:var(--fg); font-family:'Pixelify Sans',sans-serif; line-height:1.6; }
     body { min-height:100vh; }
     header { background:radial-gradient(ellipse at 50% 40%,var(--bg2) 0%,var(--bg) 60%,var(--panel) 100%); padding:60px 20px 40px; text-align:center; border-bottom:2px solid var(--border); }
-    header h1 { font-family:'Silkscreen',monospace; font-size:clamp(32px,6vw,64px); color:var(--fg); text-shadow:0 3px 0 var(--panel),0 0 18px rgba(155,188,15,.25); letter-spacing:2px; }
+    header h1 { font-family:'Silkscreen',monospace; font-size:clamp(32px,6vw,64px); color:var(--fg); text-shadow:0 3px 0 var(--panel),0 0 18px rgba(20,241,149,.25); letter-spacing:2px; }
     header p { font-size:18px; color:var(--fg2); margin-top:8px; }
     header .cta { margin-top:24px; display:inline-flex; gap:12px; flex-wrap:wrap; justify-content:center; }
     .btn { font-family:'Silkscreen',monospace; font-size:13px; color:var(--panel); background:var(--fg); border:2px solid var(--border); padding:10px 22px; text-decoration:none; box-shadow:3px 3px 0 var(--panel); transition:transform .1s; }
-    .btn:hover { transform:translate(-1px,-1px); background:#b4cc22; }
+    .btn:hover { transform:translate(-1px,-1px); background:#14f195; }
     .btn.secondary { background:transparent; color:var(--fg); }
-    .btn.secondary:hover { background:rgba(155,188,15,.1); }
+    .btn.secondary:hover { background:rgba(20,241,149,.1); }
     nav { display:flex; justify-content:center; gap:24px; padding:14px; background:var(--panel); border-bottom:1px solid var(--border); flex-wrap:wrap; }
     nav a { color:var(--fg2); text-decoration:none; font-family:'Silkscreen',monospace; font-size:11px; }
     nav a:hover { color:var(--fg); text-decoration:underline; }
@@ -29,19 +29,19 @@
     section { margin-bottom:48px; }
     h2 { font-family:'Silkscreen',monospace; font-size:22px; color:var(--accent); margin-bottom:14px; border-bottom:1px solid var(--border); padding-bottom:6px; }
     h3 { font-family:'Silkscreen',monospace; font-size:15px; color:var(--fg); margin:18px 0 8px; }
-    p,li { font-size:15px; color:#b8d48a; }
+    p,li { font-size:15px; color:#a0e8c8; }
     ul { padding-left:22px; margin:8px 0; }
     li { margin:4px 0; }
     code { background:var(--panel); padding:2px 6px; border-radius:3px; font-family:'Silkscreen',monospace; font-size:11px; color:var(--fg); border:1px solid var(--border); }
     .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:16px; margin-top:16px; }
     .card { background:var(--panel); border:1px solid var(--border); padding:16px; }
     .card h4 { font-family:'Silkscreen',monospace; font-size:12px; color:var(--accent); margin-bottom:6px; }
-    .card p { font-size:13px; color:#8bac0f; }
-    footer { text-align:center; padding:30px 20px; border-top:1px solid var(--border); color:#4a7a2a; font-size:12px; font-family:'Silkscreen',monospace; }
+    .card p { font-size:13px; color:#00d4aa; }
+    footer { text-align:center; padding:30px 20px; border-top:1px solid var(--border); color:#6b4fa3; font-size:12px; font-family:'Silkscreen',monospace; }
     footer a { color:var(--fg2); }
     .social { display:flex; justify-content:center; gap:16px; margin-top:12px; }
     .social a { color:var(--fg); font-family:'Silkscreen',monospace; font-size:11px; text-decoration:none; }
-    .social a:hover { color:#fff; }
+    .social a:hover { color:#14f195; }
     @media (max-width:560px) { header h1 { font-size:28px; } .grid { grid-template-columns:1fr; } main { padding:24px 14px; } }
   </style>
 </head>
