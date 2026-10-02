@@ -181,12 +181,12 @@ export class TitleScene extends Phaser.Scene {
     const socialY = H - 18;
     // social row container keeps bottom links grouped
     // Twitter/X — prominent, clickable
-    const social = add(this.add.text(W - 12, socialY, '𝕏  @NoizceEra', {
+    const social = add(this.add.text(W - 12, socialY, '𝕏  @Wayfarer_Online', {
       fontSize: small ? '10px' : '12px', color: '#e8f5a0', fontFamily: '"Silkscreen"',
     }).setOrigin(1, 0.5).setInteractive({ useHandCursor: true }));
     social.on('pointerover', () => social.setColor('#ffffff'));
     social.on('pointerout', () => social.setColor('#e8f5a0'));
-    social.on('pointerup', () => window.open('https://x.com/NoizceEra', '_blank', 'noopener,noreferrer'));
+    social.on('pointerup', () => window.open('https://x.com/Wayfarer_Online', '_blank', 'noopener,noreferrer'));
     // Docs link
     const docs = add(this.add.text(12, socialY, '📖 Docs', {
       fontSize: small ? '10px' : '12px', color: '#8bac0f', fontFamily: '"Silkscreen"',

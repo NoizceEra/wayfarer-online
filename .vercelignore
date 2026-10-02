@@ -2,3 +2,6 @@ server/
 tools/
 asset-staging/
 *.log
+public/assets/audio/music/
+public/assets/custom/
+videos/
