@@ -179,7 +179,7 @@ class EconNet {
 
   // Send an economy op; `rev` ops quote our current revision.
   send(type, payload = {}, { rev = false, sync = false } = {}) {
-    if (!this.online) { bus.emit(Events.SYSTEM, 'Play Online to use the market, mail and trading.'); return false; }
+    if (!this.online) { bus.emit(Events.SYSTEM, 'The market, mail and trading are server-wide - they work in the public world.'); return false; }
     if (sync) this.syncSave();
     return net.send(type, rev ? { ...payload, rev: this.rev ?? 0 } : payload);
   }

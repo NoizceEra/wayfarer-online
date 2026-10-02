@@ -63,7 +63,7 @@ export const fmtLeft = (ms) => {
   const h = Math.floor(m / 60);
   return h < 48 ? `${h}h ${m % 60}m` : `${Math.floor(h / 24)}d`;
 };
-export const offlineNote = (what) => el('div', 'wf-empty ec-offline', `<b>Play Online to use ${what}.</b><br>Choose <i>Play Online</i> on the title screen:<br>trading, the market board and mail are server-wide.`);
+export const offlineNote = (what) => el('div', 'wf-empty ec-offline', `<b>${what} needs the public world.</b><br>Press <i>Enter Embervale</i> on the title screen:<br>trading, the market board and mail are server-wide.`);
 
 let cssDone = false;
 function injectCss() {

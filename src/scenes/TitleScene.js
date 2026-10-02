@@ -612,7 +612,7 @@ export class TitleScene extends Phaser.Scene {
       onClick: () => this.restoreTravel(this.nav.items.find((i) => i.id === 'travel')?.value || ''),
     });
     makeButton(this, this.root, this.nav, {
-      id: 'recover', x: cx, y: bot - 50, w: Math.min(300, pw - 40), h: 24, label: 'Play Online? Get a recovery code', kind: 'ghost', size: 9,
+      id: 'recover', x: cx, y: bot - 50, w: Math.min(300, pw - 40), h: 24, label: 'Keep this hero online? Get a recovery code', kind: 'ghost', size: 9,
       onClick: () => this.goPage('recover'),
     });
     makeButton(this, this.root, this.nav, {
@@ -719,7 +719,7 @@ export class TitleScene extends Phaser.Scene {
       this.busy = false;
       this.say(!ok ? 'That code could not be applied on this device.'
         : names.length ? `Code accepted — this device now answers to ${names.length} of your hero${names.length === 1 ? '' : 'es'}.`
-          : 'Code accepted. Your heroes will be waiting next time you Play Online.');
+          : 'Code accepted. Your heroes will be waiting next time you enter Embervale.');
       try { ackRecovery(); } catch { /* private mode */ }
       this.goPage('home');
     } catch (e) {

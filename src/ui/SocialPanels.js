@@ -89,7 +89,7 @@ export class SocialPanels {
     if (this.listTab === 'online') {
       const list = social.players();
       this.list.querySelector('.wf-title span').textContent = `ONLINE NOW (${social.online ? list.length : 1})`;
-      if (!social.online) { body.appendChild(el('div', 'wf-empty', `Offline — it is just you, ${escapeHtml(social.me.name)}, for now.<br>Press Play Online (or Host / Join a room) on the title screen to meet people.`)); }
+      if (!social.online) { body.appendChild(el('div', 'wf-empty', `Offline — it is just you, ${escapeHtml(social.me.name)}, for now.<br>Press Enter Embervale (or Host / Join a room) on the title screen to meet people.`)); }
       for (const p of list) {
         const me = p.id === social.id;
         const rel = social.relation(p.id);
@@ -122,7 +122,7 @@ export class SocialPanels {
       // persisted guilds (src/ui/GuildTab.js via the action registry)
       if (!social.act('renderGuildTab', body, this.list.querySelector('.wf-title span'))) body.appendChild(el('div', 'wf-empty', social.online
         ? 'No guild yet.<br>Create one with /gcreate TAG Guild Name, or join with /gjoin TAG.'
-        : 'Guilds live in a shared world.<br>Press Play Online on the title screen, then /gcreate TAG Guild Name.'));
+        : 'Guilds live in a shared world.<br>Press Enter Embervale on the title screen, then /gcreate TAG Guild Name.'));
     } else {
       this.list.querySelector('.wf-title span').textContent = `IGNORED (${st.ignored.length})`;
       if (!st.ignored.length) body.appendChild(el('div', 'wf-empty', 'Nobody ignored. Peace and quiet.'));

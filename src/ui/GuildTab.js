@@ -25,7 +25,7 @@ const RANK_ICON = { leader: '♛', officer: '★', member: '·' };
 export function renderGuildTab(body, titleEl) {
   const g = econ.guild;
   titleEl.textContent = g ? `GUILD <${g.tag}>` : 'GUILD';
-  if (!econ.online) { body.appendChild(el('div', 'wf-empty', 'Play Online to found or join a guild.<br>Guilds, their bank and ranks are saved on the server.')); return; }
+  if (!econ.online) { body.appendChild(el('div', 'wf-empty', 'Guilds are server-wide - enter the public world to found or join one.<br>Their bank and ranks are saved on the server.')); return; }
   const inv = guildInvite();
   if (!g) {
     if (inv) {

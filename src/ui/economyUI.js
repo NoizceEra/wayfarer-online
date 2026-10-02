@@ -98,7 +98,7 @@ function installCommands(mail) {
       case 'gwithdraw': return n > 0 ? econ.send('guild-withdraw', { gold: n }, { rev: true, sync: true }) : say('Usage: /gwithdraw gold');
       case 'ginfo': case 'guildinfo': {
         const g = econ.guild;
-        if (!g) return say(econ.online ? 'You are not in a guild. /gcreate TAG Name' : 'Play Online to use guilds.');
+        if (!g) return say(econ.online ? 'You are not in a guild. /gcreate TAG Name' : 'Guilds are server-wide - they work in the public world.');
         return say(`<${g.tag}> ${g.name} · bank ${g.bank}g · MOTD: ${g.motd || '-'} · ${g.members.map((m) => `${m.name}${m.rank === 'member' ? '' : ` (${m.rank})`}${m.online ? '' : ' [off]'}`).join(', ')}`);
       }
       case 'help': case '?':

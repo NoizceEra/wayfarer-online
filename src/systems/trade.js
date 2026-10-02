@@ -76,7 +76,7 @@ class TradeSystem {
     return null;
   }
   requestTrade(target) {
-    if (!econ.online) { bus.emit(Events.SYSTEM, 'Play Online to trade with other players.'); return false; }
+    if (!econ.online) { bus.emit(Events.SYSTEM, 'Trading is server-wide - it works in the public world.'); return false; }
     if (this.session) { bus.emit(Events.SYSTEM, 'Finish your current trade first.'); return false; }
     const t = this.resolve(target);
     if (!t) { bus.emit(Events.SYSTEM, `No player "${String(target || '').slice(0, 14)}" in this world.`); return false; }

@@ -132,7 +132,7 @@ export class MarksPanel {
       const when = h.t ? new Date(h.t).toLocaleTimeString() : '';
       b.appendChild(el('div', 'mk-hist', `+${h.n}  ${escapeHtml(h.label || h.src)}  <span class="mk-dim">${escapeHtml(when)}</span>`));
     }
-    this.foot.appendChild(el('span', 'mk-dim', st.online ? 'Server is counting.' : 'Solo: accruing on this device, syncs when you Play Online.'));
+    this.foot.appendChild(el('span', 'mk-dim', st.online ? 'Server is counting.' : 'Solo: accruing on this device, syncs once you are online.'));
   }
 
   renderShop(st) {
@@ -199,7 +199,7 @@ export class MarksPanel {
     b.appendChild(opt);
     const board = marks.board;
     if (!board) { b.appendChild(el('div', 'mk-dim', 'Loading…')); marks.send('marks-board', {}); return; }
-    if (board.offline || board.disabled) { b.appendChild(el('div', 'mk-dim', 'Play Online to see the seasonal board. Solo Marks still accrue on this device.')); return; }
+    if (board.offline || board.disabled) { b.appendChild(el('div', 'mk-dim', 'The seasonal board needs the public world. Solo Marks still accrue on this device.')); return; }
     const wrap = el('div', 'mk-board');
     if (!board.rows?.length) wrap.appendChild(el('div', 'mk-dim', 'No opted-in wayfarers yet this season.'));
     for (const r of board.rows || []) {

@@ -8,7 +8,7 @@ const TIPS = [
   'Tip: N opens the world map, L the quest journal, I your bag.',
   'Tip: Potions are on Q. Keep a few in your bag before heading into a dungeon.',
   'Tip: Rest at the inn to heal fully and skip to morning.',
-  'Tip: Play Online to meet other wayfarers, or host a co-op room for friends.',
+  'Tip: Embervale is shared - you are in a world with other wayfarers. Host a room to play with friends.',
   'Tip: Talk to everyone. Townsfolk hand out quests and rumours.',
   'Tip: Low on performance? Open the menu and set Effects quality to Low.',
 ];
