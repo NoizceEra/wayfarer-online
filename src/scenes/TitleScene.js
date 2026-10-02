@@ -107,6 +107,12 @@ export class TitleScene extends Phaser.Scene {
     whenWorldReady().then(() => { if (this.scene.isActive() && this.page === 'home') this.build(); }).catch(() => {});
     this.pollServer();
     this.time.addEvent({ delay: 8000, loop: true, callback: () => this.pollServer() });
+    // The footer re-reads this.probe every frame, but the button only refreshes on the 8s
+    // poll above — so on a cold start the primary button sat on its placeholder for up to
+    // 8 seconds while the footer already said "server up". These early polls close that gap
+    // without making steady-state polling any heavier.
+    this.time.delayedCall(1200, () => this.pollServer());
+    this.time.delayedCall(3000, () => this.pollServer());
     bus.emit(Events.SYSTEM, 'title');
   }
 
@@ -159,7 +165,9 @@ export class TitleScene extends Phaser.Scene {
   // trade for removing the choice at the door.
   enterSub(hero) {
     const p = this.probe;
-    const world = p?.up == null ? 'checking the world…'
+    // Before the first probe answers, say something inviting and always true rather than a
+    // transient "checking…" — this is the very first thing a new player reads.
+    const world = p?.up == null ? 'no sign-up'
       : p.up ? `public world · ${p.players} online`
         : 'offline · solo';
     return hero ? `${hero.name} · Lv ${hero.level} · ${world}` : `one key · ${world}`;
@@ -262,7 +270,7 @@ export class TitleScene extends Phaser.Scene {
       const cy = menuTop + (twoCol ? 8 : 0) + cardH / 2;
       frame(this, this.root, leftX, cy, cardW, cardH, { alpha: 0.78 });
       txt(this, this.root, leftX, cy - cardH / 2 + 16, 'New here?', { size: 11, color: C.gold_s });
-      txt(this, this.root, leftX, cy - 6, 'Hit Play — we pick a friendly name for you.\nNo sign-up, no wallet, nothing to install.', {
+      txt(this, this.root, leftX, cy - 6, 'Hit Enter Embervale — we pick a friendly name for you.\nNo sign-up, no wallet, nothing to install.', {
         size: 10, font: FONT.body, color: C.text, wrap: cardW - 18, lineSpacing: 2,
       });
       txt(this, this.root, leftX, cy + cardH / 2 - 26, 'Your hero lives in this browser.\n“Keep your hero” saves a code to carry them anywhere.', {
