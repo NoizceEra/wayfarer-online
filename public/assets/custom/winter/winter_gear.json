@@ -1,0 +1,102 @@
+{
+  "source": "tools/export_gear_icons.py (ports of src/systems/iconArt.js + heroArt.js ramp) + src/data/gear.js",
+  "style": "16x16 procedural, OUT #1a1024, 4-tone ramp; 32px = NEAREST x2, no new painters",
+  "items": [
+    {
+      "id": "frost_hood",
+      "style": "hood",
+      "colors": {
+        "main": "0x7fb8d6",
+        "trim": "0xf1f3f5"
+      },
+      "files": [
+        "frost_hood_16.png",
+        "frost_hood_32.png"
+      ]
+    },
+    {
+      "id": "knit_cap",
+      "style": "cap",
+      "colors": {
+        "main": "0xa93226",
+        "trim": "0xf1f3f5"
+      },
+      "files": [
+        "knit_cap_16.png",
+        "knit_cap_32.png"
+      ]
+    },
+    {
+      "id": "winter_coat",
+      "style": "robe",
+      "colors": {
+        "main": "0x1f5f5b",
+        "trim": "0xf1f3f5"
+      },
+      "files": [
+        "winter_coat_16.png",
+        "winter_coat_32.png"
+      ]
+    },
+    {
+      "id": "frost_cloak",
+      "style": "cape_trim",
+      "colors": {
+        "main": "0x2e86c1",
+        "trim": "0xaed6f1"
+      },
+      "files": [
+        "frost_cloak_16.png",
+        "frost_cloak_32.png"
+      ]
+    },
+    {
+      "id": "icicle_dagger",
+      "style": "dagger",
+      "colors": {
+        "main": "0xaed6f1",
+        "trim": "0xffffff"
+      },
+      "files": [
+        "icicle_dagger_16.png",
+        "icicle_dagger_32.png"
+      ]
+    },
+    {
+      "id": "snow_orb",
+      "style": "orb",
+      "colors": {
+        "main": "0xaed6f1",
+        "trim": "0xffffff"
+      },
+      "files": [
+        "snow_orb_16.png",
+        "snow_orb_32.png"
+      ]
+    },
+    {
+      "id": "fur_boots",
+      "style": "boots",
+      "colors": {
+        "main": "0x7a4a22",
+        "trim": "0xf1f3f5"
+      },
+      "files": [
+        "fur_boots_16.png",
+        "fur_boots_32.png"
+      ]
+    },
+    {
+      "id": "snowflake_charm",
+      "style": "feather",
+      "colors": {
+        "main": "0xd6eaf8",
+        "trim": "0x7fb8d6"
+      },
+      "files": [
+        "snowflake_charm_16.png",
+        "snowflake_charm_32.png"
+      ]
+    }
+  ]
+}

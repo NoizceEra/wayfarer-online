@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wayfarer Online — Bestiary Highlight Promo Video</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800;900&family=Press+Start+2P&family=Silkscreen:wght@400;700&display=swap');
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #030708;
+      color: #ffffff;
+      font-family: 'Outfit', sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    #stage {
+      position: relative;
+      width: 1920px;
+      height: 1080px;
+      background: #050d10;
+      border: 12px solid #0e2926;
+      overflow: hidden;
+      box-shadow: 0 0 120px rgba(0, 240, 180, 0.3), 0 0 90px rgba(0, 0, 0, 0.95);
+      transform-origin: center center;
+    }
+
+    /* Scanlines & Vignette */
+    .scanlines {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(rgba(10, 20, 18, 0) 50%, rgba(2, 12, 10, 0.45) 50%);
+      background-size: 100% 4px;
+      pointer-events: none;
+      z-index: 100;
+      opacity: 0.55;
+    }
+
+    .vignette {
+      position: absolute;
+      inset: 0;
+      box-shadow: inset 0 0 220px rgba(2, 8, 10, 0.95);
+      pointer-events: none;
+      z-index: 99;
+    }
+
+    #flash-overlay {
+      position: absolute;
+      inset: 0;
+      background: #ffffff;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 95;
+    }
+
+    #cyan-flash {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 240, 210, 0.45);
+      opacity: 0;
+      pointer-events: none;
+      z-index: 94;
+    }
+
+    /* Floating particles background canvas */
+    #particles-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    /* Scene containers */
+    .scene {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      opacity: 0;
+      visibility: hidden;
+    }
+
+    /* Background video styling */
+    .bg-video {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      filter: contrast(1.15) brightness(0.85) saturate(1.2);
+      transform-origin: center center;
+    }
+
+    .video-dimmer {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at center, rgba(5, 20, 22, 0.45) 0%, rgba(2, 10, 12, 0.88) 100%);
+      z-index: 2;
+    }
+
+    /* Header badge styling */
+    .zone-badge {
+      position: absolute;
+      top: 60px;
+      left: 70px;
+      background: linear-gradient(135deg, #00f0b4 0%, #00a896 100%);
+      color: #021412;
+      padding: 14px 32px;
+      font-size: 22px;
+      font-weight: 900;
+      letter-spacing: 2px;
+      border-radius: 50px;
+      box-shadow: 0 0 35px rgba(0, 240, 180, 0.7), 0 6px 20px rgba(0,0,0,0.5);
+      z-index: 10;
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      border: 2px solid #a0ffe6;
+    }
+
+    .boss-badge {
+      background: linear-gradient(135deg, #ff3366 0%, #cc0033 100%);
+      color: #ffffff;
+      border: 2px solid #ff99bb;
+      box-shadow: 0 0 35px rgba(255, 51, 102, 0.8), 0 6px 20px rgba(0,0,0,0.6);
+    }
+
+    /* Scene 1: Arcade Intro Title */
+    #scene1 {
+      background: radial-gradient(circle at center, #0a2e2b 0%, #020a09 100%);
+    }
+
+    .intro-decor {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      opacity: 0.35;
+      background-image: radial-gradient(#00f0b4 1px, transparent 1px);
+      background-size: 36px 36px;
+    }
+
+    .intro-box {
+      z-index: 10;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 24px;
+    }
+
+    .arcade-tag {
+      font-family: 'Press Start 2P', monospace;
+      color: #00ffe0;
+      font-size: 20px;
+      text-shadow: 0 0 20px rgba(0, 255, 224, 0.8);
+      letter-spacing: 2px;
+      background: rgba(4, 25, 26, 0.88);
+      padding: 12px 30px;
+      border: 3px solid #00ffe0;
+      border-radius: 8px;
+      box-shadow: 0 0 25px rgba(0, 255, 224, 0.4);
+    }
+
+    .intro-title {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 50px;
+      color: #ffffff;
+      line-height: 1.35;
+      max-width: 1600px;
+      text-shadow: 0 8px 0 #005040, 0 12px 25px rgba(0, 0, 0, 0.9), 0 0 45px rgba(0, 240, 180, 0.7);
+      text-transform: uppercase;
+    }
+
+    .intro-title span {
+      color: #00f0b4;
+      text-shadow: 0 8px 0 #004535, 0 0 35px rgba(0, 240, 180, 0.9);
+    }
+
+    .intro-subtitle {
+      font-size: 30px;
+      font-weight: 800;
+      color: #a0ffe6;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      text-shadow: 0 0 20px rgba(160, 255, 230, 0.6);
+    }
+
+    .intro-bestiary-preview {
+      display: flex;
+      align-items: center;
+      gap: 30px;
+      margin-top: 15px;
+      background: rgba(4, 25, 26, 0.88);
+      border: 3px solid #00f0b4;
+      padding: 16px 40px;
+      border-radius: 20px;
+      box-shadow: 0 0 40px rgba(0, 240, 180, 0.4);
+    }
+
+    .intro-bestiary-preview img {
+      height: 90px;
+      object-fit: contain;
+      filter: drop-shadow(0 0 15px #00f0b4);
+    }
+
+    .intro-bestiary-preview span {
+      font-size: 28px;
+      font-weight: 900;
+      color: #ffffff;
+      letter-spacing: 2px;
+    }
+
+    /* Scene Cards & Displays */
+    .card-container {
+      position: absolute;
+      bottom: 70px;
+      left: 70px;
+      right: 70px;
+      z-index: 10;
+      display: flex;
+      gap: 30px;
+      justify-content: space-between;
+    }
+
+    .info-card {
+      background: rgba(4, 18, 22, 0.92);
+      backdrop-filter: blur(12px);
+      border: 3px solid #00f0b4;
+      border-radius: 20px;
+      padding: 28px 36px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), inset 0 0 30px rgba(0, 240, 180, 0.15);
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .info-card.boss-theme {
+      border-color: #ff3366;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), inset 0 0 30px rgba(255, 51, 102, 0.2);
+    }
+
+    .card-title-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid rgba(0, 240, 180, 0.3);
+      padding-bottom: 10px;
+    }
+
+    .boss-theme .card-title-row {
+      border-bottom-color: rgba(255, 51, 102, 0.4);
+    }
+
+    .monster-name {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 24px;
+      color: #00ffe0;
+      text-shadow: 0 0 12px rgba(0, 255, 224, 0.6);
+    }
+
+    .boss-theme .monster-name {
+      color: #ff4d79;
+      text-shadow: 0 0 12px rgba(255, 77, 121, 0.7);
+    }
+
+    .level-tag {
+      font-size: 20px;
+      font-weight: 800;
+      background: #00f0b4;
+      color: #021412;
+      padding: 4px 14px;
+      border-radius: 12px;
+      text-transform: uppercase;
+    }
+
+    .boss-theme .level-tag {
+      background: #ff3366;
+      color: #ffffff;
+    }
+
+    .stats-row {
+      display: flex;
+      gap: 24px;
+      font-size: 22px;
+      font-weight: 700;
+      color: #e0fbf4;
+    }
+
+    .stat-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .stat-val {
+      color: #00ffe0;
+      font-weight: 900;
+    }
+
+    .boss-theme .stat-val {
+      color: #ff4d79;
+    }
+
+    .loot-box {
+      background: rgba(2, 10, 12, 0.75);
+      border: 2px dashed rgba(0, 240, 180, 0.4);
+      border-radius: 12px;
+      padding: 12px 18px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .boss-theme .loot-box {
+      border-color: rgba(255, 51, 102, 0.5);
+    }
+
+    .loot-label {
+      font-size: 18px;
+      font-weight: 800;
+      color: #a0ffe6;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .loot-items {
+      font-size: 20px;
+      font-weight: 800;
+      color: #ffcc00;
+      text-shadow: 0 0 10px rgba(255, 204, 0, 0.6);
+    }
+
+    /* Feature overlay banners */
+    .action-overlay-badge {
+      position: absolute;
+      top: 180px;
+      right: 70px;
+      background: rgba(4, 25, 26, 0.92);
+      border: 3px solid #00f0b4;
+      border-radius: 16px;
+      padding: 18px 30px;
+      z-index: 15;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      text-align: right;
+    }
+
+    .action-title {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 18px;
+      color: #ffcc00;
+    }
+
+    .action-desc {
+      font-size: 22px;
+      font-weight: 800;
+      color: #ffffff;
+    }
+
+    /* Scene 5: Closing CTA */
+    #scene5 {
+      background: radial-gradient(circle at center, #0c332e 0%, #020807 100%);
+    }
+
+    .cta-box {
+      z-index: 10;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 32px;
+    }
+
+    .cta-badge {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 22px;
+      color: #00ffe0;
+      background: rgba(2, 16, 18, 0.9);
+      border: 3px solid #00f0b4;
+      padding: 14px 36px;
+      border-radius: 50px;
+      box-shadow: 0 0 35px rgba(0, 240, 180, 0.6);
+    }
+
+    .cta-main {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 52px;
+      color: #ffffff;
+      line-height: 1.3;
+      max-width: 1600px;
+      text-shadow: 0 8px 0 #005040, 0 0 50px rgba(0, 240, 180, 0.8);
+      text-transform: uppercase;
+    }
+
+    .cta-url {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 40px;
+      color: #ffcc00;
+      background: linear-gradient(135deg, #103830 0%, #041a16 100%);
+      border: 4px solid #ffcc00;
+      padding: 24px 60px;
+      border-radius: 20px;
+      box-shadow: 0 0 50px rgba(255, 204, 0, 0.6), 0 10px 30px rgba(0,0,0,0.8);
+      letter-spacing: 2px;
+      text-shadow: 0 0 20px rgba(255, 204, 0, 0.8);
+    }
+  </style>
+</head>
+<body>
+  <div id="stage">
+    <!-- Ambient overlays -->
+    <div class="scanlines"></div>
+    <div class="vignette"></div>
+    <div id="flash-overlay"></div>
+    <div id="cyan-flash"></div>
+
+    <!-- Particle canvas -->
+    <canvas id="particles-canvas"></canvas>
+
+    <!-- SCENE 1: Arcade Intro Title (0s - 4s) -->
+    <div id="scene1" class="scene">
+      <div class="intro-decor"></div>
+      <div class="intro-box">
+        <div class="arcade-tag" id="s1-tag">WAYFARER ONLINE ARCHIVE</div>
+        <h1 class="intro-title" id="s1-title" aria-label="THE BESTIARY OF EMBERVALE: KNOW YOUR ENEMY">THE BESTIARY OF EMBERVALE: <span>KNOW YOUR ENEMY</span></h1>
+        <p class="intro-subtitle" id="s1-sub">EXPLORE LANDS • CATALOG THREATS • CLAIM RARE LOOT</p>
+        <div class="intro-bestiary-preview" id="s1-ui">
+          <img src="../assets/custom/bestiary/bestiary_ui.png" alt="Bestiary UI">
+          <span>MONSTER INDEX ACTIVE</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- SCENE 2: Meadowfield (4s - 9s) -->
+    <div id="scene2" class="scene">
+      <video class="bg-video" autoplay loop muted playsinline poster="../assets/custom/bestiary/bestiary_slimes.png">
+        <source src="../assets/custom/bestiary/bestiary_slimes.webm" type="video/webm">
+      </video>
+      <div class="video-dimmer"></div>
+
+      <div class="zone-badge" id="s2-badge">
+        <span>MEADOWFIELD: DEW SLIMES & MOSSBATS</span>
+      </div>
+
+      <div class="action-overlay-badge" id="s2-action">
+        <div class="action-title">LEVEL 1-4 THREATS</div>
+        <div class="action-desc">Basic Combat Slashes & Loot Drops</div>
+      </div>
+
+      <div class="card-container" id="s2-cards">
+        <div class="info-card">
+          <div class="card-title-row">
+            <span class="monster-name">DEW SLIME</span>
+            <span class="level-tag">LV 1-4</span>
+          </div>
+          <div class="stats-row">
+            <div class="stat-item">HP: <span class="stat-val">30</span></div>
+            <div class="stat-item">ATK: <span class="stat-val">6</span></div>
+            <div class="stat-item">ZONE: <span class="stat-val">Meadow</span></div>
+          </div>
+          <div class="loot-box">
+            <span class="loot-label">Loot Drops:</span>
+            <span class="loot-items">Slime Gel • Lucky Clover</span>
+          </div>
+        </div>
+
+        <div class="info-card">
+          <div class="card-title-row">
+            <span class="monster-name">MOSS BAT</span>
+            <span class="level-tag">LV 2-4</span>
+          </div>
+          <div class="stats-row">
+            <div class="stat-item">HP: <span class="stat-val">24</span></div>
+            <div class="stat-item">ATK: <span class="stat-val">7</span></div>
+            <div class="stat-item">AI: <span class="stat-val">Swarm</span></div>
+          </div>
+          <div class="loot-box">
+            <span class="loot-label">Loot Drops:</span>
+            <span class="loot-items">Bat Wing • Feather Charm • Hunter's Bow</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SCENE 3: Mosswood & The Bog (9s - 14s) -->
+    <div id="scene3" class="scene">
+      <video class="bg-video" autoplay loop muted playsinline poster="../assets/custom/bestiary/bestiary_forest.png">
+        <source src="../assets/custom/bestiary/bestiary_forest.webm" type="video/webm">
+      </video>
+      <div class="video-dimmer"></div>
+
+      <div class="zone-badge" id="s3-badge">
+        <span>MOSSWOOD & THE BOG: CAPLINGS & BOG SPIRITS</span>
+      </div>
+
+      <div class="action-overlay-badge" id="s3-action">
+        <div class="action-title">LEVEL 5-8 THREATS</div>
+        <div class="action-desc">Elemental Magic, Status Effects & Rare Drops</div>
+      </div>
+
+      <div class="card-container" id="s3-cards">
+        <div class="info-card">
+          <div class="card-title-row">
+            <span class="monster-name">CAPLING</span>
+            <span class="level-tag">LV 5</span>
+          </div>
+          <div class="stats-row">
+            <div class="stat-item">HP: <span class="stat-val">42</span></div>
+            <div class="stat-item">ATK: <span class="stat-val">9</span></div>
+            <div class="stat-item">DEBUFF: <span class="stat-val">Spore Slow</span></div>
+          </div>
+          <div class="loot-box">
+            <span class="loot-label">Loot Drops:</span>
+            <span class="loot-items">Cap Spore • Wolf Fang • Woodsman's Axe</span>
+          </div>
+        </div>
+
+        <div class="info-card">
+          <div class="card-title-row">
+            <span class="monster-name">BOG SPIRIT</span>
+            <span class="level-tag">LV 8</span>
+          </div>
+          <div class="stats-row">
+            <div class="stat-item">HP: <span class="stat-val">60</span></div>
+            <div class="stat-item">ATK: <span class="stat-val">13</span></div>
+            <div class="stat-item">ELEMENT: <span class="stat-val">Necro</span></div>
+          </div>
+          <div class="loot-box">
+            <span class="loot-label">Loot Drops:</span>
+            <span class="loot-items">Glimmer Orb • Silver Rapier • Gold</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SCENE 4: Boss Threat (14s - 19s) -->
+    <div id="scene4" class="scene">
+      <video class="bg-video" autoplay loop muted playsinline poster="../assets/custom/bestiary/bestiary_boss.png">
+        <source src="../assets/custom/bestiary/bestiary_boss.webm" type="video/webm">
+      </video>
+      <div class="video-dimmer"></div>
+
+      <div class="zone-badge boss-badge" id="s4-badge">
+        <span>BOSS THREAT: TIDE EYE OF TIDEHOLLOW</span>
+      </div>
+
+      <div class="action-overlay-badge" id="s4-action" style="border-color:#ff3366;">
+        <div class="action-title" style="color:#ff4d79;">LEVEL 10+ BOSS ENCOUNTER</div>
+        <div class="action-desc">Dodge Mechanics & Epic Gear Drops</div>
+      </div>
+
+      <div class="card-container" id="s4-cards">
+        <div class="info-card boss-theme" style="flex:2;">
+          <div class="card-title-row">
+            <span class="monster-name">TIDE EYE OF TIDEHOLLOW</span>
+            <span class="level-tag">LV 10+ BOSS</span>
+          </div>
+          <div class="stats-row">
+            <div class="stat-item">HP: <span class="stat-val">70</span></div>
+            <div class="stat-item">ATK: <span class="stat-val">15</span></div>
+            <div class="stat-item">MECHANICS: <span class="stat-val">Teleport & Tidal Burst</span></div>
+          </div>
+          <div class="loot-box">
+            <span class="loot-label">EPIC DROPS:</span>
+            <span class="loot-items">Tide Shard • Royal Mantle • Sigil Shard</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SCENE 5: Closing CTA (19s - 24s) -->
+    <div id="scene5" class="scene">
+      <div class="intro-decor"></div>
+      <div class="cta-box">
+        <div class="cta-badge" id="s5-badge">CONQUER THE WILD & CLAIM THE LOOT</div>
+        <h1 class="cta-main" id="s5-main">DEFEAT THE MONSTERS OF EMBERVALE</h1>
+        <div class="cta-url" id="s5-url">PLAY FREE AT WayfarerOnline.fun</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Particle Canvas Animation
+    const canvas = document.getElementById('particles-canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = 1920;
+    canvas.height = 1080;
+
+    const particles = [];
+    for (let i = 0; i < 70; i++) {
+      particles.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        radius: Math.random() * 2.5 + 1,
+        color: Math.random() > 0.4 ? '#00f0b4' : '#00ffe0',
+        vx: (Math.random() - 0.5) * 0.8,
+        vy: -Math.random() * 1.2 - 0.3,
+        alpha: Math.random() * 0.7 + 0.3
+      });
+    }
+
+    function renderParticles() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      particles.forEach(p => {
+        p.x += p.vx;
+        p.y += p.vy;
+        if (p.y < 0) p.y = canvas.height;
+        if (p.x < 0) p.x = canvas.width;
+        if (p.x > canvas.width) p.x = 0;
+
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = p.alpha;
+        ctx.shadowColor = p.color;
+        ctx.shadowBlur = 10;
+        ctx.fill();
+      });
+      ctx.globalAlpha = 1.0;
+      requestAnimationFrame(renderParticles);
+    }
+    renderParticles();
+
+    // GSAP Timeline setup (24 seconds)
+    const tl = gsap.timeline({ paused: false });
+
+    // Expose timeline globally for headless video rendering
+    window.__timelines = {
+      'bestiary-trailer': tl,
+      'bestiary_trailer': tl
+    };
+
+    // Helper functions for scenes
+    function showScene(sceneSelector) {
+      document.querySelectorAll('.scene').forEach(s => {
+        gsap.set(s, { opacity: 0, visibility: 'hidden' });
+      });
+      gsap.set(sceneSelector, { opacity: 1, visibility: 'visible' });
+    }
+
+    // 0s - 4s: Scene 1 Arcade Intro
+    tl.call(() => showScene('#scene1'), null, 0);
+    tl.fromTo('#s1-tag', { y: -50, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: 'back.out(1.7)' }, 0.2);
+    tl.fromTo('#s1-title', { scale: 0.8, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.8, ease: 'power3.out' }, 0.5);
+    tl.fromTo('#s1-sub', { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: 'power2.out' }, 1.0);
+    tl.fromTo('#s1-ui', { scale: 0.7, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.7, ease: 'back.out(1.5)' }, 1.4);
+    tl.to('#flash-overlay', { opacity: 0.6, duration: 0.1, yoyo: true, repeat: 1 }, 3.8);
+
+    // 4s - 9s: Scene 2 Meadowfield
+    tl.call(() => showScene('#scene2'), null, 4.0);
+    tl.fromTo('#s2-badge', { x: -100, opacity: 0 }, { x: 0, opacity: 1, duration: 0.6, ease: 'power3.out' }, 4.2);
+    tl.fromTo('#s2-action', { x: 100, opacity: 0 }, { x: 0, opacity: 1, duration: 0.6, ease: 'power3.out' }, 4.4);
+    tl.fromTo('#s2-cards', { y: 80, opacity: 0 }, { y: 0, opacity: 1, duration: 0.7, ease: 'power3.out' }, 4.8);
+    tl.to('#cyan-flash', { opacity: 0.4, duration: 0.1, yoyo: true, repeat: 1 }, 8.8);
+
+    // 9s - 14s: Scene 3 Mosswood & The Bog
+    tl.call(() => showScene('#scene3'), null, 9.0);
+    tl.fromTo('#s3-badge', { x: -100, opacity: 0 }, { x: 0, opacity: 1, duration: 0.6, ease: 'power3.out' }, 9.2);
+    tl.fromTo('#s3-action', { x: 100, opacity: 0 }, { x: 0, opacity: 1, duration: 0.6, ease: 'power3.out' }, 9.4);
+    tl.fromTo('#s3-cards', { y: 80, opacity: 0 }, { y: 0, opacity: 1, duration: 0.7, ease: 'power3.out' }, 9.8);
+    tl.to('#cyan-flash', { opacity: 0.4, duration: 0.1, yoyo: true, repeat: 1 }, 13.8);
+
+    // 14s - 19s: Scene 4 Boss Threat: Tide Eye
+    tl.call(() => showScene('#scene4'), null, 14.0);
+    tl.fromTo('#s4-badge', { scale: 0.7, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.6, ease: 'back.out(1.7)' }, 14.2);
+    tl.fromTo('#s4-action', { x: 100, opacity: 0 }, { x: 0, opacity: 1, duration: 0.6, ease: 'power3.out' }, 14.4);
+    tl.fromTo('#s4-cards', { y: 80, opacity: 0 }, { y: 0, opacity: 1, duration: 0.7, ease: 'power3.out' }, 14.8);
+    tl.to('#flash-overlay', { opacity: 0.7, duration: 0.1, yoyo: true, repeat: 1 }, 18.8);
+
+    // 19s - 24s: Scene 5 Closing CTA
+    tl.call(() => showScene('#scene5'), null, 19.0);
+    tl.fromTo('#s5-badge', { y: -40, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: 'power3.out' }, 19.2);
+    tl.fromTo('#s5-main', { scale: 0.8, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.8, ease: 'power3.out' }, 19.5);
+    tl.fromTo('#s5-url', { scale: 0.8, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.8, ease: 'back.out(1.7)' }, 20.0);
+  </script>
+</body>
+</html>

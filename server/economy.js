@@ -212,7 +212,7 @@ export function install(room) {
 
   // Server->client economy types must never ride the generic '*' passthrough
   // (a client could forge a trade-result / econ-sync for its peers): swallow them.
-  for (const t of ['econ-state', 'econ-sync', 'econ-msg', 'econ-error', 'trade-open', 'trade-update', 'trade-result', 'trade-closed', 'market-page', 'mail-box', 'mail-unread', 'guild-info', 'guild-update']) {
+  for (const t of ['econ-state', 'econ-sync', 'econ-msg', 'econ-error', 'trade-open', 'trade-update', 'trade-result', 'trade-closed', 'escrow-open', 'escrow-update', 'escrow-result', 'escrow-closed', 'market-page', 'mail-box', 'mail-unread', 'guild-info', 'guild-update']) {
     room.onMessage(t, () => {});
   }
 
@@ -294,6 +294,153 @@ export function install(room) {
     if (!s || s.room !== room || !sideOf(s, c.sessionId)) return;
     closeTrade(s, `${p.name} cancelled the trade.`);
   });
+
+  // ── escrow trade (secure, server-guaranteed, 2.5% fee) ──
+  const ESCROWS = new Map(); // id -> escrow session
+  let escrowSeq = 1;
+  const ESCROW_IDLE_MS = 5 * 60_000;
+  const escrowOf = (room, sid) => {
+    for (const s of ESCROWS.values()) if (s.room === room && (s.a.sid === sid || s.b.sid === sid)) return s;
+    return null;
+  };
+  const eSideOf = (s, sid) => (s.a.sid === sid ? s.a : s.b.sid === sid ? s.b : null);
+  const eOtherOf = (s, sid) => (s.a.sid === sid ? s.b : s.a);
+  const ePub = (x) => ({ name: x.name, items: x.items, gold: x.gold, locked: x.locked, confirmed: x.confirmed });
+  const calcFee = (aGold, bGold) => {
+    const total = (aGold | 0) + (bGold | 0);
+    return total > 0 ? Math.max(1, Math.ceil(total * 0.025)) : 0;
+  };
+
+  on('escrow-request', (c, p, m) => {
+    const q = room.players.get(m.to);
+    if (!q || q.dc || m.to === c.sessionId) { err(c, 'That player is not here.'); return; }
+    if (!p.token || !q.token) { err(c, 'Both players need a saved online character to escrow trade.'); return; }
+    if (escrowOf(room, c.sessionId)) { err(c, 'Finish your current escrow first.'); return; }
+    if (escrowOf(room, m.to)) { err(c, `${q.name} is busy in an escrow.`); return; }
+    if (tradeOf(room, c.sessionId) || tradeOf(room, m.to)) { err(c, 'One of you is in a direct trade.'); return; }
+    REQUESTS.set(`${m.to}|${c.sessionId}`, now() + REQ_TTL_MS);
+    send(room, m.to, 'escrow-request', { from: c.sessionId, fromName: p.name });
+    note(c, `Escrow trade request sent to ${q.name}.`);
+  });
+  on('escrow-respond', (c, p, m) => {
+    const key = `${c.sessionId}|${m.from}`;
+    const until = REQUESTS.get(key);
+    REQUESTS.delete(key);
+    const q = room.players.get(m.from);
+    if (!until || until < now() || !q || q.dc) { err(c, 'That escrow request has expired.'); return; }
+    if (!m.accept) { send(room, m.from, 'econ-msg', { text: `${p.name} declined your escrow request.` }); return; }
+    if (escrowOf(room, c.sessionId) || escrowOf(room, m.from)) { err(c, 'One of you is already in an escrow.'); return; }
+    const side = (pl, sid) => ({ sid, ck: ckOf(pl), name: pl.name, items: [], gold: 0, locked: false, lockRev: null, confirmed: false });
+    const s = { id: `E${escrowSeq++}`, room, a: side(q, m.from), b: side(p, c.sessionId), touched: now() };
+    ESCROWS.set(s.id, s);
+    send(room, s.a.sid, 'escrow-open', { id: s.id, partner: { sid: s.b.sid, name: s.b.name } });
+    send(room, s.b.sid, 'escrow-open', { id: s.id, partner: { sid: s.a.sid, name: s.a.name } });
+    pushEscrow(s);
+    log.info('econ escrow open', { id: s.id, a: s.a.name, b: s.b.name });
+  });
+  on('escrow-offer', (c, p, m) => {
+    const s = myEscrow(room, c, m.id); if (!s) return;
+    const me = eSideOf(s, c.sessionId);
+    const items = itemList(m.items, ECON.TRADE_ITEMS);
+    const gold = goldAmount(m.gold);
+    if (items === null || gold === null) { suspicious(room, c, p, 'bad-escrow-offer', { items: m.items, gold: m.gold }); err(c, 'Invalid offer.', 'invalid'); return; }
+    const rec = requireRec(c, p, m, { needRev: false }); if (!rec) return;
+    if (!hasItems(rec.progress.inventory, items)) { suspicious(room, c, p, 'escrow-offer-missing', { items }); err(c, 'You do not have those items (server copy).', 'missing'); sync(c, rec, 'escrow-offer'); return; }
+    if (gold > (rec.progress.gold | 0)) { suspicious(room, c, p, 'escrow-offer-gold', { gold, have: rec.progress.gold }); err(c, 'You do not have that much gold.', 'gold'); return; }
+    me.items = items; me.gold = gold;
+    eUnlockAll(s);
+    pushEscrow(s);
+  });
+  on('escrow-lock', (c, p, m) => {
+    const s = myEscrow(room, c, m.id); if (!s) return;
+    const me = eSideOf(s, c.sessionId);
+    const rec = requireRec(c, p, m); if (!rec) return;
+    if (!hasItems(rec.progress.inventory, me.items) || me.gold > (rec.progress.gold | 0)) { err(c, 'Your offer is no longer in your bag.', 'missing'); me.items = []; me.gold = 0; eUnlockAll(s); pushEscrow(s); return; }
+    me.locked = true; me.lockRev = rec.rev || 0; me.confirmed = false;
+    s.touched = now();
+    pushEscrow(s);
+  });
+  on('escrow-unlock', (c, p, m) => {
+    const s = myEscrow(room, c, m.id); if (!s) return;
+    eUnlockAll(s); pushEscrow(s);
+  });
+  on('escrow-confirm', (c, p, m) => {
+    const s = myEscrow(room, c, m.id); if (!s) return;
+    const me = eSideOf(s, c.sessionId);
+    if (!s.a.locked || !s.b.locked) { err(c, 'Both sides must lock their offer first.'); return; }
+    me.confirmed = true; s.touched = now();
+    if (s.a.confirmed && s.b.confirmed) executeEscrow(s);
+    else pushEscrow(s);
+  });
+  on('escrow-cancel', (c, p, m) => {
+    const s = ESCROWS.get(String(m.id || '')) || escrowOf(room, c.sessionId);
+    if (!s || s.room !== room || !eSideOf(s, c.sessionId)) return;
+    closeEscrowSession(s, `${p.name} cancelled the escrow.`);
+  });
+
+  function myEscrow(room, client, id) {
+    const s = ESCROWS.get(String(id || ''));
+    if (!s || s.room !== room || !eSideOf(s, client.sessionId)) { err(client, 'That escrow is closed.', 'closed'); return null; }
+    return s;
+  }
+  function eUnlockAll(s) { for (const x of [s.a, s.b]) { x.locked = false; x.confirmed = false; x.lockRev = null; } s.touched = now(); }
+  function pushEscrow(s) {
+    const fee = calcFee(s.a.gold, s.b.gold);
+    send(s.room, s.a.sid, 'escrow-update', { id: s.id, me: ePub(s.a), them: ePub(s.b), fee });
+    send(s.room, s.b.sid, 'escrow-update', { id: s.id, me: ePub(s.b), them: ePub(s.a), fee });
+  }
+  function closeEscrowSession(s, reason) {
+    if (!ESCROWS.delete(s.id)) return;
+    send(s.room, s.a.sid, 'escrow-closed', { id: s.id, reason });
+    send(s.room, s.b.sid, 'escrow-closed', { id: s.id, reason });
+    log.info('econ escrow closed', { id: s.id, reason });
+  }
+  function failEscrow(s, reason) {
+    eUnlockAll(s);
+    send(s.room, s.a.sid, 'escrow-result', { ok: 0, id: s.id, reason });
+    send(s.room, s.b.sid, 'escrow-result', { ok: 0, id: s.id, reason });
+    pushEscrow(s);
+    log.info('econ escrow failed', { id: s.id, reason });
+  }
+  async function executeEscrow(s) {
+    const room = s.room;
+    const pa = room.players.get(s.a.sid); const pb = room.players.get(s.b.sid);
+    if (!pa || !pb || pa.dc || pb.dc) { closeEscrowSession(s, 'Your partner disconnected.'); return; }
+    const ra = charRec(pa); const rb = charRec(pb);
+    if (!ra || !rb) { failEscrow(s, 'A character is not synced with the server.'); return; }
+    if ((ra.rev || 0) !== s.a.lockRev || (rb.rev || 0) !== s.b.lockRev) { failEscrow(s, 'A bag changed after locking - lock again.'); return; }
+    for (const [x, r] of [[s.a, ra], [s.b, rb]]) {
+      if (!hasItems(r.progress.inventory, x.items) || x.gold > (r.progress.gold | 0)) { failEscrow(s, `${x.name}'s offer is no longer in their bag.`); return; }
+    }
+    const invA = ra.progress.inventory.length - s.a.items.length + s.b.items.length;
+    const invB = rb.progress.inventory.length - s.b.items.length + s.a.items.length;
+    if (invA > ECON.BAG_SIZE) { failEscrow(s, `${s.a.name}'s bag would be over ${ECON.BAG_SIZE} items.`); return; }
+    if (invB > ECON.BAG_SIZE) { failEscrow(s, `${s.b.name}'s bag would be over ${ECON.BAG_SIZE} items.`); return; }
+    const totalGold = s.a.gold + s.b.gold;
+    const fee = calcFee(s.a.gold, s.b.gold);
+    const netA = (s.b.gold | 0) - (fee > 0 && totalGold > 0 ? Math.round(fee * ((s.b.gold | 0) / totalGold)) : 0);
+    const netB = (s.a.gold | 0) - (fee > 0 && totalGold > 0 ? Math.round(fee * ((s.a.gold | 0) / totalGold)) : 0);
+    if ((ra.progress.gold | 0) - s.a.gold + netA > ECON.GOLD_MAX || (rb.progress.gold | 0) - s.b.gold + netB > ECON.GOLD_MAX) { failEscrow(s, 'Gold would exceed the carry limit.'); return; }
+    if (!s.a.items.length && !s.b.items.length && !s.a.gold && !s.b.gold) { failEscrow(s, 'Nothing to trade.'); return; }
+
+    ESCROWS.delete(s.id);
+    const da = mutate(pa, ra, { gold: netA - s.a.gold, add: s.b.items, remove: s.a.items });
+    const dbb = mutate(pb, rb, { gold: netB - s.b.gold, add: s.a.items, remove: s.b.items });
+    send(room, s.a.sid, 'escrow-result', { ok: 1, id: s.id, ...stateOf(ra), delta: da, partner: s.b.name, fee });
+    send(room, s.b.sid, 'escrow-result', { ok: 1, id: s.id, ...stateOf(rb), delta: dbb, partner: s.a.name, fee });
+    ledger({ op: 'escrow', id: s.id, fee, a: { ck: s.a.ck, name: s.a.name, gave: s.a.items, gold: s.a.gold, rev: ra.rev }, b: { ck: s.b.ck, name: s.b.name, gave: s.b.items, gold: s.b.gold, rev: rb.rev } });
+    log.info('econ escrow done', { id: s.id, a: s.a.name, b: s.b.name, aGave: s.a.items.length, aGold: s.a.gold, bGave: s.b.items.length, bGold: s.b.gold, fee });
+    await commit({ deviceKeys: [dkOf(pa), dkOf(pb)] });
+  }
+  function sweepEscrows() {
+    const t = now();
+    for (const s of [...ESCROWS.values()]) {
+      const pa = s.room.players.get(s.a.sid); const pb = s.room.players.get(s.b.sid);
+      if (!pa || !pb || pa.dc || pb.dc) closeEscrowSession(s, 'Your partner disconnected.');
+      else if (t - s.touched > ESCROW_IDLE_MS) closeEscrowSession(s, 'Escrow timed out.');
+    }
+  }
+  timers.push(setInterval(sweepEscrows, 5_000));
 
   // ── market ──
   on('market-browse', (c, p, m) => {

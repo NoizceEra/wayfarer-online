@@ -106,6 +106,9 @@ function injectCss() {
 #wf-social .ec-badge{position:fixed;left:6px;bottom:22px;z-index:51;pointer-events:auto;cursor:pointer;font:9px "Silkscreen",monospace;color:#ffe8a0;background:#1a1024e0;border:1px solid #8a5a2b;padding:2px 6px;border-radius:2px;display:none}
 #wf-social .ec-badge.new{color:#1a1024;background:#ffd84a;border-color:#1a1024}
 #wf-social .ec-toast{left:50%;top:96px;transform:translateX(-50%);padding:6px 10px;display:flex;gap:8px;align-items:center;background:rgba(26,16,8,.95)}
+#wf-social .ec-fee{margin:6px 0;padding:6px 8px;background:rgba(0,0,0,.25);border:1px solid #3a2410;font-size:9px}
+#wf-social .ec-fee span{display:inline-block;margin-right:10px}
+#wf-social .ec-panel.ec-escrow{width:min(480px,calc(100vw - 16px))}
 @media (max-width:560px){#wf-social .ec-panel{max-height:78vh;top:46%}#wf-social .ec-chip{max-width:120px}#wf-social .ec-badge{bottom:40px}}
 `;
   document.head.appendChild(s);

@@ -1,0 +1,138 @@
+{
+  "source": "tools/export_gear_icons.py (ports of src/systems/iconArt.js + heroArt.js ramp) + src/data/gear.js",
+  "style": "16x16 procedural, OUT #1a1024, 4-tone ramp; 32px = NEAREST x2, no new painters",
+  "items": [
+    {
+      "id": "novice_cap",
+      "style": "cap",
+      "colors": {
+        "main": "0x5d7a4a",
+        "trim": "0x7a4a22"
+      },
+      "files": [
+        "novice_cap_16.png",
+        "novice_cap_32.png"
+      ]
+    },
+    {
+      "id": "novice_lenses",
+      "style": "glasses",
+      "colors": {
+        "main": "0x6b5a3e",
+        "trim": "0xd6f3ff"
+      },
+      "files": [
+        "novice_lenses_16.png",
+        "novice_lenses_32.png"
+      ]
+    },
+    {
+      "id": "novice_garb",
+      "style": "tunic",
+      "colors": {
+        "main": "0x5d7a4a",
+        "trim": "0x7a4a22"
+      },
+      "files": [
+        "novice_garb_16.png",
+        "novice_garb_32.png"
+      ]
+    },
+    {
+      "id": "novice_cloak",
+      "style": "cape",
+      "colors": {
+        "main": "0x5d7a4a",
+        "trim": "0x3c5230"
+      },
+      "files": [
+        "novice_cloak_16.png",
+        "novice_cloak_32.png"
+      ]
+    },
+    {
+      "id": "novice_blade",
+      "style": "sword",
+      "colors": {
+        "main": "0xffffff",
+        "trim": "0xffffff"
+      },
+      "files": [
+        "novice_blade_16.png",
+        "novice_blade_32.png"
+      ]
+    },
+    {
+      "id": "novice_bow",
+      "style": "bow",
+      "colors": {
+        "main": "0xffffff",
+        "trim": "0xffffff"
+      },
+      "files": [
+        "novice_bow_16.png",
+        "novice_bow_32.png"
+      ]
+    },
+    {
+      "id": "novice_wand",
+      "style": "wand",
+      "colors": {
+        "main": "0xff8d5a",
+        "trim": "0xff8d5a"
+      },
+      "files": [
+        "novice_wand_16.png",
+        "novice_wand_32.png"
+      ]
+    },
+    {
+      "id": "novice_fang",
+      "style": "dagger",
+      "colors": {
+        "main": "0xffffff",
+        "trim": "0xffffff"
+      },
+      "files": [
+        "novice_fang_16.png",
+        "novice_fang_32.png"
+      ]
+    },
+    {
+      "id": "novice_buckler",
+      "style": "round",
+      "colors": {
+        "main": "0x7a5a34",
+        "trim": "0xb08d3e"
+      },
+      "files": [
+        "novice_buckler_16.png",
+        "novice_buckler_32.png"
+      ]
+    },
+    {
+      "id": "novice_boots",
+      "style": "boots",
+      "colors": {
+        "main": "0x6b4a2a",
+        "trim": "0x3e2e14"
+      },
+      "files": [
+        "novice_boots_16.png",
+        "novice_boots_32.png"
+      ]
+    },
+    {
+      "id": "novice_charm",
+      "style": "leaf",
+      "colors": {
+        "main": "0x6aa84a",
+        "trim": "0x3c7a30"
+      },
+      "files": [
+        "novice_charm_16.png",
+        "novice_charm_32.png"
+      ]
+    }
+  ]
+}

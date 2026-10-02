@@ -12,6 +12,9 @@
     "copy-assets": "node tools/copy_assets.mjs"
   },
   "dependencies": {
+    "@solana/wallet-adapter-base": "^0.9.28",
+    "@solana/web3.js": "^1.99.0",
+    "bs58": "^6.0.0",
     "colyseus.js": "^0.16.22",
     "phaser": "^3.90.0"
   },

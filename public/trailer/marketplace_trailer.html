@@ -1,0 +1,969 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wayfarer Online — Marketplace & Token Burn Promo Trailer</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800;900&family=Press+Start+2P&family=Silkscreen:wght@400;700&display=swap');
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #05030a;
+      color: #ffffff;
+      font-family: 'Outfit', sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    #stage {
+      position: relative;
+      width: 1920px;
+      height: 1080px;
+      background: #080410;
+      border: 12px solid #ff7700;
+      overflow: hidden;
+      box-shadow: 0 0 120px rgba(255, 115, 0, 0.4), 0 0 90px rgba(0, 0, 0, 0.95);
+      transform-origin: center center;
+    }
+
+    /* Scanlines & Vignette */
+    .scanlines {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(rgba(20, 10, 30, 0) 50%, rgba(10, 0, 15, 0.45) 50%);
+      background-size: 100% 4px;
+      pointer-events: none;
+      z-index: 100;
+      opacity: 0.5;
+    }
+
+    .vignette {
+      position: absolute;
+      inset: 0;
+      box-shadow: inset 0 0 240px rgba(5, 2, 12, 0.95);
+      pointer-events: none;
+      z-index: 99;
+    }
+
+    #flash-overlay {
+      position: absolute;
+      inset: 0;
+      background: #ffffff;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 95;
+    }
+
+    #burn-flash {
+      position: absolute;
+      inset: 0;
+      background: rgba(255, 60, 0, 0.55);
+      opacity: 0;
+      pointer-events: none;
+      z-index: 94;
+    }
+
+    /* Floating particles background canvas */
+    #particles-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    /* Scene containers */
+    .scene {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      opacity: 0;
+      visibility: hidden;
+      z-index: 10;
+    }
+
+    /* Background video styling */
+    .bg-video {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      filter: contrast(1.15) brightness(0.75) saturate(1.25);
+      transform-origin: center center;
+    }
+
+    .video-dimmer {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at center, rgba(16, 8, 30, 0.5) 0%, rgba(6, 2, 14, 0.9) 100%);
+      z-index: 2;
+    }
+
+    /* Badges & Titles */
+    .arcade-badge {
+      display: inline-block;
+      background: linear-gradient(135deg, #ff6600 0%, #ff2200 100%);
+      color: #ffffff;
+      padding: 12px 28px;
+      font-size: 20px;
+      font-weight: 900;
+      font-family: 'Silkscreen', monospace;
+      letter-spacing: 2px;
+      border-radius: 6px;
+      box-shadow: 0 0 25px rgba(255, 102, 0, 0.6), inset 0 0 10px rgba(255, 255, 255, 0.4);
+      border: 2px solid #ffcc00;
+      margin-bottom: 20px;
+      text-transform: uppercase;
+    }
+
+    .title-arcade {
+      font-family: 'Press Start 2P', cursive;
+      font-size: 52px;
+      color: #fff;
+      text-shadow: 0 0 20px #ff6600, 0 0 40px #ff0000, 4px 4px 0px #000;
+      text-align: center;
+      line-height: 1.3;
+      margin-bottom: 24px;
+    }
+
+    .subtitle-text {
+      font-size: 32px;
+      font-weight: 700;
+      color: #ffd27d;
+      text-shadow: 0 0 15px rgba(255, 170, 0, 0.8), 2px 2px 4px rgba(0, 0, 0, 0.9);
+      text-align: center;
+      max-width: 1400px;
+    }
+
+    /* Cards & Containers */
+    .card-grid {
+      display: flex;
+      gap: 40px;
+      justify-content: center;
+      align-items: center;
+      margin-top: 30px;
+    }
+
+    .gear-card {
+      background: rgba(20, 12, 35, 0.85);
+      border: 4px solid #ff7700;
+      border-radius: 16px;
+      padding: 24px;
+      width: 420px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      box-shadow: 0 0 40px rgba(255, 115, 0, 0.3), inset 0 0 20px rgba(255, 140, 0, 0.15);
+      backdrop-filter: blur(10px);
+    }
+
+    .gear-card img {
+      width: 260px;
+      height: 260px;
+      object-fit: contain;
+      margin-bottom: 16px;
+      filter: drop-shadow(0 0 20px rgba(255, 160, 0, 0.6));
+    }
+
+    .gear-title {
+      font-size: 26px;
+      font-weight: 800;
+      color: #ffffff;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+    }
+
+    .gear-subtitle {
+      font-size: 18px;
+      color: #ffaa44;
+      font-family: 'Silkscreen', monospace;
+    }
+
+    /* Split Cards for Scene 3 */
+    .split-container {
+      display: flex;
+      gap: 60px;
+      align-items: center;
+      justify-content: center;
+      margin-top: 30px;
+    }
+
+    .showcase-box {
+      background: rgba(18, 10, 32, 0.9);
+      border: 4px solid #00e6b4;
+      border-radius: 16px;
+      padding: 20px;
+      width: 620px;
+      box-shadow: 0 0 40px rgba(0, 230, 180, 0.3);
+      text-align: center;
+    }
+
+    .canvas-container {
+      position: relative;
+      width: 100%;
+      height: 320px;
+      border-radius: 10px;
+      border: 2px solid #00e6b4;
+      margin-bottom: 16px;
+      overflow: hidden;
+      background: #080612;
+    }
+
+    .canvas-container canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      image-rendering: pixelated;
+    }
+
+    /* Scene 4 Burn Elements */
+    .burn-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-top: 20px;
+    }
+
+    .burn-ui-box {
+      position: relative;
+      width: 860px;
+      background: rgba(25, 10, 20, 0.9);
+      border: 5px solid #ff3300;
+      border-radius: 20px;
+      padding: 24px;
+      box-shadow: 0 0 60px rgba(255, 50, 0, 0.5);
+      text-align: center;
+    }
+
+    .burn-canvas-wrapper {
+      position: relative;
+      width: 100%;
+      height: 260px;
+      border-radius: 10px;
+      border: 2px solid #ff4400;
+      overflow: hidden;
+      margin-bottom: 16px;
+      background: #12040a;
+    }
+
+    .burn-canvas-wrapper canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      image-rendering: pixelated;
+    }
+
+    .burn-counter {
+      font-family: 'Press Start 2P', cursive;
+      font-size: 42px;
+      color: #ffcc00;
+      text-shadow: 0 0 25px #ff3300, 0 0 50px #ff0000;
+      margin: 15px 0;
+    }
+
+    .burn-tag {
+      background: linear-gradient(135deg, #ff0000 0%, #990000 100%);
+      color: #ffffff;
+      padding: 12px 30px;
+      font-size: 22px;
+      font-weight: 900;
+      letter-spacing: 2px;
+      border-radius: 8px;
+      border: 2px solid #ffff00;
+      display: inline-block;
+    }
+
+    /* Scene 5 Chart Elements */
+    .chart-box {
+      background: rgba(12, 16, 32, 0.9);
+      border: 4px solid #00e6b4;
+      border-radius: 20px;
+      padding: 24px;
+      width: 900px;
+      box-shadow: 0 0 50px rgba(0, 230, 180, 0.3);
+      margin-top: 24px;
+      text-align: center;
+    }
+
+    .chart-canvas-wrapper {
+      position: relative;
+      width: 100%;
+      height: 380px;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 2px solid #00e6b4;
+      background: #090e1c;
+    }
+
+    .chart-canvas-wrapper canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      image-rendering: pixelated;
+    }
+
+    .stat-row {
+      display: flex;
+      gap: 30px;
+      margin-top: 20px;
+      justify-content: center;
+    }
+
+    .stat-pill {
+      background: rgba(30, 20, 50, 0.9);
+      border: 2px solid #ff9900;
+      padding: 12px 24px;
+      border-radius: 30px;
+      font-size: 20px;
+      font-weight: 800;
+      color: #ffffff;
+      box-shadow: 0 0 20px rgba(255, 153, 0, 0.3);
+    }
+
+    /* CTA Layout */
+    .cta-logo {
+      width: 320px;
+      height: 320px;
+      object-fit: contain;
+      filter: drop-shadow(0 0 40px rgba(255, 120, 0, 0.8));
+      margin-bottom: 20px;
+    }
+
+    .cta-button {
+      background: linear-gradient(135deg, #ff7700 0%, #ff0055 100%);
+      color: #ffffff;
+      padding: 24px 60px;
+      font-size: 38px;
+      font-weight: 900;
+      font-family: 'Press Start 2P', cursive;
+      border-radius: 16px;
+      border: 4px solid #ffee00;
+      box-shadow: 0 0 60px rgba(255, 100, 0, 0.8), inset 0 0 20px rgba(255, 255, 255, 0.5);
+      margin-top: 30px;
+      letter-spacing: 2px;
+    }
+
+    .domain-text {
+      font-size: 48px;
+      font-weight: 900;
+      color: #00ffcc;
+      text-shadow: 0 0 25px #00ffcc, 0 0 50px #0099ff;
+      margin-top: 15px;
+      font-family: 'Silkscreen', monospace;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Pixel Art Sprite Assets Preloader -->
+  <div id="sprite-preloader" style="display: none;">
+    <img id="sprite-anvil" src="../assets/custom/marketplace/anvil_32.png" alt="Anvil 32x32">
+    <img id="sprite-coin" src="../assets/custom/marketplace/gold_coin_32.png" alt="Gold Coin 32x32">
+    <img id="sprite-receipt" src="../assets/custom/marketplace/trade_receipt_32.png" alt="Trade Receipt 32x32">
+    <img id="sprite-ledger" src="../assets/custom/marketplace/market_ledger_32.png" alt="Market Ledger 32x32">
+    <img id="sprite-flame" src="../assets/custom/marketplace/burn_flame_32.png" alt="Burn Flame 32x32">
+    <img id="sprite-anvil-16" src="../assets/custom/marketplace/anvil_16.png" alt="Anvil 16x16">
+    <img id="sprite-coin-16" src="../assets/custom/marketplace/gold_coin_16.png" alt="Gold Coin 16x16">
+    <img id="sprite-receipt-16" src="../assets/custom/marketplace/trade_receipt_16.png" alt="Trade Receipt 16x16">
+    <img id="sprite-ledger-16" src="../assets/custom/marketplace/market_ledger_16.png" alt="Market Ledger 16x16">
+    <img id="sprite-flame-16" src="../assets/custom/marketplace/burn_flame_16.png" alt="Burn Flame 16x16">
+  </div>
+
+  <div id="stage">
+    <!-- Ambient VFX -->
+    <div class="scanlines"></div>
+    <div class="vignette"></div>
+    <div id="flash-overlay"></div>
+    <div id="burn-flash"></div>
+    <canvas id="particles-canvas"></canvas>
+
+    <!-- SCENE 1: Intro (0s - 4s) -->
+    <div class="scene" id="scene1">
+      <video class="bg-video" autoplay loop muted playsinline src="../assets/custom/marketplace/marketplace_intro.webm"></video>
+      <div class="video-dimmer"></div>
+      
+      <div style="z-index: 10; display: flex; flex-direction: column; align-items: center;">
+        <div class="arcade-badge">ARCADE ECONOMY INTRO</div>
+        <h1 class="title-arcade" id="s1-title">THE WAYFARER MARKETPLACE: TRADE, EARN & BURN</h1>
+        
+        <img id="s1-token" src="../assets/custom/marketplace/token_aura_burning.png" alt="Burning Token Aura" style="width: 380px; height: 380px; object-fit: contain; margin-top: 10px; filter: drop-shadow(0 0 50px rgba(255, 100, 0, 0.9));">
+        <p class="subtitle-text" style="margin-top: 15px;">POWERED BY DECENTRALIZED ON-CHAIN LIQUIDITY</p>
+      </div>
+    </div>
+
+    <!-- SCENE 2: Trade Seasonal & Crafted Gear (4s - 8s) -->
+    <div class="scene" id="scene2">
+      <video class="bg-video" autoplay loop muted playsinline src="../assets/custom/marketplace/marketplace_trading.webm"></video>
+      <div class="video-dimmer"></div>
+
+      <div style="z-index: 10; display: flex; flex-direction: column; align-items: center;">
+        <div class="arcade-badge">RARE ITEM AUCTIONS</div>
+        <h1 class="title-arcade">TRADE SEASONAL & CRAFTED GEAR</h1>
+        <p class="subtitle-text">Halloween scythes, winter robes & everyday gear</p>
+
+        <div class="card-grid" style="gap: 24px;">
+          <!-- Card 1: Halloween Scythe -->
+          <div class="gear-card" id="card1" style="width: 380px;">
+            <img src="../assets/custom/seasonal/grim_reaper_scythe.png" alt="Grim Reaper Scythe" style="image-rendering: pixelated; width: 220px; height: 220px;">
+            <div class="gear-title">HALLOWEEN SCYTHE</div>
+            <div class="gear-subtitle">SEASONAL EVENT EXCLUSIVE</div>
+          </div>
+
+          <!-- Card 2: Frost Cloak -->
+          <div class="gear-card" id="card2" style="width: 380px;">
+            <img src="../assets/custom/winter/frost_cloak_32.png" alt="Frost Cloak" style="image-rendering: pixelated; width: 220px; height: 220px;">
+            <div class="gear-title">FROST CLOAK</div>
+            <div class="gear-subtitle">WINTER FESTIVAL GEAR</div>
+          </div>
+
+          <!-- Card 3: Icicle Dagger -->
+          <div class="gear-card" id="card3" style="width: 380px;">
+            <img src="../assets/custom/winter/icicle_dagger_32.png" alt="Icicle Dagger" style="image-rendering: pixelated; width: 220px; height: 220px;">
+            <div class="gear-title">ICICLE DAGGER</div>
+            <div class="gear-subtitle">ELEMENTAL WINTER BLADE</div>
+          </div>
+
+          <!-- Card 4: Everyday Gear -->
+          <div class="gear-card" id="card4" style="width: 380px;">
+            <img src="../assets/custom/marketplace/everyday_sword_item.png" alt="Everyday Gear" style="image-rendering: pixelated; width: 220px; height: 220px;">
+            <div class="gear-title">EVERYDAY STEEL</div>
+            <div class="gear-subtitle">CRAFTED STARTER BLADE</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SCENE 3: Supply New Players & Profit (8s - 12s) -->
+    <div class="scene" id="scene3">
+      <video class="bg-video" autoplay loop muted playsinline src="../assets/custom/marketplace/marketplace_crafting.webm"></video>
+      <div class="video-dimmer"></div>
+
+      <div style="z-index: 10; display: flex; flex-direction: column; align-items: center;">
+        <div class="arcade-badge">CRAFTING & COMMERCE</div>
+        <h1 class="title-arcade">SUPPLY NEW PLAYERS & PROFIT</h1>
+        <p class="subtitle-text">Crafters smith high-tier gear & sell to new adventurers</p>
+
+        <div class="split-container">
+          <!-- Dynamic Crafter Smithing Canvas powered by anvil pixel art -->
+          <div class="showcase-box" id="box1">
+            <div class="canvas-container">
+              <canvas id="crafter-canvas" width="580" height="320"></canvas>
+            </div>
+            <div class="gear-title" style="color: #00e6b4;">Crafters smith high-tier gear</div>
+            <div class="gear-subtitle">FORGE MYTHIC WEAPONS & ARMOR</div>
+          </div>
+
+          <!-- Dynamic Adventurer Buyer Canvas powered by gold coin, receipt & ledger pixel art -->
+          <div class="showcase-box" id="box2">
+            <div class="canvas-container">
+              <canvas id="buyer-canvas" width="580" height="320"></canvas>
+            </div>
+            <div class="gear-title" style="color: #ffaa00;">sell to new adventurers</div>
+            <div class="gear-subtitle">INSTANT GOLD & TOKEN PAYOUTS</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SCENE 4: Every Trade Burns $WAYFARER Tokens (12s - 17s) -->
+    <div class="scene" id="scene4">
+      <video class="bg-video" autoplay loop muted playsinline src="../assets/custom/marketplace/marketplace_burn.webm"></video>
+      <div class="video-dimmer"></div>
+
+      <div style="z-index: 10; display: flex; flex-direction: column; align-items: center;">
+        <div class="arcade-badge" style="background: linear-gradient(135deg, #ff0000 0%, #990000 100%);">DEFLATIONARY MECHANICS</div>
+        <h1 class="title-arcade" style="text-shadow: 0 0 20px #ff0000, 0 0 40px #ff5500;">EVERY TRADE BURNS $WAYFARER TOKENS</h1>
+        <p class="subtitle-text">Marketplace transaction fee burned permanently on-chain</p>
+
+        <div class="burn-container" id="burn-box">
+          <div class="burn-ui-box">
+            <!-- Dynamic Trade Burn Transaction UI Canvas powered by burn flame pixel art -->
+            <div class="burn-canvas-wrapper">
+              <canvas id="burn-canvas" width="800" height="260"></canvas>
+            </div>
+            <div class="burn-counter" id="token-counter">12,450,000 $WAYFARER BURNED</div>
+            <div class="burn-tag">Marketplace transaction fee burned permanently on-chain</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SCENE 5: A 360-Degree Win For Every Holder (17s - 21s) -->
+    <div class="scene" id="scene5">
+      <video class="bg-video" autoplay loop muted playsinline src="../assets/custom/marketplace/marketplace_holders.webm"></video>
+      <div class="video-dimmer"></div>
+
+      <div style="z-index: 10; display: flex; flex-direction: column; align-items: center;">
+        <div class="arcade-badge">VALUE APPRECIATION</div>
+        <h1 class="title-arcade">A 360-DEGREE WIN FOR EVERY HOLDER</h1>
+        <p class="subtitle-text">Decreasing token supply increases holder value</p>
+
+        <div class="chart-box" id="chart-container">
+          <!-- Dynamic Token Supply vs Value Chart Canvas powered by flame & coin pixel art sprites -->
+          <div class="chart-canvas-wrapper">
+            <canvas id="chart-canvas" width="850" height="380"></canvas>
+          </div>
+          
+          <div class="stat-row">
+            <div class="stat-pill">🔥 DECREASING TOKEN SUPPLY</div>
+            <div class="stat-pill" style="border-color: #00ffcc;">📈 INCREASING HOLDER VALUE</div>
+            <div class="stat-pill" style="border-color: #ff0055;">💎 360-DEGREE WIN</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SCENE 6: Trade & Earn Now (21s - 25s) -->
+    <div class="scene" id="scene6">
+      <video class="bg-video" autoplay loop muted playsinline src="../assets/custom/marketplace/marketplace_cta.webm"></video>
+      <div class="video-dimmer"></div>
+
+      <div style="z-index: 10; display: flex; flex-direction: column; align-items: center;">
+        <img class="cta-logo" id="cta-token" src="../assets/custom/marketplace/token_aura_burning.png" alt="Wayfarer Token Emblem">
+        
+        <h1 class="title-arcade" style="font-size: 56px;">TRADE & EARN NOW AT WayfarerOnline.fun</h1>
+        <p class="subtitle-text">ENTER THE WAYFARER MARKETPLACE & BURN TOKENS TODAY</p>
+
+        <div class="cta-button" id="cta-btn">PLAY & TRADE NOW</div>
+        <div class="domain-text">WayfarerOnline.fun</div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // Canvas Ember Particles Effect
+    const canvas = document.getElementById('particles-canvas');
+    const ctx = canvas.getContext('2d');
+    let width = canvas.width = 1920;
+    let height = canvas.height = 1080;
+
+    const particles = [];
+    const particleCount = 85;
+
+    class Particle {
+      constructor() {
+        this.reset();
+      }
+      reset() {
+        this.x = Math.random() * width;
+        this.y = height + Math.random() * 100;
+        this.size = Math.random() * 4 + 2;
+        this.speedY = Math.random() * 2.5 + 1;
+        this.speedX = (Math.random() - 0.5) * 1.5;
+        this.alpha = Math.random() * 0.8 + 0.2;
+        this.hue = Math.random() * 40 + 10;
+      }
+      update() {
+        this.y -= this.speedY;
+        this.x += this.speedX;
+        this.alpha -= 0.003;
+        if (this.y < -10 || this.alpha <= 0) {
+          this.reset();
+        }
+      }
+      draw() {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fillStyle = `hsla(${this.hue}, 100%, 60%, ${this.alpha})`;
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = `hsl(${this.hue}, 100%, 50%)`;
+        ctx.fill();
+      }
+    }
+
+    for (let i = 0; i < particleCount; i++) {
+      particles.push(new Particle());
+    }
+
+    function animateParticles() {
+      ctx.clearRect(0, 0, width, height);
+      particles.forEach(p => {
+        p.update();
+        p.draw();
+      });
+      requestAnimationFrame(animateParticles);
+    }
+    animateParticles();
+
+    // =========================================================================
+    // DYNAMIC PIXEL-ART CANVAS ANIMATIONS FOR SHOWCASES
+    // =========================================================================
+
+    // Preloaded Sprite Elements
+    const imgAnvil = document.getElementById('sprite-anvil');
+    const imgCoin = document.getElementById('sprite-coin');
+    const imgReceipt = document.getElementById('sprite-receipt');
+    const imgLedger = document.getElementById('sprite-ledger');
+    const imgFlame = document.getElementById('sprite-flame');
+
+    // 1. Crafter Smithing Canvas Animation
+    const crafterCanvas = document.getElementById('crafter-canvas');
+    const cctx = crafterCanvas.getContext('2d');
+    const cSparks = [];
+
+    function renderCrafterCanvas(t) {
+      cctx.imageSmoothingEnabled = false;
+      cctx.clearRect(0, 0, 580, 320);
+
+      // Background Forge Glow
+      const grad = cctx.createRadialGradient(290, 200, 20, 290, 200, 240);
+      grad.addColorStop(0, 'rgba(255, 90, 0, 0.4)');
+      grad.addColorStop(0.6, 'rgba(120, 30, 0, 0.2)');
+      grad.addColorStop(1, 'rgba(10, 6, 18, 0.95)');
+      cctx.fillStyle = grad;
+      cctx.fillRect(0, 0, 580, 320);
+
+      // Draw Grid / Pedestal
+      cctx.fillStyle = '#1e1428';
+      cctx.fillRect(140, 220, 300, 80);
+      cctx.strokeStyle = '#ff7700';
+      cctx.lineWidth = 3;
+      cctx.strokeRect(140, 220, 300, 80);
+
+      // Anvil Pixel-Art Sprite (Center)
+      cctx.drawImage(imgAnvil, 226, 110, 128, 128);
+
+      // Animated Hammer Strike Simulation
+      const strikePhase = Math.sin(t * 0.006);
+      const hammerAngle = strikePhase > 0.7 ? 0 : -0.6;
+      cctx.save();
+      cctx.translate(290, 120);
+      cctx.rotate(hammerAngle);
+      // Draw Pixel Hammer
+      cctx.fillStyle = '#8b5a2b';
+      cctx.fillRect(-6, -60, 12, 50);
+      cctx.fillStyle = '#d0d8e8';
+      cctx.fillRect(-20, -75, 40, 20);
+      cctx.restore();
+
+      // Trigger sparks on strike
+      if (Math.abs(strikePhase - 0.75) < 0.05 && Math.random() < 0.6) {
+        for (let i = 0; i < 6; i++) {
+          cSparks.push({
+            x: 290,
+            y: 130,
+            vx: (Math.random() - 0.5) * 8,
+            vy: -Math.random() * 6 - 2,
+            life: 1.0,
+            color: Math.random() > 0.3 ? '#ffcc00' : '#ff4400'
+          });
+        }
+      }
+
+      // Update & Draw Sparks
+      for (let i = cSparks.length - 1; i >= 0; i--) {
+        const s = cSparks[i];
+        s.x += s.vx;
+        s.y += s.vy;
+        s.vy += 0.25; // gravity
+        s.life -= 0.03;
+        if (s.life <= 0) {
+          cSparks.splice(i, 1);
+          continue;
+        }
+        cctx.fillStyle = s.color;
+        cctx.fillRect(s.x, s.y, 4, 4);
+      }
+
+      // Recipe & Floating Text
+      cctx.font = '14px "Silkscreen", monospace';
+      cctx.fillStyle = '#00e6b4';
+      cctx.fillText('FORGE RECIPE: MYTHIC BLADE', 30, 40);
+      cctx.fillStyle = '#ffaa00';
+      cctx.fillText('+100 CRAFTING EXP', 380, 40);
+
+      // Ledger Icon on side
+      cctx.drawImage(imgLedger, 30, 230, 48, 48);
+      cctx.fillStyle = '#ffffff';
+      cctx.font = '12px "Outfit", sans-serif';
+      cctx.fillText('Master Smith Ledger #84', 90, 260);
+
+      requestAnimationFrame(renderCrafterCanvas);
+    }
+    requestAnimationFrame(renderCrafterCanvas);
+
+    // 2. Adventurer Buyer Canvas Animation
+    const buyerCanvas = document.getElementById('buyer-canvas');
+    const bctx = buyerCanvas.getContext('2d');
+    const coinsList = [];
+
+    for (let i = 0; i < 5; i++) {
+      coinsList.push({
+        x: 100 + i * 80,
+        y: 180 + Math.sin(i) * 20,
+        vy: (Math.random() - 0.5) * 1.5
+      });
+    }
+
+    function renderBuyerCanvas(t) {
+      bctx.imageSmoothingEnabled = false;
+      bctx.clearRect(0, 0, 580, 320);
+
+      // Ambient Marketplace Background
+      const bGrad = bctx.createLinearGradient(0, 0, 580, 320);
+      bGrad.addColorStop(0, '#0c1828');
+      bGrad.addColorStop(1, '#180e28');
+      bctx.fillStyle = bGrad;
+      bctx.fillRect(0, 0, 580, 320);
+
+      // Draw Marketplace Counter
+      bctx.fillStyle = '#1c2438';
+      bctx.fillRect(30, 160, 520, 130);
+      bctx.strokeStyle = '#00e6b4';
+      bctx.lineWidth = 3;
+      bctx.strokeRect(30, 160, 520, 130);
+
+      // Display Ledger and Receipt Sprites on Counter
+      bctx.drawImage(imgLedger, 60, 180, 64, 64);
+      bctx.drawImage(imgReceipt, 150, 180, 64, 64);
+
+      // Floating Animated Gold Coins flying across counter
+      coinsList.forEach((c, idx) => {
+        const offset = Math.sin(t * 0.004 + idx) * 15;
+        bctx.drawImage(imgCoin, c.x, c.y + offset, 48, 48);
+      });
+
+      // Trade Transaction Success Banner
+      bctx.font = '16px "Press Start 2P", cursive';
+      bctx.fillStyle = '#ffd700';
+      bctx.fillText('INSTANT TRADE PAYOUT', 120, 50);
+
+      bctx.font = '14px "Silkscreen", monospace';
+      bctx.fillStyle = '#00ffcc';
+      bctx.fillText('buyer: Adventurer_Gamer99', 50, 95);
+      bctx.fillStyle = '#ff9900';
+      bctx.fillText('seller: Master_Crafter_Joe', 300, 95);
+
+      bctx.fillStyle = '#ffffff';
+      bctx.font = '13px "Outfit", sans-serif';
+      bctx.fillText('✔ Item Escrow Verified | Gold Coins Transferred', 140, 260);
+
+      requestAnimationFrame(renderBuyerCanvas);
+    }
+    requestAnimationFrame(renderBuyerCanvas);
+
+    // 3. Trade Burn Transaction UI Canvas Animation
+    const burnCanvas = document.getElementById('burn-canvas');
+    const bnctx = burnCanvas.getContext('2d');
+
+    function renderBurnCanvas(t) {
+      bnctx.imageSmoothingEnabled = false;
+      bnctx.clearRect(0, 0, 800, 260);
+
+      // Fiery Chamber Background
+      const fGrad = bnctx.createRadialGradient(400, 130, 10, 400, 130, 350);
+      fGrad.addColorStop(0, 'rgba(255, 50, 0, 0.45)');
+      fGrad.addColorStop(0.5, 'rgba(100, 10, 0, 0.3)');
+      fGrad.addColorStop(1, '#0e040a');
+      bnctx.fillStyle = fGrad;
+      bnctx.fillRect(0, 0, 800, 260);
+
+      // Left Box: Trade Deal Details
+      bnctx.fillStyle = '#1c0a14';
+      bnctx.fillRect(30, 30, 240, 200);
+      bnctx.strokeStyle = '#ff5500';
+      bnctx.lineWidth = 2;
+      bnctx.strokeRect(30, 30, 240, 200);
+
+      bnctx.font = '12px "Silkscreen", monospace';
+      bnctx.fillStyle = '#ffaa00';
+      bnctx.fillText('TRADE AMOUNT', 50, 60);
+      bnctx.font = '16px "Press Start 2P", cursive';
+      bnctx.fillStyle = '#ffffff';
+      bnctx.fillText('1,000 $WAY', 50, 95);
+
+      bnctx.font = '12px "Silkscreen", monospace';
+      bnctx.fillStyle = '#ff4400';
+      bnctx.fillText('FEE RATE: 2.5%', 50, 140);
+      bnctx.fillText('BURN FEE: 25 $WAY', 50, 175);
+
+      // Center: Fiery Burn Furnace Portal with Pixel Flame Sprites
+      const pulse = Math.sin(t * 0.005) * 8;
+      bnctx.drawImage(imgFlame, 368 - pulse/2, 60 - pulse/2, 64 + pulse, 64 + pulse);
+
+      // Draw small flickering flame sprites surrounding chamber
+      for (let i = 0; i < 4; i++) {
+        const fx = 320 + i * 40;
+        const fy = 150 + Math.sin(t * 0.008 + i) * 6;
+        bnctx.drawImage(imgFlame, fx, fy, 32, 32);
+      }
+
+      // Right Box: Permanent On-Chain Burn Confirmation
+      bnctx.fillStyle = '#1c0a14';
+      bnctx.fillRect(530, 30, 240, 200);
+      bnctx.strokeStyle = '#00ffcc';
+      bnctx.strokeRect(530, 30, 240, 200);
+
+      bnctx.font = '12px "Silkscreen", monospace';
+      bnctx.fillStyle = '#00ffcc';
+      bnctx.fillText('DEFLATION SYSTEM', 550, 60);
+      bnctx.fillStyle = '#ff3300';
+      bnctx.font = '14px "Press Start 2P", cursive';
+      bnctx.fillText('PERMA-BURN', 550, 95);
+
+      bnctx.font = '11px "Silkscreen", monospace';
+      bnctx.fillStyle = '#ffd700';
+      bnctx.fillText('TX: 0x9f8c...3a10', 550, 145);
+      bnctx.fillText('STATUS: INCINERATED', 550, 180);
+
+      requestAnimationFrame(renderBurnCanvas);
+    }
+    requestAnimationFrame(renderBurnCanvas);
+
+    // 4. Token Supply vs Value Chart Canvas Animation
+    const chartCanvas = document.getElementById('chart-canvas');
+    const chctx = chartCanvas.getContext('2d');
+
+    function renderChartCanvas(t) {
+      chctx.imageSmoothingEnabled = false;
+      chctx.clearRect(0, 0, 850, 380);
+
+      // Dark Cyber Grid Background
+      chctx.fillStyle = '#090e1c';
+      chctx.fillRect(0, 0, 850, 380);
+
+      // Grid lines
+      chctx.strokeStyle = 'rgba(0, 230, 200, 0.12)';
+      chctx.lineWidth = 1;
+      for (let x = 60; x < 800; x += 60) {
+        chctx.beginPath();
+        chctx.moveTo(x, 40);
+        chctx.lineTo(x, 320);
+        chctx.stroke();
+      }
+      for (let y = 40; y < 320; y += 50) {
+        chctx.beginPath();
+        chctx.moveTo(60, y);
+        chctx.lineTo(800, y);
+        chctx.stroke();
+      }
+
+      // Decreasing Supply Curve (Red/Orange)
+      chctx.strokeStyle = '#ff3300';
+      chctx.lineWidth = 5;
+      chctx.beginPath();
+      chctx.moveTo(80, 80);
+      chctx.bezierCurveTo(280, 120, 500, 240, 780, 290);
+      chctx.stroke();
+
+      // Increasing Value Curve (Green/Gold)
+      chctx.strokeStyle = '#00ffcc';
+      chctx.lineWidth = 5;
+      chctx.beginPath();
+      chctx.moveTo(80, 290);
+      chctx.bezierCurveTo(280, 240, 500, 120, 780, 60);
+      chctx.stroke();
+
+      // Animated Gliding Pixel Sprites along the Curves
+      const progress = (Math.sin(t * 0.002) + 1) / 2; // 0..1
+      
+      // Flame gliding on supply curve (going down)
+      const fx = 80 + progress * 700;
+      const fy = 80 + (progress ** 1.3) * 210;
+      chctx.drawImage(imgFlame, fx - 24, fy - 24, 48, 48);
+
+      // Gold Coin gliding on value curve (going up)
+      const cx = 80 + progress * 700;
+      const cy = 290 - (progress ** 1.2) * 230;
+      chctx.drawImage(imgCoin, cx - 24, cy - 24, 48, 48);
+
+      // Data Legend Callouts
+      chctx.font = '14px "Silkscreen", monospace';
+      chctx.fillStyle = '#ff4400';
+      chctx.fillText('📉 TOKEN SUPPLY: -45% DEFLATION', 80, 40);
+
+      chctx.fillStyle = '#00ffcc';
+      chctx.fillText('📈 TOKEN VALUE: +320% APPRECIATION', 440, 40);
+
+      requestAnimationFrame(renderChartCanvas);
+    }
+    requestAnimationFrame(renderChartCanvas);
+
+    // GSAP Master Timeline (25 seconds)
+    const tl = gsap.timeline({ repeat: -1 });
+    window.__timelines = window.__timelines || {};
+    window.__timelines["marketplace-trailer"] = tl;
+    window.__timelines["marketplace_trailer"] = tl;
+    window.tl = tl;
+
+    // Helper function for Flash Overlay
+    function doFlash() {
+      gsap.fromTo("#flash-overlay", { opacity: 0.8 }, { opacity: 0, duration: 0.5, ease: "power2.out" });
+    }
+
+    function doBurnFlash() {
+      gsap.fromTo("#burn-flash", { opacity: 0.9 }, { opacity: 0, duration: 0.8, ease: "power2.out" });
+    }
+
+    // SCENE 1: 0s - 4s
+    tl.to("#scene1", { autoAlpha: 1, duration: 0.4 })
+      .add(doFlash)
+      .from("#s1-title", { y: -50, opacity: 0, duration: 0.8, ease: "back.out(1.7)" }, "-=0.2")
+      .from("#s1-token", { scale: 0.2, rotation: -180, opacity: 0, duration: 1.2, ease: "elastic.out(1, 0.5)" }, "-=0.5")
+      .to("#s1-token", { rotation: 360, duration: 2.5, ease: "none" }, "-=0.5")
+      .to("#scene1", { autoAlpha: 0, duration: 0.4 }, 3.6);
+
+    // SCENE 2: 4s - 8s
+    tl.to("#scene2", { autoAlpha: 1, duration: 0.4 }, 4.0)
+      .add(doFlash)
+      .from("#scene2 h1", { y: -40, opacity: 0, duration: 0.6 })
+      .from("#card1", { x: -100, opacity: 0, duration: 0.5, ease: "back.out(1.4)" }, "-=0.3")
+      .from("#card2", { y: 100, opacity: 0, duration: 0.5, ease: "back.out(1.4)" }, "-=0.35")
+      .from("#card3", { y: -100, opacity: 0, duration: 0.5, ease: "back.out(1.4)" }, "-=0.35")
+      .from("#card4", { x: 100, opacity: 0, duration: 0.5, ease: "back.out(1.4)" }, "-=0.35")
+      .to("#scene2", { autoAlpha: 0, duration: 0.4 }, 7.6);
+
+    // SCENE 3: 8s - 12s
+    tl.to("#scene3", { autoAlpha: 1, duration: 0.4 }, 8.0)
+      .add(doFlash)
+      .from("#scene3 h1", { scale: 0.8, opacity: 0, duration: 0.6 })
+      .from("#box1", { x: -150, opacity: 0, duration: 0.7, ease: "power3.out" }, "-=0.3")
+      .from("#box2", { x: 150, opacity: 0, duration: 0.7, ease: "power3.out" }, "-=0.5")
+      .to("#scene3", { autoAlpha: 0, duration: 0.4 }, 11.6);
+
+    // SCENE 4: 12s - 17s (Burn Scene)
+    tl.to("#scene4", { autoAlpha: 1, duration: 0.4 }, 12.0)
+      .add(doBurnFlash)
+      .from("#scene4 h1", { y: -50, opacity: 0, duration: 0.7, ease: "bounce.out" })
+      .from("#burn-box", { scale: 0.5, opacity: 0, duration: 0.8, ease: "back.out(1.7)" }, "-=0.3")
+      .to("#token-counter", {
+        innerText: "18,920,500 $WAYFARER BURNED",
+        duration: 3.0,
+        snap: { innerText: 1 },
+        ease: "power1.inOut"
+      }, "-=0.2")
+      .to("#scene4", { autoAlpha: 0, duration: 0.4 }, 16.6);
+
+    // SCENE 5: 17s - 21s (Holder Scene)
+    tl.to("#scene5", { autoAlpha: 1, duration: 0.4 }, 17.0)
+      .add(doFlash)
+      .from("#scene5 h1", { y: -40, opacity: 0, duration: 0.6 })
+      .from("#chart-container", { scale: 0.7, opacity: 0, duration: 0.8, ease: "back.out(1.5)" }, "-=0.3")
+      .from(".stat-pill", { y: 40, opacity: 0, stagger: 0.2, duration: 0.5 }, "-=0.4")
+      .to("#scene5", { autoAlpha: 0, duration: 0.4 }, 20.6);
+
+    // SCENE 6: 21s - 25s (CTA Scene)
+    tl.to("#scene6", { autoAlpha: 1, duration: 0.4 }, 21.0)
+      .add(doBurnFlash)
+      .from("#cta-token", { scale: 0.1, rotation: -360, opacity: 0, duration: 1.0, ease: "elastic.out(1, 0.4)" })
+      .from("#scene6 h1", { y: 30, opacity: 0, duration: 0.6 }, "-=0.4")
+      .from("#cta-btn", { scale: 0.5, opacity: 0, duration: 0.6, ease: "back.out(2)" }, "-=0.3")
+      .from(".domain-text", { y: 40, opacity: 0, duration: 0.6 }, "-=0.3")
+      .to("#cta-btn", { scale: 1.08, repeat: 3, yoyo: true, duration: 0.4, ease: "sine.inOut" }, "-=0.2")
+      .to("#scene6", { autoAlpha: 0, duration: 0.4 }, 24.6);
+  </script>
+
+</body>
+</html>

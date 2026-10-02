@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Wayfarer Online — High-Octane Arcade Gameplay Trailer</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Silkscreen:wght@400;700&display=swap');
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #020305;
+      color: #fff;
+      font-family: 'Press Start 2P', 'Silkscreen', monospace;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    #stage {
+      position: relative;
+      width: 1920px;
+      height: 1080px;
+      background: #05080f;
+      border: 14px solid #1f2d48;
+      overflow: hidden;
+      box-shadow: 0 0 140px rgba(0, 255, 200, 0.25), 0 0 80px rgba(0, 0, 0, 0.95);
+      transform-origin: center center;
+    }
+
+    /* Retro Game Boy scanlines & Arcade Bevel */
+    .scanlines {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.4) 50%);
+      background-size: 100% 4px;
+      pointer-events: none;
+      z-index: 100;
+      opacity: 0.55;
+    }
+
+    .vignette {
+      position: absolute;
+      inset: 0;
+      box-shadow: inset 0 0 220px rgba(0, 0, 0, 0.95);
+      pointer-events: none;
+      z-index: 99;
+    }
+
+    /* Flash & Hit Overlay */
+    #flash-overlay {
+      position: absolute;
+      inset: 0;
+      background: #ffffff;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 95;
+    }
+
+    #hit-red {
+      position: absolute;
+      inset: 0;
+      background: rgba(231, 76, 60, 0.4);
+      opacity: 0;
+      pointer-events: none;
+      z-index: 94;
+    }
+
+    /* Scene container */
+    .scene {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      opacity: 0;
+      visibility: hidden;
+    }
+
+    /* Gameplay Video Frame */
+    .gameplay-frame {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      filter: contrast(1.12) brightness(1.02);
+      transform-origin: center center;
+    }
+
+    /* Arcade Action Badge */
+    .arcade-badge {
+      position: absolute;
+      top: 50px;
+      left: 60px;
+      background: #ff0055;
+      color: #ffffff;
+      padding: 14px 28px;
+      font-size: 22px;
+      font-weight: bold;
+      letter-spacing: 2px;
+      border-radius: 4px;
+      border: 4px solid #ffffff;
+      box-shadow: 0 0 25px rgba(255, 0, 85, 0.8), 0 8px 0 #990033;
+      z-index: 10;
+      text-transform: uppercase;
+    }
+
+    /* Arcade Kinetic Banner */
+    .arcade-card {
+      position: absolute;
+      bottom: 50px;
+      left: 50px;
+      right: 50px;
+      background: rgba(5, 10, 18, 0.94);
+      border: 5px solid #00ffcc;
+      border-radius: 8px;
+      padding: 24px 36px;
+      box-shadow: 0 0 35px rgba(0, 255, 204, 0.6), inset 0 0 20px rgba(0, 255, 204, 0.2);
+      z-index: 10;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .arcade-title {
+      font-size: 38px;
+      color: #ffffff;
+      text-shadow: 4px 4px 0 #000, 0 0 20px #00ffcc;
+      line-height: 1.2;
+    }
+
+    .arcade-sub {
+      font-size: 20px;
+      color: #f4c542;
+      letter-spacing: 2px;
+      font-family: 'Silkscreen', monospace;
+    }
+
+    /* Scene specific styles */
+    #scene1 { background: #070a10; }
+    #scene2 { background: #0b121e; }
+    #scene3 { background: #070e17; }
+    #scene4 { background: #130a10; }
+    #scene5 { background: #140d07; }
+    #scene6 { background: #0f160d; }
+
+    /* Scene 7: Dynamic Outro CTA */
+    #scene7 {
+      background: radial-gradient(circle, #1a3a5c 0%, #050b14 100%);
+    }
+
+    .cta-logo {
+      font-size: 100px;
+      font-weight: bold;
+      color: #f4c542;
+      text-shadow: 8px 8px 0px #000, 0 0 50px rgba(244, 197, 66, 0.95);
+      margin-bottom: 16px;
+      letter-spacing: -2px;
+    }
+
+    .cta-tagline {
+      font-size: 32px;
+      color: #00ffcc;
+      text-shadow: 3px 3px 0 #000;
+      margin-bottom: 30px;
+      font-family: 'Silkscreen', monospace;
+    }
+
+    .cta-button {
+      background: linear-gradient(180deg, #ff0055 0%, #cc0044 100%);
+      color: #ffffff;
+      padding: 24px 64px;
+      font-size: 36px;
+      font-weight: bold;
+      border-radius: 8px;
+      border: 4px solid #fff;
+      box-shadow: 0 0 40px rgba(255, 0, 85, 0.9), 0 10px 0 #880022;
+      margin-bottom: 36px;
+    }
+
+    .cta-domain {
+      font-size: 48px;
+      color: #ffffff;
+      background: #00ffcc;
+      color: #050b14;
+      padding: 16px 48px;
+      border-radius: 8px;
+      font-weight: bold;
+      letter-spacing: 3px;
+      box-shadow: 0 0 35px rgba(0, 255, 204, 0.8), 0 6px 0 #009977;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="stage" data-composition-id="arcade-gameplay-trailer" data-duration="18">
+    <div class="scanlines"></div>
+    <div class="vignette"></div>
+    <div id="flash-overlay"></div>
+    <div id="hit-red"></div>
+
+    <!-- Scene 1: Title Hook (0s - 1.8s) -->
+    <div id="scene1" class="scene">
+      <video src="../assets/custom/clips/clip_1_title.webm" class="gameplay-frame" id="clip1" autoplay loop muted playsinline></video>
+      <div class="arcade-badge" id="b1">GAME BOY RPG</div>
+      <div class="arcade-card" id="c1">
+        <div class="arcade-title">WAYFARER ONLINE</div>
+        <div class="arcade-sub">COZY RETRO ACTION</div>
+      </div>
+    </div>
+
+    <!-- Scene 2: Hero Creator (1.8s - 3.6s) -->
+    <div id="scene2" class="scene">
+      <video src="../assets/custom/clips/clip_2_creator.webm" class="gameplay-frame" id="clip2" autoplay loop muted playsinline></video>
+      <div class="arcade-badge" id="b2" style="background:#00ffcc; color:#000; box-shadow:0 0 25px #00ffcc; border-color:#000;">HERO CREATOR</div>
+      <div class="arcade-card" id="c2" style="border-color:#f4c542;">
+        <div class="arcade-title">FORGE YOUR HERO</div>
+        <div class="arcade-sub">4 CLASSES · CUSTOM PALETTES</div>
+      </div>
+    </div>
+
+    <!-- Scene 3: Thistle Town Overworld (3.6s - 5.8s) -->
+    <div id="scene3" class="scene">
+      <video src="../assets/custom/clips/clip_3_town.webm" class="gameplay-frame" id="clip3" autoplay loop muted playsinline></video>
+      <div class="arcade-badge" id="b3" style="background:#2ecc71; box-shadow:0 0 25px #2ecc71;">OPEN WORLD</div>
+      <div class="arcade-card" id="c3" style="border-color:#2ecc71;">
+        <div class="arcade-title">EXPLORE THISTLE TOWN</div>
+        <div class="arcade-sub">MEADOWS & COTTAGES</div>
+      </div>
+    </div>
+
+    <!-- Scene 4: Inventory & Gear Stats (5.8s - 8.0s) -->
+    <div id="scene4" class="scene">
+      <video src="../assets/custom/clips/clip_4_gear.webm" class="gameplay-frame" id="clip4" autoplay loop muted playsinline></video>
+      <div class="arcade-badge" id="b4" style="background:#f39c12; box-shadow:0 0 25px #f39c12;">GEAR & STATS</div>
+      <div class="arcade-card" id="c4" style="border-color:#f39c12;">
+        <div class="arcade-title">LOOT LEGENDARY GEAR</div>
+        <div class="arcade-sub">HELMETS · BLADES · CHARMS</div>
+      </div>
+    </div>
+
+    <!-- Scene 5: Merchant Shop (8.0s - 10.2s) -->
+    <div id="scene6" class="scene">
+      <video src="../assets/custom/clips/clip_6_shop.webm" class="gameplay-frame" id="clip6" autoplay loop muted playsinline></video>
+      <div class="arcade-badge" id="b6" style="background:#9b59b6; box-shadow:0 0 25px #9b59b6;">IN-GAME SHOP</div>
+      <div class="arcade-card" id="c6" style="border-color:#9b59b6;">
+        <div class="arcade-title">MAREN'S WARES</div>
+        <div class="arcade-sub">BUY GEAR & POTIONS</div>
+      </div>
+    </div>
+
+    <!-- Scene 6: Action Combat (10.2s - 13.0s) -->
+    <div id="scene5" class="scene">
+      <video src="../assets/custom/clips/clip_5_combat.webm" class="gameplay-frame" id="clip5" autoplay loop muted playsinline></video>
+      <div class="arcade-badge" id="b5" style="background:#e74c3c; box-shadow:0 0 25px #e74c3c;">ACTION COMBAT</div>
+      <div class="arcade-card" id="c5" style="border-color:#e74c3c;">
+        <div class="arcade-title">SLAY MONSTERS</div>
+        <div class="arcade-sub">REAL-TIME SLASHES & DROPS</div>
+      </div>
+    </div>
+
+    <!-- Scene 7: Arcade Outro CTA (13.0s - 18.0s) -->
+    <div id="scene7" class="scene">
+      <div class="cta-logo" id="outro-title">WAYFARER ONLINE</div>
+      <div class="cta-tagline" id="outro-sub">SOLO ↔ CO-OP ACTION RPG</div>
+      <div class="cta-button" id="outro-btn">PLAY FREE NOW</div>
+      <div class="cta-domain" id="outro-domain">WayfarerOnline.fun</div>
+    </div>
+
+  </div>
+
+  <script>
+    // Ensure video elements play smoothly
+    document.querySelectorAll('video').forEach(v => {
+      v.play().catch(() => {});
+    });
+
+    // Scale stage to window fit
+    function resizeStage() {
+      const stage = document.getElementById('stage');
+      const scaleX = window.innerWidth / 1920;
+      const scaleY = window.innerHeight / 1080;
+      const scale = Math.min(scaleX, scaleY);
+      stage.style.transform = `scale(${scale})`;
+    }
+    window.addEventListener('resize', resizeStage);
+    resizeStage();
+
+    // HyperFrames GSAP master timeline
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    window.__timelines["arcade-gameplay-trailer"] = tl;
+
+    // Flash & Shake helpers
+    function flash() {
+      gsap.fromTo('#flash-overlay', { opacity: 0.8 }, { opacity: 0, duration: 0.18 });
+    }
+    function redHit() {
+      gsap.fromTo('#hit-red', { opacity: 0.6 }, { opacity: 0, duration: 0.25 });
+    }
+    function shakeStage() {
+      gsap.fromTo('#stage', { x: -8, y: 6 }, { x: 0, y: 0, duration: 0.15, ease: 'rough' });
+    }
+
+    // --- Scene 1: Hook (0s - 1.8s) ---
+    tl.to('#scene1', { autoAlpha: 1, duration: 0.05 }, 0);
+    tl.fromTo('#clip1', { scale: 1.2 }, { scale: 1.0, duration: 1.8, ease: 'power2.out' }, 0);
+    tl.fromTo('#b1', { scale: 0.5, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.25, ease: 'back.out(2)' }, 0.1);
+    tl.fromTo('#c1', { y: 50, opacity: 0 }, { y: 0, opacity: 1, duration: 0.3, ease: 'power3.out' }, 0.2);
+    tl.to('#scene1', { autoAlpha: 0, duration: 0.1 }, 1.75);
+
+    // --- Scene 2: Creator (1.8s - 3.6s) ---
+    tl.add(flash, 1.8);
+    tl.to('#scene2', { autoAlpha: 1, duration: 0.05 }, 1.8);
+    tl.fromTo('#clip2', { scale: 1.0 }, { scale: 1.12, duration: 1.8, ease: 'none' }, 1.8);
+    tl.fromTo('#b2', { scale: 0.5, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.25, ease: 'back.out(2)' }, 1.9);
+    tl.fromTo('#c2', { y: 50, opacity: 0 }, { y: 0, opacity: 1, duration: 0.3, ease: 'power3.out' }, 2.0);
+    tl.to('#scene2', { autoAlpha: 0, duration: 0.1 }, 3.55);
+
+    // --- Scene 3: Thistle Town Overworld (3.6s - 5.8s) ---
+    tl.add(flash, 3.6);
+    tl.to('#scene3', { autoAlpha: 1, duration: 0.05 }, 3.6);
+    tl.fromTo('#clip3', { scale: 1.15, x: -30 }, { scale: 1.0, x: 0, duration: 2.2, ease: 'power2.out' }, 3.6);
+    tl.fromTo('#b3', { scale: 0.5, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.25, ease: 'back.out(2)' }, 3.7);
+    tl.fromTo('#c3', { y: 50, opacity: 0 }, { y: 0, opacity: 1, duration: 0.3, ease: 'power3.out' }, 3.8);
+    tl.to('#scene3', { autoAlpha: 0, duration: 0.1 }, 5.75);
+
+    // --- Scene 4: Gear & Stats (5.8s - 8.0s) ---
+    tl.add(flash, 5.8);
+    tl.to('#scene4', { autoAlpha: 1, duration: 0.05 }, 5.8);
+    tl.fromTo('#clip4', { scale: 1.0, y: -20 }, { scale: 1.1, y: 0, duration: 2.2, ease: 'none' }, 5.8);
+    tl.fromTo('#b4', { scale: 0.5, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.25, ease: 'back.out(2)' }, 5.9);
+    tl.fromTo('#c4', { y: 50, opacity: 0 }, { y: 0, opacity: 1, duration: 0.3, ease: 'power3.out' }, 6.0);
+    tl.to('#scene4', { autoAlpha: 0, duration: 0.1 }, 7.95);
+
+    // --- Scene 5: Merchant Shop (8.0s - 10.2s) ---
+    tl.add(flash, 8.0);
+    tl.to('#scene6', { autoAlpha: 1, duration: 0.05 }, 8.0);
+    tl.fromTo('#clip6', { scale: 1.12 }, { scale: 1.0, duration: 2.2, ease: 'power2.out' }, 8.0);
+    tl.fromTo('#b6', { scale: 0.5, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.25, ease: 'back.out(2)' }, 8.1);
+    tl.fromTo('#c6', { y: 50, opacity: 0 }, { y: 0, opacity: 1, duration: 0.3, ease: 'power3.out' }, 8.2);
+    tl.to('#scene6', { autoAlpha: 0, duration: 0.1 }, 10.15);
+
+    // --- Scene 6: Meadow Action Combat (10.2s - 13.0s) ---
+    tl.add(redHit, 10.2);
+    tl.add(shakeStage, 10.2);
+    tl.to('#scene5', { autoAlpha: 1, duration: 0.05 }, 10.2);
+    tl.fromTo('#clip5', { scale: 1.25, rotation: -2 }, { scale: 1.0, rotation: 0, duration: 2.8, ease: 'power3.out' }, 10.2);
+    tl.fromTo('#b5', { scale: 0.5, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.25, ease: 'back.out(2)' }, 10.3);
+    tl.fromTo('#c5', { y: 50, opacity: 0 }, { y: 0, opacity: 1, duration: 0.3, ease: 'power3.out' }, 10.4);
+    tl.to('#scene5', { autoAlpha: 0, duration: 0.1 }, 12.95);
+
+    // --- Scene 7: Outro CTA (13.0s - 18.0s) ---
+    tl.add(flash, 13.0);
+    tl.add(shakeStage, 13.0);
+    tl.to('#scene7', { autoAlpha: 1, duration: 0.05 }, 13.0);
+    tl.fromTo('#outro-title', { scale: 0.4, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.6, ease: 'elastic.out(1.2, 0.4)' }, 13.1);
+    tl.fromTo('#outro-sub', { opacity: 0, y: 15 }, { opacity: 1, y: 0, duration: 0.4 }, 13.5);
+    tl.fromTo('#outro-btn', { scale: 0.6, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.4, ease: 'back.out(2)' }, 13.8);
+    tl.fromTo('#outro-domain', { scale: 0.7, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.5, ease: 'back.out(1.8)' }, 14.2);
+
+    // Continuous pulse on domain badge
+    tl.to('#outro-domain', { scale: 1.05, repeat: -1, yoyo: true, duration: 0.6, ease: 'sine.easeInOut' }, 14.7);
+
+    // Auto-play preview mode
+    tl.play();
+  </script>
+</body>
+</html>

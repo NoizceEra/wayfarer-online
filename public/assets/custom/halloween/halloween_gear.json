@@ -1,0 +1,150 @@
+{
+  "source": "tools/export_gear_icons.py (ports of src/systems/iconArt.js + heroArt.js ramp) + src/data/gear.js",
+  "style": "16x16 procedural, OUT #1a1024, 4-tone ramp; 32px = NEAREST x2, no new painters",
+  "items": [
+    {
+      "id": "jacko_helm",
+      "style": "horns",
+      "colors": {
+        "main": "0xe67e22",
+        "trim": "0x27ae60"
+      },
+      "files": [
+        "jacko_helm_16.png",
+        "jacko_helm_32.png"
+      ]
+    },
+    {
+      "id": "witch_hat",
+      "style": "cone_stars",
+      "colors": {
+        "main": "0x5b2d9e",
+        "trim": "0xffe066"
+      },
+      "files": [
+        "witch_hat_16.png",
+        "witch_hat_32.png"
+      ]
+    },
+    {
+      "id": "vampire_cowl",
+      "style": "veil",
+      "colors": {
+        "main": "0xc0392b",
+        "trim": "0x1a1a22"
+      },
+      "files": [
+        "vampire_cowl_16.png",
+        "vampire_cowl_32.png"
+      ]
+    },
+    {
+      "id": "ghost_mask",
+      "style": "mask",
+      "colors": {
+        "main": "0xecf0f1",
+        "trim": "0x34495e"
+      },
+      "files": [
+        "ghost_mask_16.png",
+        "ghost_mask_32.png"
+      ]
+    },
+    {
+      "id": "vampire_coat",
+      "style": "robe_trim",
+      "colors": {
+        "main": "0x78281f",
+        "trim": "0xf4c542"
+      },
+      "files": [
+        "vampire_coat_16.png",
+        "vampire_coat_32.png"
+      ]
+    },
+    {
+      "id": "pumpkin_suit",
+      "style": "smock",
+      "colors": {
+        "main": "0xd35400",
+        "trim": "0x27ae60"
+      },
+      "files": [
+        "pumpkin_suit_16.png",
+        "pumpkin_suit_32.png"
+      ]
+    },
+    {
+      "id": "halloween_bat_wings",
+      "style": "wings_bat",
+      "colors": {
+        "main": "0x2c3e50",
+        "trim": "0xc0392b"
+      },
+      "files": [
+        "halloween_bat_wings_16.png",
+        "halloween_bat_wings_32.png"
+      ]
+    },
+    {
+      "id": "witch_broom",
+      "style": "staff",
+      "colors": {
+        "main": "0x7e5109",
+        "trim": "0xf1c40f"
+      },
+      "files": [
+        "witch_broom_16.png",
+        "witch_broom_32.png"
+      ]
+    },
+    {
+      "id": "reaper_scythe",
+      "style": "greatsword",
+      "colors": {
+        "main": "0x27ae60",
+        "trim": "0x1a1a22"
+      },
+      "files": [
+        "reaper_scythe_16.png",
+        "reaper_scythe_32.png"
+      ]
+    },
+    {
+      "id": "phantom_dagger",
+      "style": "dagger",
+      "colors": {
+        "main": "0x5dade2",
+        "trim": "0xffffff"
+      },
+      "files": [
+        "phantom_dagger_16.png",
+        "phantom_dagger_32.png"
+      ]
+    },
+    {
+      "id": "candy_pouch",
+      "style": "gem",
+      "colors": {
+        "main": "0xf39c12",
+        "trim": "0xe74c3c"
+      },
+      "files": [
+        "candy_pouch_16.png",
+        "candy_pouch_32.png"
+      ]
+    },
+    {
+      "id": "bat_charm",
+      "style": "locket",
+      "colors": {
+        "main": "0x34495e",
+        "trim": "0x8e44ad"
+      },
+      "files": [
+        "bat_charm_16.png",
+        "bat_charm_32.png"
+      ]
+    }
+  ]
+}

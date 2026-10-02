@@ -4,6 +4,7 @@ import { social } from '../systems/social/index.js';
 import { econ } from '../net/economyNet.js';
 import { trade } from '../systems/trade.js';
 import { TradePanel } from './TradePanel.js';
+import { TradeEscrowPanel } from './TradeEscrowPanel.js';
 import { MarketPanel } from './MarketPanel.js';
 import { MailPanel } from './MailPanel.js';
 import { renderGuildTab, answerInvite } from './GuildTab.js';
@@ -22,6 +23,7 @@ export function installEconomyUI(uiScene) {
   setIconScene(uiScene);
   econ.setWorld(() => { const w = uiScene.scene.get('world'); return w?.sys?.isActive?.() && w.player ? w : null; });
   const tradeP = new TradePanel();
+  const escrowP = new TradeEscrowPanel();
   const market = new MarketPanel();
   const mail = new MailPanel();
 
@@ -39,16 +41,17 @@ export function installEconomyUI(uiScene) {
   };
 
   input.registerAction({ id: 'mail', label: 'Mailbox', group: 'Social', keys: ['KeyV'], gameplay: true });
-  const anyOpen = () => tradeP.isOpen || market.isOpen || mail.isOpen;
+  const anyOpen = () => tradeP.isOpen || escrowP.isOpen || market.isOpen || mail.isOpen;
   const offs = [
-    input.on('mail', () => { market.close(); mail.toggle(); return true; }, { scene: uiScene }),
-    input.addCloser({ id: 'economy', priority: 960, isOpen: anyOpen, close: () => { if (mail.isOpen) mail.close(); else if (market.isOpen) market.close(); else tradeP.close(); }, scene: uiScene }),
+    input.on('mail', () => { market.close(); escrowP.close(); tradeP.close(); mail.toggle(); return true; }, { scene: uiScene }),
+    input.addCloser({ id: 'economy', priority: 960, isOpen: anyOpen, close: () => { if (mail.isOpen) mail.close(); else if (market.isOpen) market.close(); else if (escrowP.isOpen) escrowP.close(); else tradeP.close(); }, scene: uiScene }),
     social.registerAction('trade', (who) => trade.requestTrade(who)),
+    social.registerAction('escrow', (who) => trade.requestEscrow(who)),
     social.registerAction('mail', (to) => mail.compose(to)),
     social.registerAction('renderGuildTab', (body, titleEl) => renderGuildTab(body, titleEl)),
     bus.on('econ-ui', (m) => {
-      if (m?.panel === 'market') { mail.close(); market.open(m.tab); }
-      else if (m?.panel === 'mail') { market.close(); mail.open(m.tab); }
+      if (m?.panel === 'market') { mail.close(); tradeP.close(); escrowP.close(); market.open(m.tab); }
+      else if (m?.panel === 'mail') { market.close(); tradeP.close(); escrowP.close(); mail.open(m.tab); }
     }),
     econ.on('mail-unread', drawBadge), econ.on('state', drawBadge), econ.on('status', drawBadge),
     bus.on(Events.NET_STATUS, drawBadge),
@@ -57,8 +60,8 @@ export function installEconomyUI(uiScene) {
   installCommands(mail);
 
   const api = {
-    trade: tradeP, market, mail, anyOpen,
-    destroy() { offs.forEach((o) => { try { o(); } catch { /* ignore */ } }); tradeP.destroy(); market.destroy(); mail.destroy(); badge.remove(); },
+    trade: tradeP, escrow: escrowP, market, mail, anyOpen,
+    destroy() { offs.forEach((o) => { try { o(); } catch { /* ignore */ } }); tradeP.destroy(); escrowP.destroy(); market.destroy(); mail.destroy(); badge.remove(); },
   };
   uiScene.events.once('shutdown', () => api.destroy());
   window.__econUI = api; // debug / automated tests
@@ -84,6 +87,12 @@ function installCommands(mail) {
         if (first === 'cancel') return trade.cancel();
         if (!first) return say('Usage: /trade name  (or right-click a player > Trade)');
         return trade.requestTrade(first);
+      case 'escrow': case 'esc':
+        if (first === 'accept' || first === 'yes') return trade.respondEscrow(true);
+        if (first === 'decline' || first === 'no') return trade.respondEscrow(false);
+        if (first === 'cancel') return trade.cancelEscrow();
+        if (!first) return say('Usage: /escrow name  (or right-click a player > Escrow Trade)');
+        return trade.requestEscrow(first);
       case 'mail': case 'mailbox': return first ? mailRef?.compose(first) : mailRef?.toggle();
       case 'market': case 'ah': case 'auction': return say('The market board is run by the clerks by the notice boards in Thistle Town and Dock Town.');
       case 'ginvite': return first ? econ.send('guild-invite', { name: first }) : say('Usage: /ginvite name');

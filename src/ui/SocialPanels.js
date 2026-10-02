@@ -276,6 +276,7 @@ export class SocialPanels {
       if (social.isLeader()) { item('Promote to leader', () => social.promote(sid)); item('Kick from party', () => social.kick(sid)); }
     } else item('Invite to party', () => social.invite(sid || name), !social.online || (social.party && !social.isLeader()));
     item('Trade', () => social.act('trade', sid || name), !social.online);   // server-checked trade window (economy)
+    item('Escrow Trade', () => social.act('escrow', sid || name), !social.online); // secure escrow with 2.5% fee
     item('Quick gift', () => bus.emit(Events.SOCIAL_UI, { panel: 'trade-compose', open: true, to: sid || name })); // 1 gear item + gold, trust model
     item('Duel', () => social.challenge(sid || name));
     item('Send mail', () => social.act('mail', name), !social.online);

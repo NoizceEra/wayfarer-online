@@ -1,0 +1,1097 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wayfarer Online — Halloween Festival Seasonal Event Trailer</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800;900&family=Press+Start+2P&family=Silkscreen:wght@400;700&display=swap');
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #040207;
+      color: #ffffff;
+      font-family: 'Outfit', sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    #stage {
+      position: relative;
+      width: 1920px;
+      height: 1080px;
+      background: #07030c;
+      border: 12px solid #2d133d;
+      overflow: hidden;
+      box-shadow: 0 0 120px rgba(255, 115, 0, 0.35), 0 0 90px rgba(0, 0, 0, 0.95);
+      transform-origin: center center;
+    }
+
+    /* Scanlines & Vignette */
+    .scanlines {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(rgba(20, 10, 30, 0) 50%, rgba(10, 0, 15, 0.45) 50%);
+      background-size: 100% 4px;
+      pointer-events: none;
+      z-index: 100;
+      opacity: 0.5;
+    }
+
+    .vignette {
+      position: absolute;
+      inset: 0;
+      box-shadow: inset 0 0 220px rgba(5, 2, 10, 0.92);
+      pointer-events: none;
+      z-index: 99;
+    }
+
+    #flash-overlay {
+      position: absolute;
+      inset: 0;
+      background: #ffffff;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 95;
+    }
+
+    #pumpkin-flash {
+      position: absolute;
+      inset: 0;
+      background: rgba(255, 120, 0, 0.45);
+      opacity: 0;
+      pointer-events: none;
+      z-index: 94;
+    }
+
+    /* Floating particles background canvas */
+    #particles-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    /* Scene containers */
+    .scene {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      opacity: 0;
+      visibility: hidden;
+    }
+
+    /* Background video styling */
+    .bg-video {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      filter: contrast(1.15) brightness(0.85) saturate(1.2);
+      transform-origin: center center;
+    }
+
+    .video-dimmer {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at center, rgba(12, 5, 24, 0.45) 0%, rgba(5, 2, 12, 0.88) 100%);
+      z-index: 2;
+    }
+
+    /* Header badge styling */
+    .event-badge {
+      position: absolute;
+      top: 60px;
+      left: 70px;
+      background: linear-gradient(135deg, #ff7700 0%, #ff3300 100%);
+      color: #ffffff;
+      padding: 14px 32px;
+      font-size: 22px;
+      font-weight: 900;
+      letter-spacing: 2px;
+      border-radius: 50px;
+      box-shadow: 0 0 35px rgba(255, 119, 0, 0.7), 0 6px 20px rgba(0,0,0,0.5);
+      z-index: 10;
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      border: 2px solid #ffcc00;
+    }
+
+    .event-badge img {
+      width: 34px;
+      height: 34px;
+      image-rendering: pixelated;
+    }
+
+    /* Scene 1: Arcade Intro Title & Festive Aura */
+    #scene1 {
+      background: radial-gradient(circle at center, #2e0f45 0%, #06020a 100%);
+    }
+
+    .intro-decor {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      opacity: 0.3;
+      background-image: radial-gradient(#ff7700 1px, transparent 1px);
+      background-size: 36px 36px;
+    }
+
+    .intro-box {
+      z-index: 10;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 24px;
+    }
+
+    .arcade-tag {
+      font-family: 'Press Start 2P', monospace;
+      color: #ffaa00;
+      font-size: 20px;
+      text-shadow: 0 0 20px rgba(255, 170, 0, 0.8);
+      letter-spacing: 2px;
+      background: rgba(30, 10, 45, 0.85);
+      padding: 12px 30px;
+      border: 3px solid #ffaa00;
+      border-radius: 8px;
+      box-shadow: 0 0 25px rgba(255, 170, 0, 0.4);
+    }
+
+    .intro-title {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 54px;
+      color: #ffffff;
+      line-height: 1.3;
+      max-width: 1550px;
+      text-shadow: 0 8px 0 #8b0000, 0 12px 25px rgba(0, 0, 0, 0.9), 0 0 45px rgba(255, 119, 0, 0.7);
+      text-transform: uppercase;
+    }
+
+    .intro-title span {
+      color: #ff7700;
+      text-shadow: 0 8px 0 #551a00, 0 0 35px rgba(255, 119, 0, 0.9);
+    }
+
+    .intro-subtitle {
+      font-size: 32px;
+      font-weight: 800;
+      color: #e0b0ff;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      text-shadow: 0 0 20px rgba(224, 176, 255, 0.6);
+    }
+
+    .intro-npc-preview {
+      display: flex;
+      align-items: center;
+      gap: 30px;
+      margin-top: 15px;
+      background: rgba(20, 8, 35, 0.85);
+      border: 3px solid #ff7700;
+      padding: 16px 40px;
+      border-radius: 20px;
+      box-shadow: 0 0 40px rgba(255, 119, 0, 0.4);
+    }
+
+    .intro-npc-preview img {
+      width: 90px;
+      height: 90px;
+      filter: drop-shadow(0 0 15px #ff7700);
+    }
+
+    .intro-npc-preview span {
+      font-size: 28px;
+      font-weight: 900;
+      color: #ffcc00;
+      letter-spacing: 2px;
+    }
+
+    /* Scene 2: NPC & Shop Showcase */
+    .npc-card {
+      position: absolute;
+      left: 90px;
+      top: 180px;
+      width: 480px;
+      background: rgba(18, 8, 32, 0.92);
+      border: 4px solid #ff7700;
+      border-radius: 24px;
+      padding: 30px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8), inset 0 0 30px rgba(255, 119, 0, 0.2);
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      backdrop-filter: blur(10px);
+    }
+
+    .npc-avatar {
+      position: relative;
+      width: 220px;
+      height: 220px;
+      background: radial-gradient(circle, rgba(255, 119, 0, 0.35) 0%, rgba(10, 5, 20, 0.9) 70%);
+      border-radius: 50%;
+      border: 3px solid #ffaa00;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      box-shadow: 0 0 35px rgba(255, 119, 0, 0.5);
+    }
+
+    .npc-avatar img {
+      width: 180px;
+      height: 180px;
+      object-fit: contain;
+      filter: drop-shadow(0 0 12px #ff7700);
+    }
+
+    .npc-name {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 20px;
+      color: #ffcc00;
+      text-align: center;
+      text-shadow: 0 0 12px rgba(255, 204, 0, 0.7);
+    }
+
+    .npc-title-tag {
+      font-size: 18px;
+      font-weight: 700;
+      color: #d8b4fe;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+    }
+
+    .shop-preview-card {
+      position: absolute;
+      right: 90px;
+      top: 180px;
+      width: 1100px;
+      height: 680px;
+      background: rgba(14, 6, 26, 0.94);
+      border: 4px solid #b026ff;
+      border-radius: 24px;
+      padding: 36px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.85), inset 0 0 40px rgba(176, 38, 255, 0.2);
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      backdrop-filter: blur(12px);
+    }
+
+    .shop-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 3px solid rgba(176, 38, 255, 0.4);
+      padding-bottom: 16px;
+    }
+
+    .shop-title {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 24px;
+      color: #ffaa00;
+      text-shadow: 0 0 15px rgba(255, 170, 0, 0.6);
+    }
+
+    .shop-currency {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: rgba(35, 15, 55, 0.8);
+      border: 2px solid #ffcc00;
+      padding: 10px 24px;
+      border-radius: 30px;
+    }
+
+    .shop-currency img {
+      width: 32px;
+      height: 32px;
+      image-rendering: pixelated;
+    }
+
+    .shop-currency span {
+      font-size: 24px;
+      font-weight: 900;
+      color: #ffcc00;
+    }
+
+    .shop-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      flex: 1;
+    }
+
+    .shop-item-box {
+      background: rgba(25, 12, 42, 0.85);
+      border: 2px solid rgba(255, 119, 0, 0.5);
+      border-radius: 16px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      position: relative;
+      transition: all 0.3s ease;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+    }
+
+    .shop-item-box.active {
+      border-color: #ffcc00;
+      box-shadow: 0 0 30px rgba(255, 204, 0, 0.6);
+      transform: scale(1.03);
+    }
+
+    .shop-item-box img {
+      width: 100px;
+      height: 100px;
+      object-fit: contain;
+      filter: drop-shadow(0 0 10px rgba(255, 119, 0, 0.5));
+    }
+
+    .shop-item-name {
+      font-size: 20px;
+      font-weight: 800;
+      color: #ffffff;
+      text-align: center;
+    }
+
+    .shop-item-price {
+      font-size: 18px;
+      font-weight: 800;
+      color: #ffcc00;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* Scene 3: Rapid Cut Limited Time Gear */
+    .gear-showcase-container {
+      position: relative;
+      width: 1500px;
+      height: 700px;
+      z-index: 10;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .gear-card {
+      position: absolute;
+      width: 1200px;
+      height: 600px;
+      background: rgba(16, 7, 30, 0.95);
+      border: 5px solid #ff7700;
+      border-radius: 30px;
+      padding: 40px;
+      display: flex;
+      align-items: center;
+      gap: 60px;
+      box-shadow: 0 25px 70px rgba(0, 0, 0, 0.9), 0 0 60px rgba(255, 119, 0, 0.4);
+      opacity: 0;
+      transform: scale(0.85);
+      visibility: hidden;
+      backdrop-filter: blur(14px);
+    }
+
+    .gear-img-wrapper {
+      position: relative;
+      width: 380px;
+      height: 380px;
+      background: radial-gradient(circle, rgba(255, 119, 0, 0.35) 0%, rgba(15, 6, 28, 0.95) 75%);
+      border: 4px solid #ffaa00;
+      border-radius: 24px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      box-shadow: 0 0 45px rgba(255, 119, 0, 0.5);
+    }
+
+    .gear-img-wrapper img {
+      width: 280px;
+      height: 280px;
+      object-fit: contain;
+      filter: drop-shadow(0 0 25px rgba(255, 200, 0, 0.8));
+    }
+
+    .gear-info {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      flex: 1;
+    }
+
+    .gear-rarity {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 16px;
+      color: #ff3366;
+      letter-spacing: 2px;
+      background: rgba(255, 51, 102, 0.15);
+      border: 2px solid #ff3366;
+      padding: 8px 20px;
+      border-radius: 30px;
+      width: fit-content;
+    }
+
+    .gear-title {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 36px;
+      color: #ffcc00;
+      text-shadow: 0 0 20px rgba(255, 204, 0, 0.7);
+      line-height: 1.3;
+    }
+
+    .gear-stats-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-top: 10px;
+    }
+
+    .gear-stat-pill {
+      background: rgba(40, 18, 65, 0.85);
+      border: 2px solid #00f2fe;
+      padding: 14px 28px;
+      border-radius: 16px;
+      font-size: 22px;
+      font-weight: 900;
+      color: #00f2fe;
+      box-shadow: 0 0 20px rgba(0, 242, 254, 0.4);
+      letter-spacing: 1px;
+    }
+
+    .gear-stat-pill.orange {
+      border-color: #ff7700;
+      color: #ffaa00;
+      box-shadow: 0 0 20px rgba(255, 119, 0, 0.4);
+    }
+
+    .gear-stat-pill.purple {
+      border-color: #b026ff;
+      color: #e0b0ff;
+      box-shadow: 0 0 20px rgba(176, 38, 255, 0.4);
+    }
+
+    /* Scene 4: Closing CTA */
+    #scene4 {
+      background: radial-gradient(circle at center, #350f4c 0%, #08020d 100%);
+    }
+
+    .cta-box {
+      z-index: 10;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 28px;
+      max-width: 1400px;
+    }
+
+    .cta-badge {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 20px;
+      color: #ffcc00;
+      background: rgba(40, 15, 60, 0.9);
+      border: 3px solid #ffcc00;
+      padding: 14px 36px;
+      border-radius: 40px;
+      box-shadow: 0 0 30px rgba(255, 204, 0, 0.5);
+    }
+
+    .cta-title {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 44px;
+      color: #ffffff;
+      line-height: 1.35;
+      text-shadow: 0 8px 0 #7a0000, 0 10px 30px rgba(0,0,0,0.9), 0 0 40px rgba(255, 119, 0, 0.7);
+    }
+
+    .cta-title span {
+      color: #ff7700;
+    }
+
+    .cta-button {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 32px;
+      background: linear-gradient(135deg, #ff7700 0%, #ff0055 100%);
+      color: #ffffff;
+      padding: 26px 64px;
+      border-radius: 20px;
+      border: 4px solid #ffcc00;
+      box-shadow: 0 0 50px rgba(255, 119, 0, 0.8), 0 15px 35px rgba(0,0,0,0.6);
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      text-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    }
+
+    .cta-url {
+      font-family: 'Silkscreen', monospace;
+      font-size: 44px;
+      color: #00f2fe;
+      text-shadow: 0 0 30px rgba(0, 242, 254, 0.9);
+      letter-spacing: 3px;
+    }
+
+    .cta-icons-row {
+      display: flex;
+      gap: 40px;
+      align-items: center;
+      margin-top: 10px;
+    }
+
+    .cta-icon-item {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      background: rgba(20, 10, 35, 0.8);
+      border: 2px solid rgba(255, 204, 0, 0.6);
+      padding: 12px 28px;
+      border-radius: 16px;
+    }
+
+    .cta-icon-item img {
+      width: 44px;
+      height: 44px;
+      image-rendering: pixelated;
+    }
+
+    .cta-icon-item span {
+      font-size: 20px;
+      font-weight: 800;
+      color: #ffffff;
+    }
+
+    /* Bottom Info Card */
+    .info-card {
+      position: absolute;
+      bottom: 50px;
+      left: 70px;
+      right: 70px;
+      background: rgba(16, 7, 30, 0.92);
+      backdrop-filter: blur(12px);
+      border: 3px solid rgba(255, 119, 0, 0.5);
+      border-radius: 20px;
+      padding: 24px 44px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), inset 0 0 30px rgba(255, 119, 0, 0.2);
+      z-index: 10;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .card-heading {
+      font-size: 38px;
+      font-weight: 900;
+      color: #ffffff;
+      line-height: 1.1;
+    }
+
+    .card-subtext {
+      font-size: 22px;
+      font-weight: 700;
+      color: #ffaa00;
+    }
+
+    /* Player Controls bar overlay */
+    #controls-bar {
+      position: absolute;
+      bottom: -70px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 1000px;
+      background: rgba(12, 5, 24, 0.95);
+      border: 2px solid #ff7700;
+      border-radius: 40px;
+      padding: 12px 30px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      z-index: 200;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.9);
+      transition: bottom 0.3s ease;
+    }
+
+    body:hover #controls-bar {
+      bottom: 20px;
+    }
+
+    .control-btn {
+      background: #ff7700;
+      color: #ffffff;
+      border: none;
+      padding: 8px 18px;
+      border-radius: 20px;
+      font-weight: 800;
+      cursor: pointer;
+      font-size: 14px;
+      text-transform: uppercase;
+    }
+
+    .timeline-scrubber {
+      flex: 1;
+      accent-color: #ff7700;
+      cursor: pointer;
+    }
+
+    .time-display {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 12px;
+      color: #ffcc00;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="stage">
+    <!-- Ambient particle canvas -->
+    <canvas id="particles-canvas"></canvas>
+
+    <!-- Scanline & Vignette overlays -->
+    <div class="scanlines"></div>
+    <div class="vignette"></div>
+    <div id="flash-overlay"></div>
+    <div id="pumpkin-flash"></div>
+
+    <!-- ========================================== -->
+    <!-- SCENE 1: Intro (0.0s - 4.0s) -->
+    <!-- "FIRST SEASONAL EVENT: HALLOWEEN FESTIVAL" -->
+    <!-- ========================================== -->
+    <div class="scene" id="scene1">
+      <div class="intro-decor"></div>
+      <div class="intro-box">
+        <div class="arcade-tag" id="s1-tag">★ FIRST SEASONAL EVENT: HALLOWEEN FESTIVAL ★</div>
+        <h1 class="intro-title" id="s1-title">
+          FIRST SEASONAL EVENT<br>
+          <span>HALLOWEEN FESTIVAL</span>
+        </h1>
+        <div class="intro-subtitle" id="s1-sub">LIMITED TIME EVENT · SPOOKY REWARDS</div>
+        <div class="intro-npc-preview" id="s1-npc">
+          <img src="../assets/custom/seasonal/jack_o_lantern_npc.png" alt="Jack O'Lantern NPC">
+          <span>JACK O'LANTERN HAS ARRIVED IN THISTLE TOWN!</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- SCENE 2: NPC & Shop Showcase (4.0s - 8.0s) -->
+    <!-- "MEET JACK O'LANTERN IN THISTLE TOWN" -->
+    <!-- ========================================== -->
+    <div class="scene" id="scene2">
+      <video class="bg-video" id="clip-town" loop muted playsinline src="../assets/custom/seasonal/seasonal_town.webm"></video>
+      <div class="video-dimmer"></div>
+
+      <div class="event-badge" id="s2-badge">
+        <img src="../assets/custom/seasonal/jack_o_lantern_helm.png" alt="Icon">
+        THISTLE TOWN EVENT HUB
+      </div>
+
+      <!-- Jack O'Lantern NPC Card -->
+      <div class="npc-card" id="s2-npc-card">
+        <div class="npc-avatar">
+          <img src="../assets/custom/seasonal/jack_o_lantern_npc.png" alt="Jack O'Lantern">
+        </div>
+        <div class="npc-name">JACK O'LANTERN</div>
+        <div class="npc-title-tag">SEASONAL EVENT MERCHANT</div>
+      </div>
+
+      <!-- Event Shop UI Card -->
+      <div class="shop-preview-card" id="s2-shop-card">
+        <div class="shop-header">
+          <div class="shop-title">JACK'S HALLOWEEN SHOP</div>
+          <div class="shop-currency">
+            <img src="../assets/custom/earn/gold_coin.png" alt="Gold">
+            <span id="shop-gold-val">25,000 GOLD</span>
+          </div>
+        </div>
+        <div class="shop-grid">
+          <div class="shop-item-box active">
+            <img src="../assets/custom/seasonal/grim_reaper_scythe.png" alt="Scythe">
+            <div class="shop-item-name">Grim Reaper Scythe</div>
+            <div class="shop-item-price"><img src="../assets/custom/earn/gold_coin.png" style="width:20px;"> 5,000 GOLD</div>
+          </div>
+          <div class="shop-item-box">
+            <img src="../assets/custom/seasonal/witchs_broomstick.png" alt="Broomstick">
+            <div class="shop-item-name">Witch's Broomstick</div>
+            <div class="shop-item-price"><img src="../assets/custom/earn/gold_coin.png" style="width:20px;"> 3,500 GOLD</div>
+          </div>
+          <div class="shop-item-box">
+            <img src="../assets/custom/seasonal/vampire_bat_wings.png" alt="Bat Wings">
+            <div class="shop-item-name">Vampire Bat Wings</div>
+            <div class="shop-item-price"><img src="../assets/custom/earn/gold_coin.png" style="width:20px;"> 4,200 GOLD</div>
+          </div>
+          <div class="shop-item-box">
+            <img src="../assets/custom/seasonal/pumpkin_suit.png" alt="Pumpkin Suit">
+            <div class="shop-item-name">Pumpkin Suit</div>
+            <div class="shop-item-price"><img src="../assets/custom/earn/gold_coin.png" style="width:20px;"> 6,000 GOLD</div>
+          </div>
+          <div class="shop-item-box">
+            <img src="../assets/custom/seasonal/jack_o_lantern_helm.png" alt="Jack Helm">
+            <div class="shop-item-name">Jack-o'-Lantern Helm</div>
+            <div class="shop-item-price"><img src="../assets/custom/earn/gold_coin.png" style="width:20px;"> 3,000 GOLD</div>
+          </div>
+          <div class="shop-item-box">
+            <img src="../assets/custom/earn/gold_pouch.png" alt="Event Token">
+            <div class="shop-item-name">Event Treat Pouch</div>
+            <div class="shop-item-price"><img src="../assets/custom/earn/gold_coin.png" style="width:20px;"> 1,000 GOLD</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="info-card" id="s2-info">
+        <div class="card-content">
+          <div class="card-heading">MEET JACK O'LANTERN IN THISTLE TOWN</div>
+          <div class="card-subtext">PURCHASE EXCLUSIVE ITEMS WITH GOLD FROM THE EVENT SHOP</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- SCENE 3: Limited Time Gear Rapid Cut (8.0s - 14.0s) -->
+    <!-- "LIMITED TIME SEASONAL GEAR" -->
+    <!-- ========================================== -->
+    <div class="scene" id="scene3">
+      <video class="bg-video" id="clip-gear" loop muted playsinline src="../assets/custom/seasonal/seasonal_gear.webm"></video>
+      <div class="video-dimmer"></div>
+
+      <div class="event-badge" id="s3-badge">
+        <img src="../assets/custom/seasonal/grim_reaper_scythe.png" alt="Icon">
+        LIMITED TIME SEASONAL GEAR
+      </div>
+
+      <div class="gear-showcase-container">
+        <!-- Item 1: Grim Reaper Scythe -->
+        <div class="gear-card" id="gear-1">
+          <div class="gear-img-wrapper">
+            <img src="../assets/custom/seasonal/grim_reaper_scythe.png" alt="Grim Reaper Scythe">
+          </div>
+          <div class="gear-info">
+            <div class="gear-rarity">LEGENDARY WEAPON</div>
+            <div class="gear-title">GRIM REAPER SCYTHE</div>
+            <div class="gear-stats-list">
+              <div class="gear-stat-pill">+45 ATTACK POWER</div>
+              <div class="gear-stat-pill orange">+15% CRIT CHANCE</div>
+              <div class="gear-stat-pill purple">SOUL HARVEST PASSIVE</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Item 2: Witch's Broomstick -->
+        <div class="gear-card" id="gear-2">
+          <div class="gear-img-wrapper">
+            <img src="../assets/custom/seasonal/witchs_broomstick.png" alt="Witch's Broomstick">
+          </div>
+          <div class="gear-info">
+            <div class="gear-rarity">EPIC MOUNT / STAFF</div>
+            <div class="gear-title">WITCH'S BROOMSTICK</div>
+            <div class="gear-stats-list">
+              <div class="gear-stat-pill">+30 MOVEMENT SPEED</div>
+              <div class="gear-stat-pill orange">+25 MAGIC POWER</div>
+              <div class="gear-stat-pill purple">FLIGHT LEVITATION</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Item 3: Vampire Bat Wings -->
+        <div class="gear-card" id="gear-3">
+          <div class="gear-img-wrapper">
+            <img src="../assets/custom/seasonal/vampire_bat_wings.png" alt="Vampire Bat Wings">
+          </div>
+          <div class="gear-info">
+            <div class="gear-rarity">MYTHIC BACKPIECE</div>
+            <div class="gear-title">VAMPIRE BAT WINGS</div>
+            <div class="gear-stats-list">
+              <div class="gear-stat-pill">+20% LIFESTEAL</div>
+              <div class="gear-stat-pill orange">+15% NIGHT SPEED</div>
+              <div class="gear-stat-pill purple">BAT SWARM AURA</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Item 4: Pumpkin Suit -->
+        <div class="gear-card" id="gear-4">
+          <div class="gear-img-wrapper">
+            <img src="../assets/custom/seasonal/pumpkin_suit.png" alt="Pumpkin Suit">
+          </div>
+          <div class="gear-info">
+            <div class="gear-rarity">SEASONAL ARMOR</div>
+            <div class="gear-title">PUMPKIN SUIT</div>
+            <div class="gear-stats-list">
+              <div class="gear-stat-pill">+200 MAX HEALTH</div>
+              <div class="gear-stat-pill orange">+18 ARMOR DEFENSE</div>
+              <div class="gear-stat-pill purple">SPOOKY AURA BURST</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Item 5: Jack-o'-Lantern Helm -->
+        <div class="gear-card" id="gear-5">
+          <div class="gear-img-wrapper">
+            <img src="../assets/custom/seasonal/jack_o_lantern_helm.png" alt="Jack-o'-Lantern Helm">
+          </div>
+          <div class="gear-info">
+            <div class="gear-rarity">EVENT HEADGEAR</div>
+            <div class="gear-title">JACK-O'-LANTERN HELM</div>
+            <div class="gear-stats-list">
+              <div class="gear-stat-pill">+35 DEFENSE</div>
+              <div class="gear-stat-pill orange">FEAR STUN CHANCE</div>
+              <div class="gear-stat-pill purple">GLOWING FLAME EYES</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="info-card" id="s3-info">
+        <div class="card-content">
+          <div class="card-heading">LIMITED TIME SEASONAL GEAR</div>
+          <div class="card-subtext">EQUIP EXCLUSIVE STAT BOOSTS & HALLOWEEN COSMETICS</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- SCENE 4: Closing CTA (14.0s - 20.0s) -->
+    <!-- "EARN OR PURCHASE WITH GOLD - PLAY NOW AT WayfarerOnline.fun" -->
+    <!-- ========================================== -->
+    <div class="scene" id="scene4">
+      <video class="bg-video" id="clip-intro-bg" loop muted playsinline src="../assets/custom/seasonal/seasonal_intro.webm"></video>
+      <div class="video-dimmer"></div>
+
+      <div class="cta-box">
+        <div class="cta-badge" id="s4-badge">🎃 HALLOWEEN FESTIVAL LIVE NOW 🎃</div>
+        <h2 class="cta-title" id="s4-title">
+          EARN OR PURCHASE WITH GOLD<br>
+          <span>JOIN THE FESTIVAL NOW!</span>
+        </h2>
+
+        <div class="cta-icons-row" id="s4-icons">
+          <div class="cta-icon-item">
+            <img src="../assets/custom/earn/gold_coin.png" alt="Gold">
+            <span>GOLD CURRENCY</span>
+          </div>
+          <div class="cta-icon-item">
+            <img src="../assets/custom/earn/treasure_chest.png" alt="Chest">
+            <span>SEASONAL DROPS</span>
+          </div>
+          <div class="cta-icon-item">
+            <img src="../assets/custom/earn/wayfarer_token.png" alt="Token">
+            <span>ON-CHAIN REWARDS</span>
+          </div>
+        </div>
+
+        <button class="cta-button" id="s4-btn">PLAY NOW</button>
+        <div class="cta-url" id="s4-url">WayfarerOnline.fun</div>
+      </div>
+    </div>
+
+    <!-- Timeline Scrubber Controls Overlay -->
+    <div id="controls-bar">
+      <button class="control-btn" id="play-btn">Pause</button>
+      <input type="range" class="timeline-scrubber" id="scrubber" min="0" max="20" step="0.05" value="0">
+      <div class="time-display" id="time-display">00:00 / 00:20</div>
+    </div>
+  </div>
+
+  <script>
+    // Play video elements
+    document.querySelectorAll('video').forEach(v => {
+      v.play().catch(() => {});
+    });
+
+    // Floating Halloween Particles Background
+    const canvas = document.getElementById('particles-canvas');
+    const ctx = canvas.getContext('2d');
+    
+    function resizeCanvas() {
+      canvas.width = 1920;
+      canvas.height = 1080;
+    }
+    resizeCanvas();
+
+    const particles = Array.from({ length: 45 }, () => ({
+      x: Math.random() * 1920,
+      y: Math.random() * 1080,
+      size: Math.random() * 5 + 2,
+      speedY: -(Math.random() * 1.5 + 0.5),
+      speedX: (Math.random() - 0.5) * 1.0,
+      color: Math.random() > 0.4 ? 'rgba(255, 120, 0, ' : 'rgba(180, 50, 255, ',
+      alpha: Math.random() * 0.8 + 0.2
+    }));
+
+    function drawParticles() {
+      ctx.clearRect(0, 0, 1920, 1080);
+      particles.forEach(p => {
+        p.y += p.speedY;
+        p.x += p.speedX;
+        if (p.y < -10) p.y = 1090;
+        if (p.x < -10) p.x = 1930;
+        if (p.x > 1930) p.x = -10;
+
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fillStyle = p.color + p.alpha + ')';
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = p.color + '1)';
+        ctx.fill();
+      });
+      requestAnimationFrame(drawParticles);
+    }
+    drawParticles();
+
+    // Responsive scaling to fit window
+    function resizeStage() {
+      const stage = document.getElementById('stage');
+      const scaleX = window.innerWidth / 1920;
+      const scaleY = window.innerHeight / 1080;
+      const scale = Math.min(scaleX, scaleY);
+      stage.style.transform = `scale(${scale})`;
+    }
+    window.addEventListener('resize', resizeStage);
+    resizeStage();
+
+    // GSAP Master Timeline (20s Total)
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({
+      paused: false,
+      onUpdate: updateScrubber
+    });
+    window.__timelines["seasonal-trailer"] = tl;
+    window.__timelines["seasonal_trailer"] = tl;
+
+    function flashWhite() {
+      gsap.fromTo('#flash-overlay', { opacity: 0.85 }, { opacity: 0, duration: 0.25 });
+    }
+    function flashPumpkin() {
+      gsap.fromTo('#pumpkin-flash', { opacity: 0.75 }, { opacity: 0, duration: 0.35 });
+    }
+
+    // ==========================================
+    // SCENE 1: Arcade Intro Title & Festive Aura (0.0s - 4.0s)
+    // ==========================================
+    tl.to('#scene1', { autoAlpha: 1, duration: 0.05 }, 0);
+    tl.fromTo('#s1-tag', { y: -40, opacity: 0, scale: 0.8 }, { y: 0, opacity: 1, scale: 1, duration: 0.5, ease: 'back.out(1.8)' }, 0.2);
+    tl.fromTo('#s1-title', { scale: 0.7, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.7, ease: 'power3.out' }, 0.4);
+    tl.fromTo('#s1-sub', { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: 'power2.out' }, 0.7);
+    tl.fromTo('#s1-npc', { y: 50, opacity: 0, scale: 0.9 }, { y: 0, opacity: 1, scale: 1, duration: 0.6, ease: 'back.out(1.5)' }, 1.0);
+    
+    tl.to('#scene1', { autoAlpha: 0, duration: 0.15 }, 3.85);
+
+    // ==========================================
+    // SCENE 2: NPC Showcase & Event Shop UI (4.0s - 8.0s)
+    // ==========================================
+    tl.add(flashPumpkin, 4.0);
+    tl.to('#scene2', { autoAlpha: 1, duration: 0.05 }, 4.0);
+    tl.fromTo('#clip-town', { scale: 1.15 }, { scale: 1.0, duration: 4.0, ease: 'power1.out' }, 4.0);
+    tl.fromTo('#s2-badge', { x: -70, opacity: 0 }, { x: 0, opacity: 1, duration: 0.4, ease: 'back.out(1.5)' }, 4.1);
+    tl.fromTo('#s2-npc-card', { x: -120, opacity: 0 }, { x: 0, opacity: 1, duration: 0.6, ease: 'back.out(1.6)' }, 4.3);
+    tl.fromTo('#s2-shop-card', { x: 120, opacity: 0 }, { x: 0, opacity: 1, duration: 0.6, ease: 'back.out(1.6)' }, 4.5);
+    tl.fromTo('#s2-info', { y: 60, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: 'power3.out' }, 4.7);
+
+    // Gold Ticking animation
+    const goldObj = { val: 0 };
+    tl.to(goldObj, {
+      val: 25000,
+      duration: 2.5,
+      ease: 'power2.out',
+      onUpdate: () => {
+        const el = document.getElementById('shop-gold-val');
+        if (el) el.innerText = Math.floor(goldObj.val).toLocaleString() + ' GOLD';
+      }
+    }, 4.8);
+
+    tl.to('#scene2', { autoAlpha: 0, duration: 0.15 }, 7.85);
+
+    // ==========================================
+    // SCENE 3: Limited Time Gear Rapid Cut (8.0s - 14.0s)
+    // ==========================================
+    tl.add(flashWhite, 8.0);
+    tl.to('#scene3', { autoAlpha: 1, duration: 0.05 }, 8.0);
+    tl.fromTo('#clip-gear', { scale: 1.1 }, { scale: 1.0, duration: 6.0, ease: 'none' }, 8.0);
+    tl.fromTo('#s3-badge', { x: -70, opacity: 0 }, { x: 0, opacity: 1, duration: 0.4, ease: 'back.out(1.5)' }, 8.1);
+    tl.fromTo('#s3-info', { y: 60, opacity: 0 }, { y: 0, opacity: 1, duration: 0.4, ease: 'power3.out' }, 8.2);
+
+    // Item 1: Grim Reaper Scythe (8.3s - 9.4s)
+    tl.to('#gear-1', { autoAlpha: 1, scale: 1, duration: 0.35, ease: 'back.out(1.8)' }, 8.3);
+    tl.to('#gear-1', { autoAlpha: 0, scale: 1.1, duration: 0.2 }, 9.4);
+
+    // Item 2: Witch's Broomstick (9.5s - 10.5s)
+    tl.to('#gear-2', { autoAlpha: 1, scale: 1, duration: 0.35, ease: 'back.out(1.8)' }, 9.5);
+    tl.to('#gear-2', { autoAlpha: 0, scale: 1.1, duration: 0.2 }, 10.5);
+
+    // Item 3: Vampire Bat Wings (10.6s - 11.6s)
+    tl.to('#gear-3', { autoAlpha: 1, scale: 1, duration: 0.35, ease: 'back.out(1.8)' }, 10.6);
+    tl.to('#gear-3', { autoAlpha: 0, scale: 1.1, duration: 0.2 }, 11.6);
+
+    // Item 4: Pumpkin Suit (11.7s - 12.7s)
+    tl.to('#gear-4', { autoAlpha: 1, scale: 1, duration: 0.35, ease: 'back.out(1.8)' }, 11.7);
+    tl.to('#gear-4', { autoAlpha: 0, scale: 1.1, duration: 0.2 }, 12.7);
+
+    // Item 5: Jack-o'-Lantern Helm (12.8s - 13.8s)
+    tl.to('#gear-5', { autoAlpha: 1, scale: 1, duration: 0.35, ease: 'back.out(1.8)' }, 12.8);
+    tl.to('#gear-5', { autoAlpha: 0, scale: 1.1, duration: 0.2 }, 13.85);
+
+    tl.to('#scene3', { autoAlpha: 0, duration: 0.15 }, 13.85);
+
+    // ==========================================
+    // SCENE 4: Closing CTA & Energetic Retro Animation (14.0s - 20.0s)
+    // ==========================================
+    tl.add(flashPumpkin, 14.0);
+    tl.to('#scene4', { autoAlpha: 1, duration: 0.05 }, 14.0);
+    tl.fromTo('#clip-intro-bg', { scale: 1.15 }, { scale: 1.0, duration: 6.0, ease: 'power1.out' }, 14.0);
+    tl.fromTo('#s4-badge', { scale: 0.6, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.5, ease: 'back.out(2)' }, 14.2);
+    tl.fromTo('#s4-title', { y: 40, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: 'power3.out' }, 14.4);
+    tl.fromTo('#s4-icons .cta-icon-item', { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.4, stagger: 0.15, ease: 'back.out(1.5)' }, 14.8);
+    tl.fromTo('#s4-btn', { scale: 0.7, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.6, ease: 'elastic.out(1.2, 0.5)' }, 15.4);
+    tl.fromTo('#s4-url', { scale: 0.8, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.4, ease: 'back.out(1.7)' }, 15.8);
+
+    // Continuous button pulse animation
+    tl.to('#s4-btn', { scale: 1.08, repeat: -1, yoyo: true, duration: 0.6, ease: 'sine.easeInOut' }, 16.2);
+
+    // Control bar logic
+    const scrubber = document.getElementById('scrubber');
+    const playBtn = document.getElementById('play-btn');
+    const timeDisplay = document.getElementById('time-display');
+
+    function updateScrubber() {
+      const time = tl.time();
+      scrubber.value = time;
+      const secs = Math.floor(time);
+      const ms = Math.floor((time - secs) * 100);
+      timeDisplay.innerText = `${secs.toString().padStart(2, '0')}:${ms.toString().padStart(2, '0')} / 00:20`;
+    }
+
+    scrubber.addEventListener('input', () => {
+      tl.pause();
+      tl.time(parseFloat(scrubber.value));
+      playBtn.innerText = 'Play';
+    });
+
+    playBtn.addEventListener('click', () => {
+      if (tl.paused()) {
+        tl.play();
+        playBtn.innerText = 'Pause';
+      } else {
+        tl.pause();
+        playBtn.innerText = 'Play';
+      }
+    });
+
+    tl.play();
+  </script>
+</body>
+</html>

@@ -1,0 +1,102 @@
+{
+  "source": "tools/export_gear_icons.py (ports of src/systems/iconArt.js + heroArt.js ramp) + src/data/gear.js",
+  "style": "16x16 procedural, OUT #1a1024, 4-tone ramp; 32px = NEAREST x2, no new painters",
+  "items": [
+    {
+      "id": "oiled_bandana",
+      "style": "band",
+      "colors": {
+        "main": "0x5d6d7e",
+        "trim": "0xd9c08a"
+      },
+      "files": [
+        "oiled_bandana_16.png",
+        "oiled_bandana_32.png"
+      ]
+    },
+    {
+      "id": "patchwork_tunic",
+      "style": "tunic",
+      "colors": {
+        "main": "0x6e7b5a",
+        "trim": "0x4e2e10"
+      },
+      "files": [
+        "patchwork_tunic_16.png",
+        "patchwork_tunic_32.png"
+      ]
+    },
+    {
+      "id": "canvas_vest",
+      "style": "vest",
+      "colors": {
+        "main": "0x9c8a6a",
+        "trim": "0x5a3a1e"
+      },
+      "files": [
+        "canvas_vest_16.png",
+        "canvas_vest_32.png"
+      ]
+    },
+    {
+      "id": "trail_pack",
+      "style": "pack",
+      "colors": {
+        "main": "0x6e5636",
+        "trim": "0x3e2e14"
+      },
+      "files": [
+        "trail_pack_16.png",
+        "trail_pack_32.png"
+      ]
+    },
+    {
+      "id": "training_sword",
+      "style": "sword",
+      "colors": {
+        "main": "0xffffff",
+        "trim": "0xffffff"
+      },
+      "files": [
+        "training_sword_16.png",
+        "training_sword_32.png"
+      ]
+    },
+    {
+      "id": "apprentice_bow",
+      "style": "bow",
+      "colors": {
+        "main": "0xffffff",
+        "trim": "0xffffff"
+      },
+      "files": [
+        "apprentice_bow_16.png",
+        "apprentice_bow_32.png"
+      ]
+    },
+    {
+      "id": "work_boots",
+      "style": "boots",
+      "colors": {
+        "main": "0x5a3a1e",
+        "trim": "0x2e1e0c"
+      },
+      "files": [
+        "work_boots_16.png",
+        "work_boots_32.png"
+      ]
+    },
+    {
+      "id": "lucky_button",
+      "style": "locket",
+      "colors": {
+        "main": "0x8d6e3f",
+        "trim": "0x5a3a1e"
+      },
+      "files": [
+        "lucky_button_16.png",
+        "lucky_button_32.png"
+      ]
+    }
+  ]
+}

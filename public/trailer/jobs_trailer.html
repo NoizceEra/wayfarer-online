@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wayfarer Online — Jobs & Leveling Promo Trailer</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800;900&family=Press+Start+2P&family=Silkscreen:wght@400;700&display=swap');
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #03060a;
+      color: #ffffff;
+      font-family: 'Outfit', sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    #stage {
+      position: relative;
+      width: 1920px;
+      height: 1080px;
+      background: #050a12;
+      border: 12px solid #00f0b4;
+      overflow: hidden;
+      box-shadow: 0 0 120px rgba(0, 240, 180, 0.4), 0 0 90px rgba(0, 0, 0, 0.95);
+      transform-origin: center center;
+    }
+
+    /* Scanlines & CRT Overlay */
+    .scanlines {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(rgba(10, 25, 20, 0) 50%, rgba(2, 12, 10, 0.5) 50%);
+      background-size: 100% 4px;
+      pointer-events: none;
+      z-index: 100;
+      opacity: 0.55;
+    }
+
+    .vignette {
+      position: absolute;
+      inset: 0;
+      box-shadow: inset 0 0 240px rgba(2, 8, 15, 0.95);
+      pointer-events: none;
+      z-index: 99;
+    }
+
+    #flash-overlay {
+      position: absolute;
+      inset: 0;
+      background: #ffffff;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 95;
+    }
+
+    #gold-flash {
+      position: absolute;
+      inset: 0;
+      background: rgba(255, 215, 0, 0.5);
+      opacity: 0;
+      pointer-events: none;
+      z-index: 94;
+    }
+
+    /* Floating particles background canvas */
+    #particles-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    /* Scene containers */
+    .scene {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      opacity: 0;
+      visibility: hidden;
+      z-index: 10;
+    }
+
+    /* Background video styling */
+    .bg-video {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      filter: contrast(1.15) brightness(0.8) saturate(1.2);
+      z-index: 1;
+    }
+
+    /* Scene 1 Elements */
+    .hero-title-box {
+      text-align: center;
+      z-index: 20;
+      background: rgba(5, 12, 22, 0.85);
+      padding: 40px 80px;
+      border: 4px solid #00f0b4;
+      border-radius: 16px;
+      box-shadow: 0 0 50px rgba(0, 240, 180, 0.5);
+      backdrop-filter: blur(10px);
+    }
+    .arcade-subtitle {
+      font-family: 'Press Start 2P', monospace;
+      color: #00f0b4;
+      font-size: 24px;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+      text-shadow: 0 0 15px rgba(0, 240, 180, 0.8);
+    }
+    .arcade-title {
+      font-family: 'Outfit', sans-serif;
+      font-weight: 900;
+      font-size: 76px;
+      letter-spacing: 2px;
+      background: linear-gradient(135deg, #ffffff 0%, #ffd700 50%, #ff8c00 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-shadow: 0 0 40px rgba(255, 215, 0, 0.6);
+      text-transform: uppercase;
+      line-height: 1.1;
+    }
+
+    .badge-ring {
+      display: flex;
+      gap: 45px;
+      margin-top: 50px;
+      z-index: 20;
+    }
+    .badge-card {
+      width: 170px;
+      height: 200px;
+      background: rgba(12, 20, 32, 0.9);
+      border: 3px solid #3a506b;
+      border-radius: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 15px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+      transition: transform 0.3s;
+    }
+    .badge-card img {
+      width: 100px;
+      height: 100px;
+      object-fit: contain;
+      filter: drop-shadow(0 0 12px rgba(0, 240, 180, 0.6));
+    }
+    .badge-card span {
+      margin-top: 12px;
+      font-family: 'Silkscreen', monospace;
+      font-size: 16px;
+      font-weight: bold;
+      letter-spacing: 1px;
+    }
+
+    /* Starter Classes Grid (Scene 2) */
+    .classes-header {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 32px;
+      color: #ffd700;
+      text-shadow: 0 0 20px rgba(255, 215, 0, 0.8);
+      margin-bottom: 35px;
+      z-index: 20;
+      text-align: center;
+    }
+    .starter-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 380px);
+      gap: 30px;
+      z-index: 20;
+    }
+    .class-card {
+      background: rgba(8, 16, 28, 0.92);
+      border: 3px solid #1c3144;
+      border-radius: 20px;
+      padding: 25px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      box-shadow: 0 15px 40px rgba(0, 0, 0, 0.85);
+      position: relative;
+      overflow: hidden;
+    }
+    .class-card.wayfarer { border-color: #ffd700; box-shadow: 0 0 35px rgba(255, 215, 0, 0.3); }
+    .class-card.ranger { border-color: #00e676; box-shadow: 0 0 35px rgba(0, 230, 118, 0.3); }
+    .class-card.arcanist { border-color: #b388ff; box-shadow: 0 0 35px rgba(179, 136, 255, 0.3); }
+    .class-card.bandit { border-color: #ff5252; box-shadow: 0 0 35px rgba(255, 82, 82, 0.3); }
+
+    .class-icon {
+      width: 120px;
+      height: 120px;
+      object-fit: contain;
+      margin-bottom: 15px;
+    }
+    .class-name {
+      font-family: 'Outfit', sans-serif;
+      font-weight: 900;
+      font-size: 36px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin-bottom: 8px;
+    }
+    .class-desc {
+      font-size: 16px;
+      color: #cbd5e1;
+      text-align: center;
+      margin-bottom: 20px;
+      height: 48px;
+    }
+    .ability-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+    }
+    .tag {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-family: 'Silkscreen', monospace;
+      color: #e2e8f0;
+    }
+
+    /* Level Up & Stat UI (Scene 3) */
+    .levelup-header {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 36px;
+      color: #00f0b4;
+      text-shadow: 0 0 25px rgba(0, 240, 180, 0.9);
+      margin-bottom: 25px;
+      z-index: 20;
+      text-align: center;
+    }
+    .levelup-banner {
+      font-family: 'Outfit', sans-serif;
+      font-weight: 900;
+      font-size: 64px;
+      color: #ffd700;
+      text-shadow: 0 0 30px rgba(255, 215, 0, 0.8);
+      text-transform: uppercase;
+      margin-bottom: 40px;
+      z-index: 20;
+    }
+    .stat-allocator-panel {
+      width: 1400px;
+      background: rgba(6, 14, 26, 0.94);
+      border: 4px solid #00f0b4;
+      border-radius: 24px;
+      padding: 40px 60px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 30px 50px;
+      box-shadow: 0 0 60px rgba(0, 240, 180, 0.35);
+      z-index: 20;
+    }
+    .stat-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(16, 28, 48, 0.8);
+      border: 2px solid #203a5e;
+      border-radius: 14px;
+      padding: 16px 24px;
+    }
+    .stat-name {
+      font-family: 'Silkscreen', monospace;
+      font-size: 22px;
+      font-weight: bold;
+      color: #ffd700;
+      width: 80px;
+    }
+    .stat-label {
+      font-size: 16px;
+      color: #94a3b8;
+      flex-grow: 1;
+      margin-left: 15px;
+    }
+    .stat-val {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 22px;
+      color: #00f0b4;
+    }
+
+    /* Specializations Grid (Scene 4) */
+    .spec-header {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 30px;
+      color: #ff3366;
+      text-shadow: 0 0 25px rgba(255, 51, 102, 0.8);
+      margin-bottom: 25px;
+      z-index: 20;
+      text-align: center;
+    }
+    .spec-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 380px);
+      gap: 25px;
+      z-index: 20;
+    }
+    .spec-card {
+      background: rgba(10, 15, 28, 0.94);
+      border: 2px solid #334155;
+      border-radius: 16px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+      position: relative;
+    }
+    .spec-card .base-tag {
+      font-family: 'Silkscreen', monospace;
+      font-size: 11px;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 5px;
+    }
+    .spec-card .spec-title {
+      font-family: 'Outfit', sans-serif;
+      font-weight: 900;
+      font-size: 26px;
+      color: #ffffff;
+      margin-bottom: 8px;
+    }
+    .spec-card .spec-desc {
+      font-size: 14px;
+      color: #cbd5e1;
+      margin-bottom: 15px;
+      line-height: 1.3;
+    }
+    .spec-card .spec-skills {
+      font-family: 'Silkscreen', monospace;
+      font-size: 12px;
+      color: #00f0b4;
+      background: rgba(0, 240, 180, 0.08);
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(0, 240, 180, 0.3);
+    }
+
+    /* Scene 5 CTA */
+    .cta-container {
+      text-align: center;
+      z-index: 20;
+      background: rgba(6, 12, 24, 0.9);
+      padding: 60px 100px;
+      border: 6px solid #ffd700;
+      border-radius: 24px;
+      box-shadow: 0 0 80px rgba(255, 215, 0, 0.5);
+    }
+    .cta-sub {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 24px;
+      color: #00f0b4;
+      margin-bottom: 25px;
+      letter-spacing: 2px;
+    }
+    .cta-title {
+      font-family: 'Outfit', sans-serif;
+      font-weight: 900;
+      font-size: 80px;
+      background: linear-gradient(135deg, #ffffff 0%, #ffd700 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 35px;
+    }
+    .cta-url {
+      display: inline-block;
+      font-family: 'Press Start 2P', monospace;
+      font-size: 32px;
+      background: #ffd700;
+      color: #050a12;
+      padding: 24px 48px;
+      border-radius: 16px;
+      box-shadow: 0 0 40px rgba(255, 215, 0, 0.8);
+      letter-spacing: 2px;
+    }
+
+    /* Sound button */
+    #audio-btn {
+      position: absolute;
+      bottom: 30px;
+      right: 40px;
+      z-index: 101;
+      background: rgba(0, 240, 180, 0.2);
+      border: 2px solid #00f0b4;
+      color: #00f0b4;
+      font-family: 'Silkscreen', monospace;
+      padding: 10px 20px;
+      border-radius: 30px;
+      cursor: pointer;
+      font-size: 14px;
+      backdrop-filter: blur(5px);
+    }
+  </style>
+</head>
+<body>
+
+  <div id="stage">
+    <!-- Overlay effects -->
+    <div class="scanlines"></div>
+    <div class="vignette"></div>
+    <div id="flash-overlay"></div>
+    <div id="gold-flash"></div>
+    <canvas id="particles-canvas"></canvas>
+
+    <!-- Background Music -->
+    <audio id="bgm" src="../assets/audio/music/mus_jobs_trailer.wav" loop></audio>
+
+    <!-- Sound Control Button -->
+    <button id="audio-btn">🔊 Sound ON</button>
+
+    <!-- SCENE 1: Intro (0s - 4s) -->
+    <div class="scene" id="scene1">
+      <video class="bg-video" autoplay loop muted playsinline src="../assets/custom/jobs/jobs_intro.webm"></video>
+      <div class="hero-title-box">
+        <div class="arcade-subtitle">CHOOSE YOUR PATH: THE JOBS & LEVELING SYSTEM</div>
+        <div class="arcade-title">WAYFARER ONLINE</div>
+      </div>
+      <div class="badge-ring">
+        <div class="badge-card">
+          <img src="../assets/custom/jobs/badge_wayfarer.png" alt="Wayfarer">
+          <span style="color: #ffd700;">WAYFARER</span>
+        </div>
+        <div class="badge-card">
+          <img src="../assets/custom/jobs/badge_ranger.png" alt="Ranger">
+          <span style="color: #00e676;">RANGER</span>
+        </div>
+        <div class="badge-card">
+          <img src="../assets/custom/jobs/badge_arcanist.png" alt="Arcanist">
+          <span style="color: #b388ff;">ARCANIST</span>
+        </div>
+        <div class="badge-card">
+          <img src="../assets/custom/jobs/badge_bandit.png" alt="Bandit">
+          <span style="color: #ff5252;">BANDIT</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- SCENE 2: 4 Starter Classes (4s - 9s) -->
+    <div class="scene" id="scene2">
+      <video class="bg-video" autoplay loop muted playsinline src="../assets/custom/jobs/class_wayfarer.webm"></video>
+      <div class="classes-header">4 STARTER CLASSES: WAYFARER • RANGER • ARCANIST • BANDIT</div>
+      <div class="starter-grid">
+        <div class="class-card wayfarer">
+          <img class="class-icon" src="../assets/custom/jobs/badge_wayfarer.png" alt="Wayfarer">
+          <div class="class-name" style="color: #ffd700;">WAYFARER</div>
+          <div class="class-desc">Balanced traveler wielding sword & lantern. Great first pick.</div>
+          <div class="ability-tags">
+            <span class="tag">Trail Slash</span>
+            <span class="tag">Waylight</span>
+            <span class="tag">Dust Dash</span>
+            <span class="tag">Make Camp</span>
+          </div>
+        </div>
+        <div class="class-card ranger">
+          <img class="class-icon" src="../assets/custom/jobs/badge_ranger.png" alt="Ranger">
+          <div class="class-name" style="color: #00e676;">RANGER</div>
+          <div class="class-desc">Long-range archer. Fragile, fast with high critical strikes.</div>
+          <div class="ability-tags">
+            <span class="tag">Thorn Shot</span>
+            <span class="tag">Leaf Volley</span>
+            <span class="tag">Dust Dash</span>
+            <span class="tag">Snare Trap</span>
+          </div>
+        </div>
+        <div class="class-card arcanist">
+          <img class="class-icon" src="../assets/custom/jobs/badge_arcanist.png" alt="Arcanist">
+          <div class="class-name" style="color: #b388ff;">ARCANIST</div>
+          <div class="class-desc">Elemental caster wielding big AoE spell damage.</div>
+          <div class="ability-tags">
+            <span class="tag">Ember Bolt</span>
+            <span class="tag">Moss Burst</span>
+            <span class="tag">Wisp Blink</span>
+            <span class="tag">Tide Ward</span>
+          </div>
+        </div>
+        <div class="class-card bandit">
+          <img class="class-icon" src="../assets/custom/jobs/badge_bandit.png" alt="Bandit">
+          <div class="class-name" style="color: #ff5252;">BANDIT</div>
+          <div class="class-desc">Fast rogue with twin fangs & shadow smoke tricks.</div>
+          <div class="ability-tags">
+            <span class="tag">Fang Stab</span>
+            <span class="tag">Crow Fan</span>
+            <span class="tag">Dust Dash</span>
+            <span class="tag">Smoke Pouch</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SCENE 3: Level Up & Stats (9s - 14s) -->
+    <div class="scene" id="scene3">
+      <video class="bg-video" autoplay loop muted playsinline src="../assets/custom/jobs/levelup_showcase.webm"></video>
+      <div class="levelup-header">LEVEL UP & ALLOCATE STATS: STR • AGI • VIT • INT • DEX • LUK</div>
+      <div class="levelup-banner">★ LEVEL UP! +5 STAT POINTS ★</div>
+      <div class="stat-allocator-panel">
+        <div class="stat-row">
+          <div class="stat-name">STR</div>
+          <div class="stat-label">Strength (Melee ATK)</div>
+          <div class="stat-val" id="val-str">8</div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-name">AGI</div>
+          <div class="stat-label">Agility (ASPD & Speed)</div>
+          <div class="stat-val" id="val-agi">5</div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-name">VIT</div>
+          <div class="stat-label">Vitality (Max HP & DEF)</div>
+          <div class="stat-val" id="val-vit">8</div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-name">INT</div>
+          <div class="stat-label">Intelligence (Max MP & MATK)</div>
+          <div class="stat-val" id="val-int">4</div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-name">DEX</div>
+          <div class="stat-label">Dexterity (Accuracy & Bow)</div>
+          <div class="stat-val" id="val-dex">5</div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-name">LUK</div>
+          <div class="stat-label">Luck (Crit & Drop Rate)</div>
+          <div class="stat-val" id="val-luk">4</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SCENE 4: 8 Advanced Specializations (14s - 20s) -->
+    <div class="scene" id="scene4">
+      <video class="bg-video" autoplay loop muted playsinline src="../assets/custom/jobs/specializations_showcase.webm"></video>
+      <div class="spec-header">LEVEL 10 ADVANCED SPECIALIZATIONS: 8 EPIC PATHS</div>
+      <div class="spec-grid">
+        <div class="spec-card">
+          <div class="base-tag">Wayfarer Spec</div>
+          <div class="spec-title" style="color: #ffd700;">Knight</div>
+          <div class="spec-desc">Sword-and-board bruiser. Tough and hits hard up close.</div>
+          <div class="spec-skills">Skills: Shield Bash • Bulwark</div>
+        </div>
+        <div class="spec-card">
+          <div class="base-tag">Wayfarer Spec</div>
+          <div class="spec-title" style="color: #ffe066;">Lantern Warden</div>
+          <div class="spec-desc">Keeper of radiance. Heals allies & scorches foes.</div>
+          <div class="spec-skills">Skills: Beacon • Sunburst</div>
+        </div>
+        <div class="spec-card">
+          <div class="base-tag">Ranger Spec</div>
+          <div class="spec-title" style="color: #00e676;">Hunter</div>
+          <div class="spec-desc">Deadly marksman with heavy single shots & arrow rain.</div>
+          <div class="spec-skills">Skills: Piercing Shot • Arrow Rain</div>
+        </div>
+        <div class="spec-card">
+          <div class="base-tag">Ranger Spec</div>
+          <div class="spec-title" style="color: #69f0ae;">Wildwarden</div>
+          <div class="spec-desc">Nature skirmisher with thornwalls and swift mending.</div>
+          <div class="spec-skills">Skills: Thornwall • Wildmend</div>
+        </div>
+        <div class="spec-card">
+          <div class="base-tag">Arcanist Spec</div>
+          <div class="spec-title" style="color: #b388ff;">Elementalist</div>
+          <div class="spec-desc">Raw destructive glass cannon spawning meteors.</div>
+          <div class="spec-skills">Skills: Meteor • Spark Chain</div>
+        </div>
+        <div class="spec-card">
+          <div class="base-tag">Arcanist Spec</div>
+          <div class="spec-title" style="color: #80d8ff;">Tidecaller</div>
+          <div class="spec-desc">Water mage bringing tidal surges & healing mist.</div>
+          <div class="spec-skills">Skills: Tidal Surge • Healing Mist</div>
+        </div>
+        <div class="spec-card">
+          <div class="base-tag">Bandit Spec</div>
+          <div class="spec-title" style="color: #ff5252;">Shadowblade</div>
+          <div class="spec-desc">Lethal assassin with shadowsteps & fang dances.</div>
+          <div class="spec-skills">Skills: Shadowstep • Fang Dance</div>
+        </div>
+        <div class="spec-card">
+          <div class="base-tag">Bandit Spec</div>
+          <div class="spec-title" style="color: #ff8a80;">Trickster</div>
+          <div class="spec-desc">Lucky rogue scattering caltrops & executing feints.</div>
+          <div class="spec-skills">Skills: Caltrops • Feint</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SCENE 5: Closing CTA (20s - 25s) -->
+    <div class="scene" id="scene5">
+      <video class="bg-video" autoplay loop muted playsinline src="../assets/custom/jobs/jobs_outro.webm"></video>
+      <div class="cta-container">
+        <div class="cta-sub">MASTER YOUR CLASS • CHOOSE YOUR LEGEND</div>
+        <div class="cta-title">WAYFARER ONLINE</div>
+        <div class="cta-url">PLAY FREE AT WayfarerOnline.fun</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Particle Canvas System
+    const canvas = document.getElementById('particles-canvas');
+    const ctx = canvas.getContext('2d');
+    function resizeCanvas() {
+      canvas.width = 1920;
+      canvas.height = 1080;
+    }
+    resizeCanvas();
+
+    const particles = [];
+    for (let i = 0; i < 90; i++) {
+      particles.push({
+        x: Math.random() * 1920,
+        y: Math.random() * 1080,
+        r: Math.random() * 4 + 1.5,
+        dx: (Math.random() - 0.5) * 1.5,
+        dy: -Math.random() * 2 - 0.5,
+        color: ['#00f0b4', '#ffd700', '#b388ff', '#ff5252'][Math.floor(Math.random() * 4)],
+        alpha: Math.random() * 0.7 + 0.3
+      });
+    }
+
+    function renderParticles() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      particles.forEach(p => {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = p.alpha;
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = p.color;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        p.x += p.dx;
+        p.y += p.dy;
+        if (p.y < 0) { p.y = 1080; p.x = Math.random() * 1920; }
+        if (p.x < 0 || p.x > 1920) p.dx *= -1;
+      });
+      requestAnimationFrame(renderParticles);
+    }
+    renderParticles();
+
+    // Audio Trigger
+    const bgm = document.getElementById('bgm');
+    const audioBtn = document.getElementById('audio-btn');
+    audioBtn.addEventListener('click', () => {
+      if (bgm.paused) {
+        bgm.play();
+        audioBtn.innerText = '🔊 Sound ON';
+      } else {
+        bgm.pause();
+        audioBtn.innerText = '🔇 Sound OFF';
+      }
+    });
+
+    // Auto-play audio on user interaction
+    document.body.addEventListener('click', () => {
+      if (bgm.paused) bgm.play().catch(() => {});
+    }, { once: true });
+
+    // Master GSAP Timeline (25 seconds total)
+    const tl = gsap.timeline({ repeat: -1 });
+    window.tl = tl;
+    window.__timelines = window.__timelines || {};
+    window.__timelines["jobs-trailer"] = tl;
+
+    // 0s - 4s: Scene 1
+    tl.to('#scene1', { autoAlpha: 1, duration: 0.5 })
+      .from('.hero-title-box', { scale: 0.8, y: -50, duration: 1, ease: 'back.out(1.7)' }, '<')
+      .from('.badge-card', { scale: 0, autoAlpha: 0, stagger: 0.15, duration: 0.8, ease: 'back.out(1.5)' }, '-=0.4')
+      .to('#flash-overlay', { opacity: 0.4, duration: 0.1, yoyo: true, repeat: 1 }, 1.5)
+      .to('#scene1', { autoAlpha: 0, duration: 0.5 }, 3.5);
+
+    // 4s - 9s: Scene 2
+    tl.to('#scene2', { autoAlpha: 1, duration: 0.5 }, 4.0)
+      .from('.classes-header', { y: -30, autoAlpha: 0, duration: 0.6 }, '<')
+      .from('.starter-grid .class-card', { y: 60, autoAlpha: 0, stagger: 0.2, duration: 0.8, ease: 'power3.out' }, '-=0.3')
+      .to('.class-card.wayfarer', { scale: 1.05, duration: 0.4, yoyo: true, repeat: 1 }, 5.5)
+      .to('.class-card.ranger', { scale: 1.05, duration: 0.4, yoyo: true, repeat: 1 }, 6.3)
+      .to('.class-card.arcanist', { scale: 1.05, duration: 0.4, yoyo: true, repeat: 1 }, 7.1)
+      .to('.class-card.bandit', { scale: 1.05, duration: 0.4, yoyo: true, repeat: 1 }, 7.9)
+      .to('#scene2', { autoAlpha: 0, duration: 0.5 }, 8.5);
+
+    // 9s - 14s: Scene 3
+    tl.to('#scene3', { autoAlpha: 1, duration: 0.5 }, 9.0)
+      .to('#gold-flash', { opacity: 0.6, duration: 0.15, yoyo: true, repeat: 1 }, '<')
+      .from('.levelup-header', { scale: 0.8, autoAlpha: 0, duration: 0.6 }, '<')
+      .from('.levelup-banner', { scale: 1.3, autoAlpha: 0, duration: 0.6, ease: 'bounce.out' }, '-=0.2')
+      .from('.stat-allocator-panel', { y: 50, autoAlpha: 0, duration: 0.8 }, '-=0.3')
+      // Stat counters animation
+      .to({ val: 8 }, { val: 24, duration: 2, onUpdate: function() { document.getElementById('val-str').innerText = Math.floor(this.targets()[0].val); } }, 10.5)
+      .to({ val: 5 }, { val: 20, duration: 2, onUpdate: function() { document.getElementById('val-agi').innerText = Math.floor(this.targets()[0].val); } }, 10.5)
+      .to({ val: 8 }, { val: 18, duration: 2, onUpdate: function() { document.getElementById('val-vit').innerText = Math.floor(this.targets()[0].val); } }, 10.5)
+      .to({ val: 4 }, { val: 22, duration: 2, onUpdate: function() { document.getElementById('val-int').innerText = Math.floor(this.targets()[0].val); } }, 10.5)
+      .to({ val: 5 }, { val: 19, duration: 2, onUpdate: function() { document.getElementById('val-dex').innerText = Math.floor(this.targets()[0].val); } }, 10.5)
+      .to({ val: 4 }, { val: 15, duration: 2, onUpdate: function() { document.getElementById('val-luk').innerText = Math.floor(this.targets()[0].val); } }, 10.5)
+      .to('#scene3', { autoAlpha: 0, duration: 0.5 }, 13.5);
+
+    // 14s - 20s: Scene 4
+    tl.to('#scene4', { autoAlpha: 1, duration: 0.5 }, 14.0)
+      .from('.spec-header', { y: -30, autoAlpha: 0, duration: 0.6 }, '<')
+      .from('.spec-card', { scale: 0.7, autoAlpha: 0, stagger: 0.12, duration: 0.6, ease: 'back.out(1.4)' }, '-=0.3')
+      .to('#scene4', { autoAlpha: 0, duration: 0.5 }, 19.5);
+
+    // 20s - 25s: Scene 5
+    tl.to('#scene5', { autoAlpha: 1, duration: 0.5 }, 20.0)
+      .to('#flash-overlay', { opacity: 0.6, duration: 0.2, yoyo: true, repeat: 1 }, '<')
+      .from('.cta-container', { scale: 0.8, autoAlpha: 0, duration: 0.8, ease: 'elastic.out(1, 0.6)' }, '<')
+      .from('.cta-url', { scale: 0, duration: 0.6, ease: 'back.out(2)' }, '-=0.2')
+      .to('.cta-url', { scale: 1.06, duration: 0.8, yoyo: true, repeat: -1, ease: 'sine.inOut' }, '+=0.2');
+  </script>
+</body>
+</html>
