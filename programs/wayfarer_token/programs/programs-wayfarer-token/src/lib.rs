@@ -20,13 +20,15 @@ pub mod programs_wayfarer_token {
 
     /// Initialize the bridge: create the $WAYFARER mint.
     /// The mint authority is a PDA so the program can mint via CPI.
-    pub fn initialize(ctx: Context<Initialize>, decimals: u8) -> Result<()> {
-        require!(decimals <= 9, ErrorCode::InvalidDecimals);
+    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
         ctx.accounts.config.mint = ctx.accounts.mint.key();
         ctx.accounts.config.mint_authority = ctx.accounts.mint_authority.key();
         ctx.accounts.config.bump = ctx.bumps.config;
         ctx.accounts.config.mint_auth_bump = ctx.bumps.mint_authority;
-        msg!("wayfarer-bridge initialized: mint={}", ctx.accounts.mint.key());
+        msg!(
+            "wayfarer-bridge initialized: mint={}",
+            ctx.accounts.mint.key()
+        );
         Ok(())
     }
 
@@ -80,7 +82,7 @@ pub struct Initialize<'info> {
     #[account(
         init,
         payer = payer,
-        mint::decimals = decimals,
+        mint::decimals = 6,
         mint::authority = mint_authority
     )]
     pub mint: Account<'info, Mint>,
