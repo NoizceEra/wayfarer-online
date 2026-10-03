@@ -6,27 +6,26 @@ use anchor_spl::token::{self, Mint, MintTo, Token, TokenAccount};
 declare_id!("WayfaRERWayfaRERWayfaRERWayfaRERWayfaRERWayf");
 
 /// Anchor 0.30+ token bridge for Wayfarer Online.
-/// The program owns a PDA mint authority and a treasury ATA.
+/// The program owns a PDA mint authority. The treasury is an off-chain ATA
+/// derived from the mint_authority PDA; deposits are observed by the server.
 /// - Withdraw: an off-chain server oracle calls `mint_withdraw` to mint
 ///   $WAYFARER tokens to a player's ATA after they burn in-game tokens.
 /// - Deposit: players transfer $WAYFARER tokens into the treasury ATA
 ///   off-chain; the server observes the transfer and credits in-game tokens.
 pub const MINT_AUTH_SEED: &[u8] = b"mint";
-pub const TREASURY_SEED: &[u8] = b"treasury";
 
 #[program]
 pub mod programs_wayfarer_token {
     use super::*;
 
-    /// Initialize the bridge: create the $WAYFARER mint and treasury ATA.
+    /// Initialize the bridge: create the $WAYFARER mint.
     /// The mint authority is a PDA so the program can mint via CPI.
     pub fn initialize(ctx: Context<Initialize>, decimals: u8) -> Result<()> {
         require!(decimals <= 9, ErrorCode::InvalidDecimals);
         ctx.accounts.config.mint = ctx.accounts.mint.key();
-        ctx.accounts.config.treasury = ctx.accounts.treasury.key();
+        ctx.accounts.config.mint_authority = ctx.accounts.mint_authority.key();
         ctx.accounts.config.bump = ctx.bumps.config;
         ctx.accounts.config.mint_auth_bump = ctx.bumps.mint_authority;
-        ctx.accounts.config.treasury_bump = ctx.bumps.treasury;
         msg!("wayfarer-bridge initialized: mint={}", ctx.accounts.mint.key());
         Ok(())
     }
@@ -91,15 +90,6 @@ pub struct Initialize<'info> {
     #[account(seeds = [MINT_AUTH_SEED], bump)]
     pub mint_authority: UncheckedAccount<'info>,
 
-    /// Treasury ATA owned by the config PDA.
-    #[account(
-        init,
-        payer = payer,
-        token::mint = mint,
-        token::authority = config
-    )]
-    pub treasury: Account<'info, TokenAccount>,
-
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
     pub rent: Sysvar<'info, Rent>,
@@ -115,7 +105,7 @@ pub struct MintWithdraw<'info> {
         seeds = [b"config"],
         bump = config.bump,
         has_one = mint,
-        has_one = treasury
+        has_one = mint_authority
     )]
     pub config: Account<'info, BridgeConfig>,
 
@@ -140,24 +130,19 @@ pub struct MintWithdraw<'info> {
     )]
     pub player_token_account: Account<'info, TokenAccount>,
 
-    /// Treasury ATA (checked via config).
-    #[account(mut)]
-    pub treasury: Account<'info, TokenAccount>,
-
     pub token_program: Program<'info, Token>,
 }
 
 #[account]
 pub struct BridgeConfig {
     pub mint: Pubkey,
-    pub treasury: Pubkey,
+    pub mint_authority: Pubkey,
     pub bump: u8,
     pub mint_auth_bump: u8,
-    pub treasury_bump: u8,
 }
 
 impl BridgeConfig {
-    pub const SIZE: usize = 32 + 32 + 1 + 1 + 1;
+    pub const SIZE: usize = 32 + 32 + 1 + 1;
 }
 
 #[error_code]
