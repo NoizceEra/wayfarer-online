@@ -88,7 +88,8 @@ export class PetEncounterSystem {
     // resolve capture target: an actual pet id if mapped, else a "wild" capture id based on enemy type
     const petId = this._petIdForEnemy(payload.typeId);
     if (!petId) return;
-    this._spawnWisp(payload.x, payload.y, payload.typeId, petId, payload.areaId);
+    const hpFrac = typeof payload.hpFrac === 'number' ? payload.hpFrac : 1;
+    this._spawnWisp(payload.x, payload.y, payload.typeId, petId, payload.areaId, hpFrac);
   }
 
   _petIdForEnemy(typeId) {
@@ -114,7 +115,7 @@ export class PetEncounterSystem {
     return null;
   }
 
-  _spawnWisp(x, y, typeId, petId, areaId) {
+  _spawnWisp(x, y, typeId, petId, areaId, hpFrac = 1) {
     const s = this.scene;
     const def = ENEMY_TABLE[typeId];
     const petDef = baseFor(petId);
@@ -154,6 +155,7 @@ export class PetEncounterSystem {
       active: true,
       expiresAt: s.time.now + WISP_LIFETIME_MS,
       name: this._wispName(def, petDef),
+      hpFrac: Math.max(0, Math.min(1, hpFrac)),
     };
     this.wisps.push(w);
 
@@ -170,8 +172,9 @@ export class PetEncounterSystem {
     this._closePrompt();
     this.busy = true;
     this.scene.uiLock = true;
-    this.prompt = new CapturePrompt(this.scene, w.name, (action) => {
-      if (action === 'capture') this._attemptCapture(w);
+    const orbs = this._ownedOrbs();
+    this.prompt = new CapturePrompt(this.scene, w.name, w.hpFrac, orbs, (action, orbId) => {
+      if (action === 'capture') this._attemptCapture(w, orbId);
       else this._letGo(w);
       this._closePrompt();
     });
@@ -184,26 +187,37 @@ export class PetEncounterSystem {
     this.scene.uiLockUntil = this.scene.time.now + 120;
   }
 
-  _attemptCapture(w) {
+  _ownedOrbs() {
+    return ['wayfarer_orb', 'golden_orb']
+      .map((id) => ({ id, ...ITEMS[id], n: packCount(this.scene, id) }))
+      .filter((o) => o.n > 0);
+  }
+
+  _attemptCapture(w, orbId) {
     const s = this.scene;
+    const orbs = this._ownedOrbs();
+    const orb = orbs.find((o) => o.id === orbId) || orbs[0];
+
     // consume orb
-    if (!ITEMS.wayfarer_orb) {
-      bus.emit(Events.SYSTEM, 'Wayfarer Orbs are not available yet.');
+    if (!orb) {
+      bus.emit(Events.SYSTEM, 'You need a Wayfarer Orb to capture it!');
       audio.play('error', 0.7);
       this._letGo(w);
       return;
     }
-    if (takeItem(s, 'wayfarer_orb', 1) === false) {
+    if (takeItem(s, orb.id, 1) === false) {
       bus.emit(Events.SYSTEM, 'You need a Wayfarer Orb to capture it!');
       audio.play('error', 0.7);
       this._letGo(w);
       return;
     }
 
-    // capture formula
-    const hpFrac = 1; // wisp is at full "spirit" HP
-    const orbQuality = 1;
-    const chance = 0.30 + (1 - hpFrac) * 0.50 + orbQuality * 0.10; // = 0.40 base for full-HP wisp
+    // capture formula: base + lower HP bonus + orb quality bonus
+    const base = 0.30;
+    const hpBonus = (1 - w.hpFrac) * 0.50;
+    const orbStats = orb.use?.capture || { quality: 1, bonus: 0 };
+    const orbQualityBonus = orbStats.bonus + (orbStats.quality - 1) * 0.04;
+    const chance = Math.min(0.95, base + hpBonus + orbQualityBonus);
     const roll = Math.random();
 
     // capture animation

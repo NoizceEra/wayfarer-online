@@ -3,15 +3,17 @@
 import { box, label } from './gearUI.js';
 
 export class CapturePrompt {
-  constructor(scene, name, onAction) {
+  constructor(scene, name, hpPct, orbs, onAction) {
     this.scene = scene;
     this.onAction = onAction;
     this.wisp = null;
+    this.orbs = orbs || [];
+    this.selected = this.orbs[0]?.id || null;
 
     const cam = scene.cameras.main;
-    const W = 220, H = 90;
+    const W = 240, H = 120;
     const x = cam.midPoint.x;
-    const y = cam.midPoint.y - 50;
+    const y = cam.midPoint.y - 55;
 
     this.c = scene.add.container(x, y).setDepth(3000).setScrollFactor(0);
 
@@ -20,8 +22,21 @@ export class CapturePrompt {
     this.c.add(bg);
 
     this.c.add(label(scene, 0, -H / 2 + 14, `A wild ${name} appeared!`, 10, '#9fd8ff').setOrigin(0.5));
+    this.c.add(label(scene, 0, -H / 2 + 30, `Spirit integrity: ${Math.round(hpPct * 100)}%`, 9, hpPct > 0.5 ? '#ff8a7a' : '#9be88a').setOrigin(0.5));
 
-    const btnW = 86, btnH = 26;
+    // orb choice row
+    this.orbBtns = [];
+    if (this.orbs.length > 1) {
+      this.c.add(label(scene, 0, -H / 2 + 45, 'Choose orb:', 8, '#b9b39a').setOrigin(0.5));
+      const bx0 = -(this.orbs.length - 1) * 38;
+      this.orbs.forEach((orb, i) => {
+        const b = this._makeOrbBtn(bx0 + i * 76, -H / 2 + 62, orb, i === 0);
+        this.orbBtns.push(b);
+        this.c.add([b.g, b.t]);
+      });
+    }
+
+    const btnW = 86, btnH = 24;
     const by = H / 2 - 20;
     const use = this._makeBtn(-48, by, btnW, btnH, 'Use Orb', 0x2a2015, 0x6ab8ff, () => this._pick('capture'));
     const letGo = this._makeBtn(48, by, btnW, btnH, 'Let Go', 0x2a2015, 0x9a9a9a, () => this._pick('letgo'));
@@ -31,6 +46,25 @@ export class CapturePrompt {
     this.blocker = scene.add.rectangle(0, 0, cam.width + 200, cam.height + 200, 0x000000, 0.01)
       .setDepth(2999).setScrollFactor(0).setInteractive();
     this.blocker.on('pointerdown', () => this._pick('letgo'));
+  }
+
+  _makeOrbBtn(x, y, orb, selected) {
+    const color = selected ? 0x6ab8ff : 0x5a5a5a;
+    const g = this.scene.add.rectangle(x, y, 70, 18, 0x2a2015, 1)
+      .setStrokeStyle(1, color).setInteractive({ useHandCursor: true });
+    const t = label(this.scene, x, y, `${orb.name} x${orb.n}`, 8, selected ? '#ffffff' : '#9a9a9a').setOrigin(0.5);
+    g.on('pointerover', () => g.setFillStyle(0x4a3a22));
+    g.on('pointerout', () => g.setFillStyle(0x2a2015));
+    g.on('pointerdown', () => {
+      this.selected = orb.id;
+      this.orbBtns.forEach((b) => {
+        b.g.setStrokeStyle(1, 0x5a5a5a);
+        b.t.setColor('#9a9a9a');
+      });
+      g.setStrokeStyle(1, 0x6ab8ff);
+      t.setColor('#ffffff');
+    });
+    return { g, t, id: orb.id };
   }
 
   _makeBtn(x, y, w, h, text, fill, border, cb) {
@@ -46,7 +80,7 @@ export class CapturePrompt {
   _pick(action) {
     if (this.done) return;
     this.done = true;
-    if (this.onAction) this.onAction(action);
+    if (this.onAction) this.onAction(action, this.selected);
   }
 
   destroy() {

@@ -117,7 +117,9 @@ function installCommands(mail) {
       case 'refer': case 'referral': return window.__econUI?.referral?.toggle();
       case 'partyfinder': case 'finder': case 'lfg': return window.__econUI?.partyFinder?.toggle(uiScene);
       case 'pets': case 'pet': return bus.emit(Events.SOCIAL_UI, { panel: 'pet-panel', open: true });
-      case 'petduel': case 'pd': case 'duel': if (!first) return say('Usage: /petduel name'); return social.challenge(first);
+      case 'petduel': case 'pd': if (!first) return say('Usage: /petduel name'); return social.challenge(first);
+      case 'pda': return social.acceptPetDuel();
+      case 'pdd': return social.declinePetDuel();
       case 'petbattle': case 'pvb': return say('Walk up to a wild pet wisp and press E to capture it; /petduel name to challenge a player.');
       case 'ginfo': case 'guildinfo': {
         const g = econ.guild;
@@ -126,7 +128,7 @@ function installCommands(mail) {
       }
       case 'help': case '?':
         orig(raw);
-        return say(`Economy: /trade name · /mail [name] · /claim · /refer · /finder · /pet · /petduel name · /ginvite /gaccept /gkick /gpromote /gdemote /gleader /gmotd /gdeposit /gwithdraw /ginfo. Mailbox: ${input.labelFor('mail')}. Market: talk to the notice-board clerks.`);
+        return say(`Economy: /trade name · /mail [name] · /claim · /refer · /finder · /pet · /petduel name · /pda · /pdd · /ginvite /gaccept /gkick /gpromote /gdemote /gleader /gmotd /gdeposit /gwithdraw /ginfo. Mailbox: ${input.labelFor('mail')}. Market: talk to the notice-board clerks.`);
       default: return orig(raw);
     }
   };

@@ -15,7 +15,7 @@ import { bus, Events } from '../core/events.js';
 // Incoming server broadcasts:
 //   challenge       -> { action:'challenge', from, fromName }
 //   declined        -> { action:'declined', from, fromName }
-//   start           -> { action:'start', a, b, aTeam, bTeam, seed }
+//   start           -> { action:'start', a, b, aName, bName, aTeam, bTeam, seed }
 //   turn            -> { action:'turn', a, b, round }
 //   hpSync          -> { action:'hpSync', pets:[{id,hp}], a, b }
 //   end             -> { action:'end', winner, reason }
@@ -23,6 +23,8 @@ import { bus, Events } from '../core/events.js';
 const handlers = {
   turn: new Set(),
   challenge: new Set(),
+  declined: new Set(),
+  start: new Set(),
   result: new Set(),
 };
 
@@ -36,12 +38,14 @@ function ensureWired() {
       const action = msg.action;
       if (action === 'challenge') {
         for (const fn of handlers.challenge) safe(fn, msg);
+      } else if (action === 'declined') {
+        for (const fn of handlers.declined) safe(fn, msg);
+      } else if (action === 'start') {
+        for (const fn of handlers.start) safe(fn, msg);
       } else if (action === 'turn') {
         for (const fn of handlers.turn) safe(fn, msg);
       } else if (action === 'end') {
         for (const fn of handlers.result) safe(fn, msg);
-      } else if (action === 'start') {
-        bus.emit(Events.SYSTEM, `Pet duel started vs ${msg.bName || msg.b || '???'}!`);
       }
     });
   });
@@ -62,5 +66,7 @@ export const petDuel = {
   sendTurn(turn)  { return send('turn', { turn: turn && typeof turn === 'object' ? turn : {} }); },
   onTurn(fn)      { ensureWired(); handlers.turn.add(fn); return () => handlers.turn.delete(fn); },
   onChallenge(fn) { ensureWired(); handlers.challenge.add(fn); return () => handlers.challenge.delete(fn); },
+  onDeclined(fn)  { ensureWired(); handlers.declined.add(fn); return () => handlers.declined.delete(fn); },
+  onStart(fn)     { ensureWired(); handlers.start.add(fn); return () => handlers.start.delete(fn); },
   onResult(fn)    { ensureWired(); handlers.result.add(fn); return () => handlers.result.delete(fn); },
 };

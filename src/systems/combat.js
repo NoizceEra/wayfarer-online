@@ -206,9 +206,11 @@ export class Combat {
     audio.play('monsterDie');
     s.spawnFx(ed.x, ed.y - 6, 'fx.smoke', 1.2 * ed.vscale);
     const xp = Math.max(1, Math.round(ed.xpValue * xpMul(p.level, ed.level)));
+    const hpFrac = ed.maxHp > 0 ? Math.max(0, ed.hp) / ed.maxHp : 1;
     const payload = {
       typeId: ed.typeId, name: ed.displayName, level: ed.level, rank: ed.rank.id, boss: !!ed.isBoss,
       xp, x: Math.round(ed.x), y: Math.round(ed.y), areaId: ed.areaId || null, by: s.pname,
+      hpFrac,
     };
     // Party hook: a party system may take a share (return value = our XP).
     let myXp = xp;

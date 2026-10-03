@@ -13,12 +13,13 @@
 // Server -> client(s)
 //   { action:'challenge', from, fromName } -> target only
 //   { action:'declined', from, fromName }  -> challenger only
-//   { action:'start', a, b, aTeam, bTeam, seed, round:1 } -> both
+//   { action:'start', a, b, aName, bName, aTeam, bTeam, seed, round:1 } -> both
 //   { action:'turn', a, b, round, aTurn, bTurn }          -> both (lockstep)
 //   { action:'hpSync', pets, a, b }                       -> both
 //   { action:'end', winner, reason }                      -> both
 
 const DUEL_TTL_MS = 5 * 60_000;
+const CHALLENGE_TTL_MS = 45_000;
 const RATE = { burst: 8, perMs: 800 }; // ~1.25 msg/s sustained, burst 8
 
 function bucket(p) {
@@ -52,21 +53,53 @@ function inDuel(room, sid) {
 }
 
 function makeTeamFromHero(hero) {
-  // Lightweight pet team: the hero's job becomes the lead, two enemy type ids fill in.
-  // If a real pet system exists later, read hero.pets here.
+  // Real team: up to 3 pets from hero.meta.pets.roster, falling back to job-based placeholders.
+  const roster = hero?.meta?.pets?.roster;
+  if (Array.isArray(roster) && roster.length) {
+    return roster.slice(0, 3).map((pet, i) => petToCombat(pet, i));
+  }
   const job = hero?.job || 'wayfarer';
   const level = Math.max(1, Math.min(99, Number.isFinite(+hero?.level) ? +hero.level : 1));
   const maxHp = 60 + level * 8;
-  const team = [
+  return [
     { id: 'pet-hero', name: 'Hero Pet', type: job, maxHp, hp: maxHp, atk: 8 + level * 2, spd: 10 },
     { id: 'pet-a', name: 'Bite Bug', type: 'beetle', maxHp: Math.floor(maxHp * 0.75), hp: Math.floor(maxHp * 0.75), atk: 6 + level, spd: 8 },
     { id: 'pet-b', name: 'Spark Moth', type: 'moth', maxHp: Math.floor(maxHp * 0.65), hp: Math.floor(maxHp * 0.65), atk: 5 + level, spd: 12 },
   ];
-  return team;
+}
+
+function petToCombat(pet, index) {
+  const level = Math.max(1, Math.min(99, Number.isFinite(+pet?.level) ? +pet.level : 1));
+  // Normalize stats: hp/atk/def/spd with sane defaults.
+  const s = pet?.stats || {};
+  const maxHp = Math.max(20, Math.min(999, Number.isFinite(+s?.hp) ? +s.hp : 40 + level * 6));
+  const atk = Math.max(5, Math.min(200, Number.isFinite(+s?.atk) ? +s.atk : 8 + level * 2));
+  const def = Math.max(1, Math.min(200, Number.isFinite(+s?.def) ? +s.def : 5 + level));
+  const spd = Math.max(1, Math.min(200, Number.isFinite(+s?.spd) ? +s.spd : 8 + level));
+  return {
+    id: String(pet?.id || `pet-${index}`).slice(0, 32),
+    name: String(pet?.name || baseName(pet?.id) || `Pet ${index + 1}`).slice(0, 24),
+    type: String(pet?.type || 'nature').slice(0, 12),
+    level,
+    maxHp,
+    hp: Number.isFinite(+pet?.hp) ? Math.max(0, Math.min(maxHp, +pet.hp)) : maxHp,
+    atk, def, spd,
+  };
+}
+
+function baseName(id) {
+  // Lightweight best-effort name from common pet ids; client can map ids to names.
+  const map = {
+    emberling: 'Emberling', ashfox: 'Ashfox', infernowarg: 'Infernowarg',
+    dewdrop: 'Dewdrop', pondshell: 'Pondshell', leviarmor: 'Leviarmor',
+    sprig: 'Sprig', mossback: 'Mossback', treantusk: 'Treantusk',
+  };
+  return map[id] || null;
 }
 
 export function install(room) {
   room.petDuels ||= new Map();
+  room.petDuelChallenges ||= new Map(); // targetSid -> { from, fromName, at }
 
   room.onMessage(type, (client, m) => {
     const p = room.players.get(client.sessionId);
@@ -77,8 +110,17 @@ export function install(room) {
 
     if (action === 'challenge') {
       const target = resolveTarget(room, msg.target);
-      if (!target || target === client.sessionId) { send(room, client.sessionId, type, { action: 'error', msg: 'No such player.' }); return; }
+      if (!target) { send(room, client.sessionId, type, { action: 'error', msg: 'No such player.' }); return; }
+      if (target === client.sessionId) { send(room, client.sessionId, type, { action: 'error', msg: 'You cannot challenge yourself.' }); return; }
       if (inDuel(room, client.sessionId) || inDuel(room, target)) { send(room, client.sessionId, type, { action: 'error', msg: 'One of you is already in a duel.' }); return; }
+      // Spoof / duplicate guard: only one pending challenge from this challenger to this target.
+      const key = `${client.sessionId}~${target}`;
+      const existing = room.petDuelChallenges.get(target);
+      if (existing) {
+        send(room, client.sessionId, type, { action: 'error', msg: 'A challenge is already pending for that player.' });
+        return;
+      }
+      room.petDuelChallenges.set(target, { from: client.sessionId, fromName: p.name, at: Date.now() });
       send(room, target, type, { action: 'challenge', from: client.sessionId, fromName: p.name });
       return;
     }
@@ -86,21 +128,33 @@ export function install(room) {
     if (action === 'decline') {
       const target = resolveTarget(room, msg.target);
       if (!target) return;
+      // Only the challenged player can decline a challenge aimed at them.
+      const ch = room.petDuelChallenges.get(client.sessionId);
+      if (!ch || ch.from !== target) return;
+      room.petDuelChallenges.delete(client.sessionId);
       send(room, target, type, { action: 'declined', from: client.sessionId, fromName: p.name });
       return;
     }
 
     if (action === 'accept') {
       const target = resolveTarget(room, msg.target);
-      if (!target || target === client.sessionId) return;
+      if (!target) { send(room, client.sessionId, type, { action: 'error', msg: 'No such player.' }); return; }
+      if (target === client.sessionId) { send(room, client.sessionId, type, { action: 'error', msg: 'You cannot accept your own challenge.' }); return; }
       if (inDuel(room, client.sessionId) || inDuel(room, target)) {
         send(room, client.sessionId, type, { action: 'error', msg: 'Someone is already dueling.' });
         return;
       }
+      // Verify the challenger actually issued a pending challenge to this acceptor.
+      const ch = room.petDuelChallenges.get(client.sessionId);
+      if (!ch || ch.from !== target) {
+        send(room, client.sessionId, type, { action: 'error', msg: 'No pending challenge from that player.' });
+        return;
+      }
+      room.petDuelChallenges.delete(client.sessionId);
       const challenger = room.players.get(target);
       const seed = Math.floor(Math.random() * 0x7fffffff);
       const duel = {
-        id: `${client.sessionId}~${target}`,
+        id: `${target}~${client.sessionId}`,
         a: target, b: client.sessionId,
         aName: challenger?.name || '???', bName: p.name,
         aTeam: makeTeamFromHero(challenger?.hero),
@@ -111,18 +165,14 @@ export function install(room) {
         lastAt: Date.now(),
       };
       room.petDuels.set(duel.id, duel);
-      send(room, duel.a, type, {
+      const startPayload = {
         action: 'start', a: duel.a, b: duel.b,
         aName: duel.aName, bName: duel.bName,
         aTeam: duel.aTeam, bTeam: duel.bTeam,
         seed, round: duel.round,
-      });
-      send(room, duel.b, type, {
-        action: 'start', a: duel.a, b: duel.b,
-        aName: duel.aName, bName: duel.bName,
-        aTeam: duel.aTeam, bTeam: duel.bTeam,
-        seed, round: duel.round,
-      });
+      };
+      send(room, duel.a, type, startPayload);
+      send(room, duel.b, type, startPayload);
       return;
     }
 
@@ -174,17 +224,26 @@ export function onJoin(room, client, p) { /* no-op; state is created on accept *
 
 export function onLeave(room, client) {
   const sid = client.sessionId;
+  room.petDuelChallenges?.delete(sid);
+  for (const [key, ch] of room.petDuelChallenges || []) {
+    if (ch.from === sid) room.petDuelChallenges.delete(key);
+  }
   const duel = inDuel(room, sid);
   if (!duel) return;
   endDuel(room, duel, duel.a === sid ? duel.b : duel.a, 'left');
 }
 
 export function tick(room) {
-  // Clean up abandoned duels
+  // Clean up abandoned duels and expired challenges
   const now = Date.now();
   for (const [id, duel] of room.petDuels || []) {
     if (now - duel.lastAt > DUEL_TTL_MS) {
       endDuel(room, duel, null, 'timeout');
+    }
+  }
+  for (const [key, ch] of room.petDuelChallenges || []) {
+    if (now - ch.at > CHALLENGE_TTL_MS) {
+      room.petDuelChallenges.delete(key);
     }
   }
 }

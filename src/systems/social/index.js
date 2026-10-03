@@ -64,6 +64,7 @@ class Social {
     this.pendingInvite = null;    // {from, fromName, at}
     this.pendingTrade = null;     // {from, fromName, gold, item, at}
     this.pendingDuel = null;      // {from, fromName, at}
+    this.pendingPetDuel = null;   // {from, fromName, at}
     this.duel = null;             // {peerId, peerName} — active consensual PvP
     this.history = [];            // chat lines
     this.channel = 'say';         // active outgoing channel
@@ -422,6 +423,28 @@ class Social {
     petDuel.decline(d.fromName || d.from);
     if (!silent) this.system(`Declined ${d.fromName}'s duel.`);
   }
+  onPetDuelChallenge(m) {
+    this.pendingPetDuel = { from: m.from, fromName: m.fromName || '???', at: nowTs() };
+    this.system(`${m.fromName || '???'} challenges you to a pet duel! /pda to accept or /pdd to decline`);
+    bus.emit(Events.SOCIAL_UI, { panel: 'pet-duel-request', open: true, duel: { fromName: m.fromName || '???', from: m.from } });
+    clearTimeout(this._petDuelT);
+    this._petDuelT = setTimeout(() => { if (this.pendingPetDuel?.from === m.from) this.declinePetDuel(true); }, 45000);
+  }
+  acceptPetDuel() {
+    const d = this.pendingPetDuel;
+    if (!d) { this.system('No pending pet duel.'); return; }
+    this.pendingPetDuel = null;
+    bus.emit(Events.SOCIAL_UI, { panel: 'pet-duel-request', open: false });
+    petDuel.accept(d.fromName || d.from);
+  }
+  declinePetDuel(silent = false) {
+    const d = this.pendingPetDuel;
+    if (!d) { if (!silent) this.system('No pending pet duel.'); return; }
+    this.pendingPetDuel = null;
+    bus.emit(Events.SOCIAL_UI, { panel: 'pet-duel-request', open: false });
+    petDuel.decline(d.fromName || d.from);
+    if (!silent) this.system(`Declined ${d.fromName}'s pet duel.`);
+  }
   onDuelStart(m) {
     const peerId = m.a === this.id ? m.b : m.a;
     const peer = this.roster.get(peerId) || this.findPlayer(peerId);
@@ -473,7 +496,7 @@ class Social {
     const setCh = (ch) => { this.channel = ch; bus.emit(Events.SOCIAL_UI, { panel: 'channel', channel: ch }); if (arg) this.chat(ch, arg); else this.system(`Now talking in ${CHANNELS[ch].label}.`); };
     switch (cmd) {
       case 'help': case '?':
-        this.system('Commands: /say /s /party /p /world /y /g(uild) /w name msg /r msg /me text /emote id /who /invite name /accept /decline /leave /kick name /promote name /friend name /unfriend name /friends /ignore name /unignore name /trade name /gift name [gold] /taccept /tdecline /duel name /dtaccept /dtdecline /dtend /gcreate TAG name /gjoin TAG /gleave /filter /time /clear /help');
+        this.system('Commands: /say /s /party /p /world /y /g(uild) /w name msg /r msg /me text /emote id /who /invite name /accept /decline /leave /kick name /promote name /friend name /unfriend name /friends /ignore name /unignore name /trade name /gift name [gold] /taccept /tdecline /duel name /dtaccept /dtdecline /dtend /petduel name /pda /pdd /gcreate TAG name /gjoin TAG /gleave /filter /time /clear /help');
         this.system(`Emotes: ${EMOTES.map((e) => `/${e.id}`).join(' ')}. Keys: Enter chat · P party · O players · G emotes · Tab cycles channel.`);
         return;
       case 'say': case 's': return setCh('say');
@@ -494,6 +517,9 @@ class Social {
       case 'dtaccept': return this.acceptDuel();
       case 'dtdecline': return this.declineDuel();
       case 'dtend': case 'yield': return this.endDuel('ended');
+      case 'petduel': case 'pd': if (!first) return this.system('Usage: /petduel name'); return this.challenge(first);
+      case 'pda': return this.acceptPetDuel();
+      case 'pdd': return this.declinePetDuel();
       case 'accept': case 'join': return this.accept();
       case 'decline': return this.decline();
       case 'leave': return this.leaveParty();

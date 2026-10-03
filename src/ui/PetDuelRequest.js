@@ -1,30 +1,30 @@
 import { bus, Events } from '../core/events.js';
+import { social } from '../systems/social/index.js';
 
 const FONT = '"Silkscreen", monospace';
 
 // Phaser modal shown when another player challenges us to a pet duel.
-// Expected payload: { fromName }.
+// Expected payload: { fromName, from }.
 // Emits SOCIAL_UI {panel:'pet-duel-request', open:true|false} on show/hide.
 export class PetDuelRequest {
   constructor(scene) {
     this.scene = scene;
     this.container = null;
     this.pending = null;
-    this.onAccept = null;
-    this.onDecline = null;
     this.off = bus.on(Events.SOCIAL_UI, (m) => {
       if (m.panel === 'pet-duel-request') {
         if (m.open && m.duel) this.show(m.duel);
         else this.hide();
       }
     });
+    this._keyDown = (e) => {
+      if (e.key === 'Escape') this._decline();
+    };
   }
 
-  show({ fromName, onAccept, onDecline }) {
+  show({ fromName, from }) {
     this.hide();
-    this.pending = { fromName };
-    this.onAccept = onAccept;
-    this.onDecline = onDecline;
+    this.pending = { fromName, from };
 
     const { w: W, h: H } = this.scene.view ? this.scene.view() : { w: this.scene.scale.width, h: this.scene.scale.height };
     const pw = Math.min(W - 32, 360);
@@ -46,7 +46,7 @@ export class PetDuelRequest {
 
     this.container.add([bg, title, body, accept.bg, accept.text, decline.bg, decline.text]);
     this.container.setVisible(true);
-    bus.emit(Events.SOCIAL_UI, { panel: 'pet-duel-request', open: true, duel: { fromName } });
+    window.addEventListener('keydown', this._keyDown);
   }
 
   makeBtn(x, y, w, h, label, color, cb) {
@@ -66,22 +66,21 @@ export class PetDuelRequest {
   }
 
   _accept() {
-    if (typeof this.onAccept === 'function') this.onAccept(this.pending);
+    social.acceptPetDuel();
     this.hide();
   }
 
   _decline() {
-    if (typeof this.onDecline === 'function') this.onDecline(this.pending);
+    social.declinePetDuel();
     this.hide();
   }
 
   hide() {
     if (!this.container) return;
+    window.removeEventListener('keydown', this._keyDown);
     this.container.destroy();
     this.container = null;
     this.pending = null;
-    this.onAccept = null;
-    this.onDecline = null;
     bus.emit(Events.SOCIAL_UI, { panel: 'pet-duel-request', open: false });
   }
 

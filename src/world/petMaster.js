@@ -12,7 +12,7 @@ const FONT = '"Silkscreen", monospace';
 // spawn is at the town plaza; notice board is roughly spawn.x - 118, spawn.y - 22.
 export const PET_MASTER = {
   name: 'Pet Master Li',
-  tex: 'Master',
+  tex: 'OldMan',
   dx: -158,
   dy: -20,
 };

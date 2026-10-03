@@ -30,11 +30,7 @@ export function installSocialNet(social) {
     on('pvp-hit', (m) => social.onPvpHit(m));
     on('pet-duel', (m) => {
       if (m?.action === 'challenge') {
-        social.pendingDuel = { from: m.from, fromName: m.fromName || '???', at: Date.now() };
-        social.system(`${m.fromName || '???'} challenges you to a pet duel! /dtaccept or /dtdecline`);
-        bus.emit(Events.SOCIAL_UI, { panel: 'pet-duel', open: true, duel: social.pendingDuel });
-        clearTimeout(social._duelT);
-        social._duelT = setTimeout(() => { if (social.pendingDuel?.from === m.from) social.declineDuel(true); }, 45000);
+        social.onPetDuelChallenge(m);
       } else if (m?.action === 'declined') {
         social.system(`${m.fromName || '???'} declined your pet duel.`);
       } else if (m?.action === 'start') {
@@ -42,6 +38,7 @@ export function installSocialNet(social) {
         const peer = social.roster.get(peerId) || social.findPlayer(peerId);
         social.duel = { peerId, peerName: peer?.name || m.bName || '???' };
         social.system(`PET DUEL vs ${social.duel.peerName}!`);
+        bus.emit(Events.PET_DUEL_START, { ...m, mySide: m.a === social.id ? 'a' : 'b' });
         bus.emit(Events.SOCIAL_ROSTER, social.players());
       } else if (m?.action === 'end') {
         if (!social.duel) return;

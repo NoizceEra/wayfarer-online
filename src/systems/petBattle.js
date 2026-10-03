@@ -276,7 +276,7 @@ export class PetBattle {
     // Damage moves.
     const atkStat = move.category === 'special' ? attacker.stats.atk : attacker.stats.atk;
     const defStat = defender.stats.def;
-    const stab = attacker.stats.type === move.type ? 1.25 : 1.0;
+    const stab = (attacker.stats.type || attacker.type) === move.type ? 1.25 : 1.0;
     const typeMul = typeMultiplier(move.type, defender.stats.type || defender.type || 'nature');
     const crit = this.rng() < CRIT_CHANCE ? CRIT_MUL : 1.0;
     const random = RANDOM_MIN + this.rng() * (RANDOM_MAX - RANDOM_MIN);

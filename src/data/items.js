@@ -78,8 +78,9 @@ I('pet_egg_emberling', 'Emberling Egg', 'treasure', 'Other/Egg', 0, 'A warm egg 
 I('pet_egg_dewdrop', 'Dewdrop Egg', 'treasure', 'Other/Egg', 0, 'A cool egg beaded with dew.');
 I('pet_egg_sprig', 'Sprig Egg', 'treasure', 'Other/Egg', 0, 'A tiny seed pulses inside this egg.');
 
-// ——— capture item ———
-I('wayfarer_orb', 'Wayfarer Orb', 'treasure', 'Object/Crystal', 25, 'A glass orb used to capture wild pet wisps.');
+// ——— capture items ———
+I('wayfarer_orb', 'Wayfarer Orb', 'treasure', 'Object/Crystal', 25, 'A glass orb used to capture wild pet wisps.', { capture: { quality: 1, bonus: 0 } });
+I('golden_orb', 'Golden Orb', 'treasure', 'Treasure/GoldCup', 120, 'A gilded orb that catches wisps more easily.', { capture: { quality: 2.5, bonus: 0.12 } });
 
 export const ITEM_LIST = Object.values(ITEMS);
 export const itemById = (id) => ITEMS[id];
