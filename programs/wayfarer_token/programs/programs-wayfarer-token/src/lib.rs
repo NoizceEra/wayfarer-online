@@ -3,7 +3,7 @@ use anchor_spl::token::{self, Mint, MintTo, Token, TokenAccount};
 
 /// Devnet placeholder program ID for the Wayfarer Token bridge.
 /// Replace with the actual devnet pubkey after `anchor deploy`.
-declare_id!("WayfaRERWayfaRERWayfaRERWayfaRERWayfaRERWayf");
+declare_id!("36MtxdwUM14ZdUjx4ysUjYh2jNsvRRQ2nGooEckCj9Aa");
 
 /// Anchor 0.30+ token bridge for Wayfarer Online.
 /// The program owns a PDA mint authority. The treasury is an off-chain ATA
