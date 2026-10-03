@@ -21,6 +21,8 @@ import { settings, uiZoomFor } from '../core/settings.js';
 import { PauseMenu } from '../ui/PauseMenu.js';
 import { HelpOverlay } from '../ui/HelpOverlay.js';
 import { WalletPanel } from '../ui/WalletPanel.js';
+import { DailyRewardPanel } from '../ui/DailyRewardPanel.js';
+import { DailyRewards } from '../systems/dailyRewards.js';
 import { econ } from '../net/economyNet.js';
 import { fullscreenSupported, isFullscreen, toggleFullscreen } from '../core/mobile.js';
 
@@ -301,6 +303,7 @@ export class UIScene extends Phaser.Scene {
     this.offs.push(
       input.addCloser({ id: 'help', priority: 900, isOpen: () => this.help.isOpen, close: () => this.help.close() }),
       input.addCloser({ id: 'wallet', priority: 880, isOpen: () => this.walletPanel?.isOpen, close: () => this.walletPanel?.close() }),
+      input.addCloser({ id: 'daily-reward', priority: 870, isOpen: () => this.dailyPanel?.isOpen, close: () => this.dailyPanel?.close() }),
       input.addCloser({ id: 'pause-sub', priority: 850, isOpen: () => this.menu.isOpen && this.menu.page !== 'main', close: () => this.menu.goto('main') }),
       input.addCloser({ id: 'shop', priority: 450, isOpen: () => !!this.shop?.isOpen, close: () => this.shop.close() }),
       input.addCloser({ id: 'equip', priority: 400, isOpen: () => !!this.equip?.isOpen, close: () => this.equip.toggle(false) }),
@@ -315,6 +318,7 @@ export class UIScene extends Phaser.Scene {
     );
     this.offs.push(
       input.addCloser({ id: 'social', priority: 950, isOpen: () => !!this.social?.anyOpen?.(), close: () => social.act('closeAll') }),
+      input.addCloser({ id: 'pet-duel-request', priority: 960, isOpen: () => !!this.social?.petDuelReq?.container, close: () => this.social?.petDuelReq?.hide?.() }),
       input.addCloser({ id: 'fishing', priority: 700, isOpen: () => !!this.fishing?.isOpen, close: () => this.fishing.end('cancel') }),
       input.addCloser({ id: 'journal', priority: 470, isOpen: () => !!this.journal?.isOpen, close: () => this.journal.close() }),
       input.addCloser({ id: 'craft', priority: 460, isOpen: () => !!this.craftPanel?.isOpen, close: () => this.craftPanel.close() }),
@@ -338,6 +342,8 @@ export class UIScene extends Phaser.Scene {
       this.offs = [];
       this.resizeTimer?.remove(false);
       this.equip?.destroy(); this.shop?.destroy(); this.journal?.destroy(); this.craftPanel?.destroy(); this.fishing?.destroy(); this.toast?.destroy(); this.walletPanel?.destroy();
+      this.dailyPanel?.destroy(); this.dailyRewards?.destroy();
+      this.partyFinderBtn?.destroy();
     });
     // Mail unread indicator for the touch HUD
     this.offs.push(
@@ -369,6 +375,7 @@ export class UIScene extends Phaser.Scene {
     this.buildTouch();
     this.buildPanels();
     this.buildWalletRewards();
+    this.buildDailyReward();
     // Social UI: chat window, party frames, players/friends, emote wheel (src/ui/socialUI.js)
     this.social = installSocialUI(this, { name: this.pname, job: this.job.id, framesY: this.small ? 136 : 134 });
     this.economy = installEconomyUI(this); // trade / market board / mail / guild tab (src/ui/economyUI.js)
@@ -466,7 +473,72 @@ export class UIScene extends Phaser.Scene {
     this.rewardsBtn.on('pointerout', () => this.rewardsBtn.setBackgroundColor('#2a1d10dd'));
     this.rewardsBtn.on('pointerdown', () => { audio.play('ui', 0.6); bus.emit('econ-ui', { panel: 'claim' }); });
 
+    // Party finder icon (left of rewards)
+    this.partyFinderBtn = this.add.text(baseX - (iconSize + gap) * 2, startY, '👥', {
+      fontFamily: '"Silkscreen", monospace', fontSize: '16px', color: '#03e1ff',
+      backgroundColor: '#2a1d10dd', padding: { x: 4, y: 2 },
+    }).setOrigin(1, 0).setDepth(110).setInteractive({ useHandCursor: true });
+    this.partyFinderBtn.on('pointerover', () => this.partyFinderBtn.setBackgroundColor('#3a2d20ee'));
+    this.partyFinderBtn.on('pointerout', () => this.partyFinderBtn.setBackgroundColor('#2a1d10dd'));
+    this.partyFinderBtn.on('pointerdown', () => { audio.play('ui', 0.6); this.economy?.partyFinder?.toggle(this); });
+
     this.walletPanel = new WalletPanel(this);
+  }
+
+  // —— Daily login reward HUD icon + panel
+  buildDailyReward() {
+    const { w: W } = this.view();
+    const iconSize = 22;
+    const gap = 6;
+    const baseX = W - 12 - iconSize - gap - 22; // left of wallet icon
+    const startY = 72;
+
+    this.dailyBtn = this.add.text(baseX, startY, '🎁', {
+      fontFamily: '"Silkscreen", monospace', fontSize: '16px', color: '#e1e8f0',
+      backgroundColor: '#2a1d10dd', padding: { x: 4, y: 2 },
+    }).setOrigin(1, 0).setDepth(110).setInteractive({ useHandCursor: true });
+    this.dailyBtn.on('pointerover', () => this.dailyBtn.setBackgroundColor('#3a2d20ee'));
+    this.dailyBtn.on('pointerout', () => this.dailyBtn.setBackgroundColor('#2a1d10dd'));
+    this.dailyBtn.on('pointerdown', () => { audio.play('ui', 0.6); this.openDailyReward(); });
+
+    this.dailyPanel = new DailyRewardPanel();
+    this.dailyRewards = new DailyRewards(this.world());
+
+    // Listen for auto-open request from DailyRewards boot check.
+    this.dailyRewardOff = bus.on(Events.DAILY_REWARD, (e) => {
+      if (e?.open && !this.dailyPanel.isOpen) this.openDailyReward();
+    });
+    this.offs.push(this.dailyRewardOff);
+
+    // Pulse / glow when claimable.
+    this.dailyPulse = this.tweens.add({
+      targets: this.dailyBtn,
+      alpha: { from: 1, to: 0.55 },
+      duration: 700,
+      yoyo: true,
+      repeat: -1,
+      paused: true,
+    });
+    this.updateDailyRewardBtn();
+  }
+
+  openDailyReward() {
+    this.dailyPanel.open(this, this.dailyRewards);
+    this.dailyPulse?.pause();
+    this.dailyBtn.setAlpha(1);
+  }
+
+  updateDailyRewardBtn() {
+    if (!this.dailyBtn?.active) return;
+    const claimable = this.dailyRewards?.isClaimableToday();
+    if (claimable) {
+      this.dailyBtn.setColor('#03e1ff');
+      this.dailyPulse?.resume();
+    } else {
+      this.dailyBtn.setColor('#6b7a99');
+      this.dailyPulse?.pause();
+      this.dailyBtn.setAlpha(1);
+    }
   }
 
   buildTouch() {
@@ -605,6 +677,10 @@ export class UIScene extends Phaser.Scene {
     this.fishing?.update(dtS);
     this.craftPanel?.update();
     this.syncRaise(); // no-op unless a full-screen panel opened/closed (phones)
+    if (this.dailyRewards && Math.floor(time / 1000) !== this._dailySec) {
+      this._dailySec = Math.floor(time / 1000);
+      this.updateDailyRewardBtn();
+    }
     // Hotbar cooldown sweep
     const w   = this.world();
     const now = w?.time.now ?? 0;

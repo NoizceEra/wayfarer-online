@@ -46,14 +46,14 @@ function readDoc(key) {
 
 export function loadChar(token, name) {
   if (!TOKEN_RE.test(String(token || ''))) return null;
-  if (_db) { const { loadCharDb } = require('./db.js'); return loadCharDb(token, name); }
+  if (_db) { return _dbMod.loadCharDb(token, name); } // (db.js is dynamically imported by initSqlite: require() is not available in ESM)
   const doc = readDoc(deviceKey(token));
   return doc.chars[String(name || '').toLowerCase()] || null;
 }
 
 export function saveChar(token, name, rec) {
   if (!TOKEN_RE.test(String(token || ''))) return false;
-  if (_db) { const { saveCharDb } = require('./db.js'); return saveCharDb(token, name, rec); }
+  if (_db) { return _dbMod.saveCharDb(token, name, rec); }
   const key = deviceKey(token);
   const doc = readDoc(key);
   const names = Object.keys(doc.chars);
@@ -94,10 +94,11 @@ export function storeStats() {
 
 // --- SQLite bridge (opt-in via USE_SQLITE env) ---
 let _db = null;
+let _dbMod = null;
 export async function initSqlite() {
   if (!process.env.USE_SQLITE) return false;
-  const { initDb } = await import('./db.js');
-  initDb();
+  _dbMod = await import('./db.js');
+  _dbMod.initDb();
   _db = true;
   log.info('sqlite store active');
   return true;

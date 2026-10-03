@@ -32,10 +32,16 @@ export const Events = {
   QUEST_CHANGED: 'quest-changed', // quest log / markers / tracker changed
   ACH_EVENT: 'ach-event', // {k, n?} internal achievement counters
   FISH: 'fish',           // {spot} start the fishing mini-game
+  DAILY_REWARD: 'daily-reward', // {open?, auto?, claimed?, day?, gold?, tokens?} daily login reward lifecycle
   // KILL (see combat) — {typeId, name, level, rank, boss, xp, x, y, areaId, by}
   //KILL_DUP: 'kill',           // hero killed an enemy {typeId, name, level, rank, boss, xp, x, y, areaId, by}
   PLAYER_DIED: 'player-died', // {xpLoss, goldLoss, respawn}
   PARTY_KILL: 'party-kill',   // (consumed) party-mate kill share {typeId, xp, by, questCredit?}
+  REFERRAL_STATE: 'referral-state', // {code, invited, goldPaid, boundTo, treasuryGold} referral code / bind / stats
+  REFERRAL_PAID: 'referral-paid',   // {milestone, gold} a referral milestone was paid to this player
+  WORLDBOSS_SPAWN: 'worldboss-spawn', // {area, x, y, name, expiresAt, hp, maxHp} server-authoritative world boss
+  WORLDBOSS_SLAIN: 'worldboss-slain', // {name, killerName, contributors:[{name, damage}]}
+  PET_DUEL_START: 'pet-duel-start',   // {a, b, aName, bName, aTeam, bTeam, seed, round, mySide}
 };
 
 export class Bus {

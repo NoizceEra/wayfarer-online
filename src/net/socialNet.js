@@ -28,6 +28,29 @@ export function installSocialNet(social) {
     on('duel-start', (m) => social.onDuelStart(m));
     on('duel-end', (m) => social.onDuelEnd(m));
     on('pvp-hit', (m) => social.onPvpHit(m));
+    on('pet-duel', (m) => {
+      if (m?.action === 'challenge') {
+        social.pendingDuel = { from: m.from, fromName: m.fromName || '???', at: Date.now() };
+        social.system(`${m.fromName || '???'} challenges you to a pet duel! /dtaccept or /dtdecline`);
+        bus.emit(Events.SOCIAL_UI, { panel: 'pet-duel', open: true, duel: social.pendingDuel });
+        clearTimeout(social._duelT);
+        social._duelT = setTimeout(() => { if (social.pendingDuel?.from === m.from) social.declineDuel(true); }, 45000);
+      } else if (m?.action === 'declined') {
+        social.system(`${m.fromName || '???'} declined your pet duel.`);
+      } else if (m?.action === 'start') {
+        const peerId = m.a === social.id ? m.b : m.a;
+        const peer = social.roster.get(peerId) || social.findPlayer(peerId);
+        social.duel = { peerId, peerName: peer?.name || m.bName || '???' };
+        social.system(`PET DUEL vs ${social.duel.peerName}!`);
+        bus.emit(Events.SOCIAL_ROSTER, social.players());
+      } else if (m?.action === 'end') {
+        if (!social.duel) return;
+        const reason = m.reason === 'forfeit' ? `${social.duel.peerName} forfeited.` : m.reason === 'left' ? `${social.duel.peerName} left — duel over.` : 'Pet duel over.';
+        social.duel = null;
+        social.system(reason);
+        bus.emit(Events.SOCIAL_ROSTER, social.players());
+      }
+    });
     on('party-invite', (m) => social.onInvite(m));
     on('party-update', (m) => social.onPartyUpdate(m));
     on('party-msg', (m) => social.addLine({ ch: 'party', text: m.text, plain: true }));

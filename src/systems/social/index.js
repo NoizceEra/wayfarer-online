@@ -3,6 +3,7 @@ import { net } from '../../net/NetworkManager.js';
 import { SocialStore } from './store.js';
 import { EMOTES, emoteById } from './emotes.js';
 import { installSocialNet } from '../../net/socialNet.js';
+import { petDuel } from '../../net/petDuelNet.js';
 import { JOBS } from '../../data/jobs.js';
 
 // Social layer (chat channels, whispers, party, emotes, friends/ignore,
@@ -397,7 +398,7 @@ class Social {
     if (!p) { this.system(`No player named "${esc(who)}" here.`); return; }
     if (p.id === this.id) { this.system('You cannot duel yourself.'); return; }
     if (this.duel) { this.system('Finish your current duel first (/dtend).'); return; }
-    net.send('duel-challenge', { to: p.id });
+    petDuel.challenge(p.name);
   }
   onDuelChallenge(m) {
     this.pendingDuel = { from: m.from, fromName: m.fromName || '???', at: nowTs() };
@@ -411,14 +412,14 @@ class Social {
     if (!d) { this.system('No pending duel.'); return; }
     this.pendingDuel = null;
     bus.emit(Events.SOCIAL_UI, { panel: 'duel', open: false });
-    net.send('duel-respond', { to: d.from, accept: true });
+    petDuel.accept(d.fromName || d.from);
   }
   declineDuel(silent = false) {
     const d = this.pendingDuel;
     if (!d) { if (!silent) this.system('No pending duel.'); return; }
     this.pendingDuel = null;
     bus.emit(Events.SOCIAL_UI, { panel: 'duel', open: false });
-    net.send('duel-respond', { to: d.from, accept: false });
+    petDuel.decline(d.fromName || d.from);
     if (!silent) this.system(`Declined ${d.fromName}'s duel.`);
   }
   onDuelStart(m) {
@@ -437,7 +438,7 @@ class Social {
   }
   endDuel(reason = 'ended') {
     if (!this.duel) return;
-    net.send('duel-end', { reason });
+    petDuel.forfeit();
     this.duel = null;
     this.system('You ended the duel.');
     bus.emit(Events.SOCIAL_ROSTER, this.players());

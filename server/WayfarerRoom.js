@@ -81,6 +81,18 @@ export class WayfarerRoom extends Room {
     this.views = new Map();     // sessionId -> {p: Map sid->lastSent, e: Map id->lastSent}
     this.joinSeq = 0;
     this.setMetadata({ kind: this.kind, name: this.displayName });
+    // Party Finder (server/partyFinder.js): a party room created with
+    // { open: true } lists itself in GET /party-finder for quick-join.
+    // Rooms without it never set metadata.open — they stay code-share-only.
+    if (this.kind === 'party' && options.open === true) {
+      this.setMetadata({
+        open: true,
+        hostName: String(options.name || 'Host').slice(0, 14),
+        level: options.level || 1,
+        area: String(options.area || 'ow'),
+        createdAt: Date.now(),
+      });
+    }
     this.setPatchRate(null); // no schema state: everything is explicit messages
 
     const on = (type, fn, bucket = 'misc') => this.onMessage(type, (client, m) => {
@@ -411,6 +423,7 @@ export class WayfarerRoom extends Room {
   // ─── replication tick ──────────────────────────────────────────────
   tick() {
     const now = Date.now();
+    hook('tick', this);
     const R = CFG.AOI_RADIUS;
     for (const c of this.clients) {
       const me = this.players.get(c.sessionId);

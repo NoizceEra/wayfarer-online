@@ -218,7 +218,7 @@ export function install(room) {
 
   // Server->client economy types must never ride the generic '*' passthrough
   // (a client could forge a trade-result / econ-sync for its peers): swallow them.
-  for (const t of ['econ-state', 'econ-sync', 'econ-msg', 'econ-error', 'trade-open', 'trade-update', 'trade-result', 'trade-closed', 'trade-done', 'escrow-open', 'escrow-update', 'escrow-result', 'escrow-closed', 'market-page', 'mail-box', 'mail-unread', 'guild-info', 'guild-update', 'saved']) {
+  for (const t of ['econ-state', 'econ-sync', 'econ-msg', 'econ-error', 'trade-open', 'trade-update', 'trade-result', 'trade-closed', 'trade-done', 'escrow-open', 'escrow-update', 'escrow-result', 'escrow-closed', 'market-page', 'mail-box', 'mail-unread', 'guild-info', 'guild-update', 'saved', 'referral-state', 'referral-paid', 'worldboss-announce', 'worldboss-state', 'worldboss-slain']) {
     room.onMessage(t, () => {});
   }
 
@@ -734,6 +734,7 @@ export function install(room) {
     sync(c, rec, 'token-claim', delta);
     note(c, `Claimed ${net} Wayfarer Token${net !== 1 ? 's' : ''} (fee ${fee}g).`);
     ledger({ op: 'token-claim', ck: ckOf(p), name: p.name, amount, fee, net, rev: rec.rev });
+    try { const { recordFee } = await import('./referrals.js'); recordFee(fee); } catch { /* referrals not loaded */ }
     await commit({ deviceKeys: [dkOf(p)] });
   });
 }

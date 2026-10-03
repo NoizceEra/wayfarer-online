@@ -4,6 +4,7 @@ import { net } from '../net/NetworkManager.js';
 import { bus, Events } from '../core/events.js';
 import { audio } from '../systems/audio.js';
 import { setupMenuCamera } from '../core/display.js';
+import { canInstall, promptInstall } from '../core/pwa.js';
 
 // Title screen — Solana-inspired teal / purple / dark aesthetic.
 // Fonts: Jacquard12 (display title), Silkscreen (buttons/labels), PixelifySans (body/hints).
@@ -63,6 +64,7 @@ export class TitleScene extends Phaser.Scene {
   build() {
     if (this.root) this.root.destroy(true);
     if (this.blinkTimer) this.blinkTimer.remove(false);
+    this.installBtn = null;
     this.root = this.add.container(0, 0);
     this.items = {};
     const add = (o) => { this.root.add(o); return o; };
@@ -190,7 +192,41 @@ export class TitleScene extends Phaser.Scene {
     docs.on('pointerout', () => docs.setColor(SOL.cyan));
     docs.on('pointerup', () => window.open('/docs/', '_blank', 'noopener,noreferrer'));
 
+    // ─── PWA install button ───
+    this.installBtn = null;
+    if (canInstall()) this.showInstallButton(W, H, small);
+    this.installListener = () => { if (canInstall() && !this.installBtn) this.showInstallButton(W, H, small); };
+    window.addEventListener('wf-can-install', this.installListener);
+    this.events.once('shutdown', () => window.removeEventListener('wf-can-install', this.installListener));
+
     this.refresh();
+  }
+
+  showInstallButton(W, H, small) {
+    if (this.installBtn) return;
+    const btnW = small ? 120 : 150;
+    const btnH = small ? 22 : 26;
+    const y = H - 64;
+    const x = W / 2;
+    const g = this.add.container(x, y);
+    g.setDepth(10);
+    const bg = this.add.rectangle(0, 0, btnW, btnH, SOL.greenHex).setStrokeStyle(2, SOL.cyanHex);
+    const label = this.add.text(0, 0, '⬇️ Install App', {
+      fontSize: small ? '10px' : '12px', color: SOL.darkText, fontFamily: '"Silkscreen"', align: 'center',
+    }).setOrigin(0.5);
+    g.add([bg, label]);
+    this.root.add(g);
+    bg.setInteractive({ useHandCursor: true });
+    bg.on('pointerover', () => { bg.setFillStyle(0x0db87a); label.setScale(1.05); });
+    bg.on('pointerout', () => { bg.setFillStyle(SOL.greenHex); label.setScale(1); });
+    bg.on('pointerdown', () => { bg.setFillStyle(0x0aa86c); label.setY(1); });
+    bg.on('pointerup', async () => {
+      bg.setFillStyle(SOL.greenHex); label.setY(0);
+      audio.ui();
+      const accepted = await promptInstall();
+      if (accepted) { g.setVisible(false); this.installBtn = null; }
+    });
+    this.installBtn = g;
   }
 
   // ─── State → visuals ────────────────────────────────────────────────

@@ -83,11 +83,31 @@ export function initDb() {
       bound_at INTEGER DEFAULT (unixepoch()),
       UNIQUE(player_id, chain, address)
     );
+    -- Referral rewards (REFER-A-FRIEND; payouts drawn from the fee treasury)
+    CREATE TABLE IF NOT EXISTS referrals (
+      code TEXT PRIMARY KEY,
+      player TEXT UNIQUE,
+      name TEXT,
+      created_at INTEGER DEFAULT (unixepoch()),
+      invited_count INTEGER NOT NULL DEFAULT 0,
+      gold_paid INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS referral_milestones (
+      referrer TEXT,
+      invitee TEXT,
+      milestone TEXT,
+      gold INTEGER NOT NULL DEFAULT 0,
+      paid_at INTEGER,
+      PRIMARY KEY(referrer, invitee, milestone)
+    );
     CREATE INDEX IF NOT EXISTS idx_wallet_address ON wallets(address);
     CREATE INDEX IF NOT EXISTS idx_wallet_player ON wallets(player_id);
   `);
   log.info('db ready', { path: DB_PATH });
 }
+
+// db handle for optional modules (server/referrals.js creates its own tables)
+export function getDb() { return db; }
 
 function getPlayerId(dkey) {
   let row = db.prepare('SELECT id FROM players WHERE device_key = ?').get(dkey);
@@ -135,7 +155,10 @@ export function saveCharDb(token, name, rec) {
       hero=excluded.hero, progress=excluded.progress, saved_at=excluded.saved_at
   `);
   const info = upsert.run(playerId, name, lower, hero, progress, savedAt);
-  const charId = info.lastInsertRowid || db.prepare('SELECT id FROM characters WHERE player_id=? AND name_lower=?').get(playerId, lower).id;
+  // lastInsertRowid is stale when the upsert took the DO UPDATE path (it keeps
+  // the rowid of the last plain INSERT on the connection): always resolve the
+  // char id from the unique key instead.
+  const charId = db.prepare('SELECT id FROM characters WHERE player_id=? AND name_lower=?').get(playerId, lower).id;
   const prog = rec.progress || {};
   if (prog.gold !== undefined || prog.inventory !== undefined || prog.equipped !== undefined) {
     const gold = Number(prog.gold) || 0;

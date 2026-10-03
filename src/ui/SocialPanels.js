@@ -2,6 +2,7 @@ import { bus, Events } from '../core/events.js';
 import { social } from '../systems/social/index.js';
 import { socialRoot, el, escapeHtml, placeAt } from './socialDom.js';
 import { gearById } from '../data/gear.js';
+import { petDuel } from '../net/petDuelNet.js';
 
 // DOM panels: player/friends/ignore list (O), party panel (P), party-invite
 // toast and the per-player context menu (right-click a hero, click a name in
@@ -27,7 +28,9 @@ export class SocialPanels {
         else if ((m.panel === 'trade' || m.panel === 'trade-compose') && !m.open) this.hideOffer();
         else if (m.panel === 'duel' && m.open) this.showOffer({ kind: 'duel' });
         else if (m.panel === 'duel' && !m.open) this.hideOffer();
-      }),
+        else if (m.panel === 'pet-duel' && m.open) this.showOffer({ kind: 'pet-duel' });
+        else if (m.panel === 'pet-duel' && !m.open) this.hideOffer();
+        }),
     ];
     this.offActs = [
       social.registerAction('openFriends', () => this.setList(!this.listOpen)),
@@ -205,6 +208,15 @@ export class SocialPanels {
       body.appendChild(el('div', 'wf-otext', `<b>${escapeHtml(d.fromName)}</b> challenges you to a duel!<br>First to fall loses.`));
       const ok = el('button', '', 'Accept'); ok.addEventListener('click', () => { social.acceptDuel(); this.hideOffer(); });
       const no = el('button', 'wf-danger', 'Decline'); no.addEventListener('click', () => { social.declineDuel(); this.hideOffer(); });
+      row.prepend(ok, no);
+      return;
+    }
+    if (spec.kind === 'pet-duel') {
+      const d = social.pendingDuel; if (!d) return;
+      const { body, row } = this.offerShell(`Pet duel challenge`);
+      body.appendChild(el('div', 'wf-otext', `<b>${escapeHtml(d.fromName)}</b> challenges you to a pet duel!`));
+      const ok = el('button', '', 'Accept'); ok.addEventListener('click', () => { petDuel.accept(d.fromName || d.from); this.hideOffer(); });
+      const no = el('button', 'wf-danger', 'Decline'); no.addEventListener('click', () => { petDuel.decline(d.fromName || d.from); this.hideOffer(); });
       row.prepend(ok, no);
       return;
     }

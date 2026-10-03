@@ -1,0 +1,1372 @@
+{
+  "metadata": {
+    "title": "Ninja Adventure / Wayfarer Online Monster Sprite Style Guide",
+    "version": "1.0.0",
+    "target_engine": "Phaser 3 / Canvas Pixel Art",
+    "source_asset_pack": "Ninja Adventure (CC0) Monster Roster",
+    "audited_sprite_count": 66
+  },
+  "dimensions_and_layout": {
+    "sheet_dimensions": {
+      "width": 64,
+      "height": 64,
+      "units": "pixels"
+    },
+    "frame_dimensions": {
+      "width": 16,
+      "height": 16,
+      "units": "pixels"
+    },
+    "grid": {
+      "columns": 4,
+      "rows": 4,
+      "total_frames": 16
+    },
+    "column_mapping": {
+      "0": {
+        "direction": "Down",
+        "facing": "South",
+        "x_range": [
+          0,
+          15
+        ],
+        "description": "Front-facing / facing camera downward"
+      },
+      "1": {
+        "direction": "Up",
+        "facing": "North",
+        "x_range": [
+          16,
+          31
+        ],
+        "description": "Back-facing / facing away upward"
+      },
+      "2": {
+        "direction": "Left",
+        "facing": "West",
+        "x_range": [
+          32,
+          47
+        ],
+        "description": "Side-profile / facing left"
+      },
+      "3": {
+        "direction": "Right",
+        "facing": "East",
+        "x_range": [
+          48,
+          63
+        ],
+        "description": "Side-profile / facing right (mirrored/lighting adapted)"
+      }
+    },
+    "row_mapping": {
+      "0": {
+        "state": "Idle_1",
+        "description": "Idle neutral base stance"
+      },
+      "1": {
+        "state": "Step_1",
+        "description": "Walk frame 1 / squash down or left foot forward"
+      },
+      "2": {
+        "state": "Idle_2",
+        "description": "Idle neutral return stance"
+      },
+      "3": {
+        "state": "Step_2",
+        "description": "Walk frame 2 / stretch up or right foot forward"
+      }
+    },
+    "phaser_frame_indices": {
+      "down": [
+        0,
+        4,
+        8,
+        12
+      ],
+      "up": [
+        1,
+        5,
+        9,
+        13
+      ],
+      "left": [
+        2,
+        6,
+        10,
+        14
+      ],
+      "right": [
+        3,
+        7,
+        11,
+        15
+      ]
+    },
+    "animation_properties": {
+      "default_framerate": 6,
+      "repeat": -1,
+      "bob_distance_px": [
+        0,
+        1,
+        0,
+        -1
+      ]
+    }
+  },
+  "color_ramps_and_palettes": {
+    "palette_budget": {
+      "min_colors": 4,
+      "max_colors": 9,
+      "target_colors": 6,
+      "roles": [
+        "Outline (Darkest)",
+        "Shadow / Dark Tone",
+        "Midtone / Base Body",
+        "Highlight / Rim Light",
+        "Eye / Pupil Accent",
+        "Sclera / Teeth / Horns / Belly / Secondary Accent"
+      ]
+    },
+    "master_palette_33": [
+      "#141b1b",
+      "#45283c",
+      "#3b3643",
+      "#543c52",
+      "#4e484a",
+      "#345a52",
+      "#4a5270",
+      "#8f3e56",
+      "#965340",
+      "#5f7160",
+      "#e0394c",
+      "#d14b34",
+      "#56864c",
+      "#548789",
+      "#74a334",
+      "#e46d3a",
+      "#8d977f",
+      "#a8a129",
+      "#d78b4a",
+      "#c8966b",
+      "#f38c4c",
+      "#9ba7aa",
+      "#ef914f",
+      "#79b8ce",
+      "#adbc3a",
+      "#f2ad7d",
+      "#ffad5d",
+      "#f1c471",
+      "#ffe18d",
+      "#fce2ca",
+      "#f2eaf1",
+      "#e3f1f5",
+      "#ffffff"
+    ],
+    "standard_ramps": {
+      "slime_cyan": {
+        "outline": "#141b1b",
+        "shadow": "#548789",
+        "midtone": "#79b8ce",
+        "highlight": "#f2eaf1",
+        "specular": "#ffffff",
+        "accent_dark": "#4e484a"
+      },
+      "forest_green": {
+        "outline": "#141b1b",
+        "shadow_deep": "#345a52",
+        "shadow": "#56864c",
+        "midtone": "#74a334",
+        "highlight": "#adbc3a",
+        "accent_warm": "#ffe18d",
+        "specular": "#ffffff"
+      },
+      "fire_crimson": {
+        "outline": "#141b1b",
+        "shadow_deep": "#45283c",
+        "shadow": "#8f3e56",
+        "midtone": "#e0394c",
+        "highlight": "#e46d3a",
+        "glow": "#ef914f",
+        "bright": "#ffad5d"
+      },
+      "desert_amber": {
+        "outline": "#141b1b",
+        "shadow": "#d14b34",
+        "midtone": "#d78b4a",
+        "highlight": "#f1c471",
+        "bright": "#ffe18d",
+        "accent": "#fce2ca"
+      },
+      "shadow_purple": {
+        "outline": "#181425",
+        "outline_alt": "#141b1b",
+        "shadow_deep": "#45283c",
+        "shadow": "#543c52",
+        "midtone": "#8f3e56",
+        "highlight": "#e0394c",
+        "accent": "#79b8ce"
+      },
+      "abyssal_blue": {
+        "outline": "#141b2b",
+        "outline_alt": "#141b1b",
+        "shadow_deep": "#4a5270",
+        "shadow": "#548789",
+        "midtone": "#79b8ce",
+        "highlight": "#e3f1f5",
+        "specular": "#ffffff"
+      },
+      "bone_undead": {
+        "outline": "#141b1b",
+        "shadow": "#e0394c",
+        "shadow_warm": "#e46d3a",
+        "midtone": "#f2eaf1",
+        "highlight": "#ffffff"
+      },
+      "beast_fur_brown": {
+        "outline": "#2b1414",
+        "outline_alt": "#141b1b",
+        "shadow": "#965340",
+        "midtone": "#c8966b",
+        "highlight": "#f2ad7d",
+        "belly": "#fce2ca",
+        "specular": "#ffffff"
+      },
+      "slate_stone": {
+        "outline": "#141b1b",
+        "shadow_deep": "#3b3643",
+        "shadow": "#4e484a",
+        "midtone": "#5f7160",
+        "highlight": "#9ba7aa",
+        "specular": "#ffffff"
+      }
+    }
+  },
+  "outline_rules": {
+    "border_width_px": 1,
+    "style": "Continuous 1px outer silhouette contour",
+    "corner_rule": "Avoid unnecessary orphan pixels / chunky 2x2 corners (clean single-pixel diagonals or right angles)",
+    "primary_border_colors": [
+      "#141b1b",
+      "#181425",
+      "#141b2b",
+      "#2b1414",
+      "#142b1b"
+    ],
+    "internal_details": {
+      "use_for": [
+        "Eye contours",
+        "Mouth / Teeth separation",
+        "Limb / Horn seams",
+        "Shell / segmentation grooves"
+      ],
+      "rule": "Internal line work should use the shadow tone or 1px outline selectively without breaking silhouette clarity"
+    }
+  },
+  "shading_and_form": {
+    "light_source": {
+      "vector": [
+        -1,
+        -1,
+        0
+      ],
+      "direction": "Top-Left lighting",
+      "highlight_placement": "Top and Left facing exterior edges and crown surfaces",
+      "shadow_placement": "Bottom and Right facing interior surfaces, underbelly, and ground contact"
+    },
+    "silhouette": {
+      "rule": "Chunky readable pixel silhouette within 14x14 interior box of 16x16 tile, leaving 1-2px boundary margin for clean animation frames",
+      "readability": "Read clearly at native 1x (16x16) and 2x/3x scale against light and dark terrain",
+      "grounding": "Bottom-most row of creature sits near y=14..15 of the frame with a flat or grounded footprint for shadow alignment"
+    },
+    "antialiasing": {
+      "subpixel_antialiasing": false,
+      "alpha_channel": "Strictly 1-bit alpha (0 for transparent, 255 for opaque pixels; 0 semi-transparent pixels permitted)",
+      "dithering": "Minimal to none; prefer solid cell-shaded geometric color bands (1-2px wide) over noisy dithering"
+    },
+    "eyes_and_expression": {
+      "size": "1x1, 1x2, or 2x2 pixels",
+      "contrast": "Maximum contrast against face color",
+      "pupil_highlight": "Bright sclera/iris with dark pupil or glow accent"
+    }
+  },
+  "audited_monster_roster": {
+    "Axolot": {
+      "file": "Axolot/SpriteSheet.png",
+      "color_count": 4,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#8f3e56",
+        "#e46d3a",
+        "#ffad5d"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "AxolotBlue": {
+      "file": "AxolotBlue/SpriteSheet.png",
+      "color_count": 4,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#4a5270",
+        "#548789",
+        "#79b8ce"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Bamboo": {
+      "file": "Bamboo/SpriteSheet.png",
+      "color_count": 4,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#56864c",
+        "#74a334",
+        "#adbc3a"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "BambooYellow": {
+      "file": "BambooYellow/SpriteSheet.png",
+      "color_count": 4,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#d14b34",
+        "#d78b4a",
+        "#f1c471"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Bear": {
+      "file": "Bear/SpriteSheet.png",
+      "color_count": 6,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#8f3e56",
+        "#d14b34",
+        "#f2ad7d",
+        "#fce2ca",
+        "#ffffff"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Beast": {
+      "file": "Beast/Beast.png",
+      "color_count": 5,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#8f3e56",
+        "#d14b34",
+        "#ef914f",
+        "#ffffff"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Beast2": {
+      "file": "Beast2/Beast2.png",
+      "color_count": 5,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#4e484a",
+        "#5f7160",
+        "#fce2ca",
+        "#ffffff"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "BlueBat": {
+      "file": "BlueBat/SpriteSheet.png",
+      "color_count": 5,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#4a5270",
+        "#548789",
+        "#79b8ce",
+        "#f2eaf1"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Butterfly": {
+      "file": "Butterfly/SpriteSheet.png",
+      "color_count": 4,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#e0394c",
+        "#ffad5d",
+        "#fce2ca"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "ButterflyBlue": {
+      "file": "ButterflyBlue/SpriteSheet.png",
+      "color_count": 4,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#548789",
+        "#79b8ce",
+        "#fce2ca"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Cyclope": {
+      "file": "Cyclope/SpriteSheet.png",
+      "color_count": 6,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#8f3e56",
+        "#e0394c",
+        "#e46d3a",
+        "#c8966b",
+        "#fce2ca"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Cyclope2": {
+      "file": "Cyclope2/SpriteSheet.png",
+      "color_count": 6,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#74a334",
+        "#c8966b",
+        "#adbc3a",
+        "#ffe18d",
+        "#fce2ca"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Dragon": {
+      "file": "Dragon/SpriteSheet.png",
+      "color_count": 5,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#56864c",
+        "#74a334",
+        "#adbc3a",
+        "#ffffff"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "DragonYellow": {
+      "file": "DragonYellow/SpriteSheet.png",
+      "color_count": 5,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#d14b34",
+        "#f38c4c",
+        "#ffad5d",
+        "#ffffff"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Eye": {
+      "file": "Eye/Eye.png",
+      "color_count": 8,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#548789",
+        "#e46d3a",
+        "#ef914f",
+        "#79b8ce",
+        "#fce2ca",
+        "#f2eaf1",
+        "#ffffff"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Eye2": {
+      "file": "Eye2/Eye2.png",
+      "color_count": 7,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#8f3e56",
+        "#e0394c",
+        "#e46d3a",
+        "#ef914f",
+        "#fce2ca",
+        "#f2eaf1"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Fish": {
+      "file": "Fish/SpriteSheet.png",
+      "color_count": 4,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#548789",
+        "#adbc3a",
+        "#fce2ca"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "FishRed": {
+      "file": "FishRed/SpriteSheet.png",
+      "color_count": 4,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#8f3e56",
+        "#e0394c",
+        "#fce2ca"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Flam": {
+      "file": "Flam/SpriteSheet.png",
+      "color_count": 5,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#e0394c",
+        "#e46d3a",
+        "#ef914f",
+        "#fce2ca"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Flam2": {
+      "file": "Flam2/SpriteSheet.png",
+      "color_count": 5,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#3b3643",
+        "#9ba7aa",
+        "#79b8ce",
+        "#ffffff"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "GoldRacoon": {
+      "file": "GoldRacoon/SpriteSheet.png",
+      "color_count": 4,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#d78b4a",
+        "#f1c471",
+        "#ffffff"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "GreenOctopus": {
+      "file": "GreenOctopus/SpriteSheet.png",
+      "color_count": 7,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#45283c",
+        "#56864c",
+        "#74a334",
+        "#9ba7aa",
+        "#adbc3a",
+        "#ffffff"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Grey_Trex": {
+      "file": "Grey_Trex/SpriteSheet.png",
+      "color_count": 4,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#5f7160",
+        "#9ba7aa",
+        "#ffffff"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "HeartGreen": {
+      "file": "HeartGreen/SpriteSheet.png",
+      "color_count": 8,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#345a52",
+        "#e0394c",
+        "#56864c",
+        "#a8a129",
+        "#c8966b",
+        "#ffe18d",
+        "#fce2ca"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "HeartRed": {
+      "file": "HeartRed/SpriteSheet.png",
+      "color_count": 7,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#543c52",
+        "#8f3e56",
+        "#e0394c",
+        "#e46d3a",
+        "#c8966b",
+        "#fce2ca"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "KappaGreen": {
+      "file": "KappaGreen/SpriteSheet.png",
+      "color_count": 8,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#56864c",
+        "#548789",
+        "#a8a129",
+        "#d78b4a",
+        "#79b8ce",
+        "#f1c471",
+        "#e3f1f5"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "KappaRed": {
+      "file": "KappaRed/SpriteSheet.png",
+      "color_count": 8,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#8f3e56",
+        "#e0394c",
+        "#548789",
+        "#c8966b",
+        "#79b8ce",
+        "#fce2ca",
+        "#e3f1f5"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "LanternGreen": {
+      "file": "LanternGreen/SpriteSheet.png",
+      "color_count": 6,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#345a52",
+        "#e0394c",
+        "#56864c",
+        "#a8a129",
+        "#e3f1f5"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "LanternRed": {
+      "file": "LanternRed/SpriteSheet.png",
+      "color_count": 7,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#543c52",
+        "#8f3e56",
+        "#e0394c",
+        "#d78b4a",
+        "#f1c471",
+        "#e3f1f5"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Larva": {
+      "file": "Larva/Larva.png",
+      "color_count": 4,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#e0394c",
+        "#56864c",
+        "#a8a129"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Larva2": {
+      "file": "Larva2/Larva2.png",
+      "color_count": 4,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#548789",
+        "#79b8ce",
+        "#fce2ca"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Lizard": {
+      "file": "Lizard/Lizard.png",
+      "color_count": 5,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#3b3643",
+        "#74a334",
+        "#adbc3a",
+        "#fce2ca"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Lizard2": {
+      "file": "Lizard2/Lizard2.png",
+      "color_count": 5,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#3b3643",
+        "#4e484a",
+        "#5f7160",
+        "#ffad5d"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Mole": {
+      "file": "Mole/Mole.png",
+      "color_count": 4,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#8f3e56",
+        "#e0394c",
+        "#d14b34"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Mole2": {
+      "file": "Mole2/Mole2.png",
+      "color_count": 5,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#548789",
+        "#8d977f",
+        "#79b8ce",
+        "#fce2ca"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Mollusc": {
+      "file": "Mollusc/Mollusc.png",
+      "color_count": 6,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#8f3e56",
+        "#e0394c",
+        "#e46d3a",
+        "#ffad5d",
+        "#ffffff"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Mollusc2": {
+      "file": "Mollusc2/Mollusc2.png",
+      "color_count": 6,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#e0394c",
+        "#56864c",
+        "#a8a129",
+        "#f2ad7d",
+        "#fce2ca"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Mouse": {
+      "file": "Mouse/SpriteSheet.png",
+      "color_count": 3,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#965340",
+        "#f2ad7d"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "MouseBlack": {
+      "file": "MouseBlack/SpriteSheet.png",
+      "color_count": 4,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#965340",
+        "#5f7160",
+        "#f2ad7d"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Mushroom": {
+      "file": "Mushroom/mushroom.png",
+      "color_count": 6,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#8f3e56",
+        "#5f7160",
+        "#e0394c",
+        "#9ba7aa",
+        "#f2eaf1"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Mushroom2": {
+      "file": "Mushroom2/mushroom2.png",
+      "color_count": 6,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#548789",
+        "#9ba7aa",
+        "#79b8ce",
+        "#f2eaf1",
+        "#ffffff"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Octopus": {
+      "file": "Octopus/SpriteSheet.png",
+      "color_count": 5,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#56864c",
+        "#74a334",
+        "#adbc3a",
+        "#ffe18d"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Octopus2": {
+      "file": "Octopus2/SpriteSheet.png",
+      "color_count": 5,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#4a5270",
+        "#548789",
+        "#79b8ce",
+        "#ffffff"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Owl": {
+      "file": "Owl/Owl.png",
+      "color_count": 5,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#d14b34",
+        "#8d977f",
+        "#ffad5d",
+        "#fce2ca"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Owl2": {
+      "file": "Owl2/Owl2.png",
+      "color_count": 7,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#4e484a",
+        "#8f3e56",
+        "#5f7160",
+        "#e0394c",
+        "#d14b34",
+        "#ffad5d"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Panda": {
+      "file": "Panda/SpriteSheet.png",
+      "color_count": 6,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#4e484a",
+        "#5f7160",
+        "#f2ad7d",
+        "#fce2ca",
+        "#ffffff"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Racoon": {
+      "file": "Racoon/SpriteSheet.png",
+      "color_count": 5,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#8f3e56",
+        "#d14b34",
+        "#f2ad7d",
+        "#ffffff"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "RedOctopus": {
+      "file": "RedOctopus/SpriteSheet.png",
+      "color_count": 7,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#45283c",
+        "#543c52",
+        "#8f3e56",
+        "#e0394c",
+        "#d78b4a",
+        "#f1c471"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Reptile": {
+      "file": "Reptile/Reptile.png",
+      "color_count": 6,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#4e484a",
+        "#548789",
+        "#ef914f",
+        "#79b8ce",
+        "#fce2ca"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Reptile2": {
+      "file": "Reptile2/Reptile2.png",
+      "color_count": 5,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#56864c",
+        "#74a334",
+        "#adbc3a",
+        "#fce2ca"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Skull": {
+      "file": "Skull/SpriteSheet.png",
+      "color_count": 4,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#e0394c",
+        "#e46d3a",
+        "#f2eaf1"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "SkullBlue": {
+      "file": "SkullBlue/SpriteSheet.png",
+      "color_count": 4,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#548789",
+        "#79b8ce",
+        "#f2eaf1"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Slime": {
+      "file": "Slime/Slime.png",
+      "color_count": 6,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#4e484a",
+        "#548789",
+        "#79b8ce",
+        "#f2eaf1",
+        "#ffffff"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Slime2": {
+      "file": "Slime2/Slime2.png",
+      "color_count": 6,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#e0394c",
+        "#56864c",
+        "#74a334",
+        "#adbc3a",
+        "#f2eaf1"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Slime3": {
+      "file": "Slime3/Slime3.png",
+      "color_count": 5,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#4a5270",
+        "#548789",
+        "#79b8ce",
+        "#f2eaf1"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Slime4": {
+      "file": "Slime4/Slime4.png",
+      "color_count": 6,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#e0394c",
+        "#56864c",
+        "#74a334",
+        "#adbc3a",
+        "#f2eaf1"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Snake": {
+      "file": "Snake/Snake.png",
+      "color_count": 6,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#e0394c",
+        "#e46d3a",
+        "#8d977f",
+        "#ffad5d",
+        "#fce2ca"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Snake2": {
+      "file": "Snake2/Snake2.png",
+      "color_count": 6,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#e46d3a",
+        "#8d977f",
+        "#adbc3a",
+        "#ffad5d",
+        "#fce2ca"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Snake3": {
+      "file": "Snake3/Snake3.png",
+      "color_count": 5,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#56864c",
+        "#74a334",
+        "#adbc3a",
+        "#ffad5d"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Snake4": {
+      "file": "Snake4/Snake4.png",
+      "color_count": 5,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#543c52",
+        "#8f3e56",
+        "#e0394c",
+        "#ffffff"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "SpiderRed": {
+      "file": "SpiderRed/SpriteSheet.png",
+      "color_count": 5,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#4e484a",
+        "#5f7160",
+        "#e0394c",
+        "#fce2ca"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "SpiderYellow": {
+      "file": "SpiderYellow/SpriteSheet.png",
+      "color_count": 5,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#8f3e56",
+        "#e0394c",
+        "#f1c471",
+        "#fce2ca"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Spirit": {
+      "file": "Spirit/SpriteSheet.png",
+      "color_count": 5,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#3b3643",
+        "#8f3e56",
+        "#79b8ce",
+        "#ffffff"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "Spirit2": {
+      "file": "Spirit2/SpriteSheet.png",
+      "color_count": 4,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#8f3e56",
+        "#e0394c",
+        "#ef914f"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "TRex": {
+      "file": "TRex/SpriteSheet.png",
+      "color_count": 4,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#d78b4a",
+        "#f1c471",
+        "#fce2ca"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    },
+    "YellowsBat": {
+      "file": "YellowsBat/SpriteSheet.png",
+      "color_count": 6,
+      "darkest_outline": "#141b1b",
+      "palette": [
+        "#141b1b",
+        "#d14b34",
+        "#d78b4a",
+        "#f1c471",
+        "#fce2ca",
+        "#f2eaf1"
+      ],
+      "dimensions": [
+        64,
+        64
+      ]
+    }
+  }
+}

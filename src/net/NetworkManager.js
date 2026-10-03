@@ -90,11 +90,15 @@ export class NetworkManager {
       return this.roomName;
     } catch (e) { this.setStatus('offline'); throw e; }
   }
-  async host(name, hero) {
+  async host(name, hero, opts = {}) {
     this.name = name; this.hero = hero;
     this.setStatus('connecting');
     try {
-      const room = await this.newClient().create('party', this.joinOptions(name, hero));
+      // opts.open: list the room in GET /party-finder (Party Finder); without it
+      // the room stays private/code-share-only. All other opts are ignored.
+      const createOpts = this.joinOptions(name, hero);
+      if (opts.open) createOpts.open = true;
+      const room = await this.newClient().create('party', createOpts);
       this.isHost = true;
       await this.adopt(room, 'party');
       bus.emit(Events.NET_CONNECTED, { code: room.roomId, isHost: true });

@@ -26,11 +26,39 @@ let economy = null;
 try { economy = await import('./economy.js'); } catch (e) {
   if (e?.code !== 'ERR_MODULE_NOT_FOUND') log.error('economy.js failed to load', { err: e.message });
 }
+let worldBoss = null;
+try { worldBoss = await import('./worldBoss.js'); } catch (e) {
+  if (e?.code !== 'ERR_MODULE_NOT_FOUND') log.error('worldBoss.js failed to load', { err: e.message });
+}
+let partyFinder = null;
+try { partyFinder = await import('./partyFinder.js'); } catch (e) {
+  if (e?.code !== 'ERR_MODULE_NOT_FOUND') log.error('partyFinder.js failed to load', { err: e.message });
+}
+let referrals = null;
+try { referrals = await import('./referrals.js'); } catch (e) {
+  if (e?.code !== 'ERR_MODULE_NOT_FOUND') log.error('referrals.js failed to load', { err: e.message });
+}
+let petDuel = null;
+try { petDuel = await import('./petDuel.js'); } catch (e) {
+  if (e?.code !== 'ERR_MODULE_NOT_FOUND') log.error('petDuel.js failed to load', { err: e.message });
+}
 
 await initSqlite();
 initStore();
 if (economy) {
   try { economy.init?.(); addRoomModule(economy); log.info('economy module loaded'); } catch (e) { log.error('economy init failed', { err: e.message }); economy = null; }
+}
+if (worldBoss) {
+  try { worldBoss.init?.(); addRoomModule(worldBoss); log.info('world boss module loaded'); } catch (e) { log.error('world boss init failed', { err: e.message }); worldBoss = null; }
+}
+if (partyFinder) {
+  try { partyFinder.init?.(); addRoomModule(partyFinder); log.info('party finder module loaded'); } catch (e) { log.error('party finder init failed', { err: e.message }); partyFinder = null; }
+}
+if (referrals) {
+  try { referrals.init?.(); addRoomModule(referrals); log.info('referrals module loaded'); } catch (e) { log.error('referrals init failed', { err: e.message }); referrals = null; }
+}
+if (petDuel) {
+  try { addRoomModule(petDuel); log.info('pet duel module loaded'); } catch (e) { log.error('pet duel init failed', { err: e.message }); petDuel = null; }
 }
 
 const app = express();
@@ -63,6 +91,9 @@ app.get('/rooms/:code', async (req, res) => {
 });
 try { social?.routes?.(app); } catch (e) { log.error('social.routes failed', { err: e.message }); }
 try { economy?.routes?.(app); } catch (e) { log.error('economy.routes failed', { err: e.message }); }
+try { worldBoss?.routes?.(app); } catch (e) { log.error('worldBoss.routes failed', { err: e.message }); }
+try { partyFinder?.routes?.(app); } catch (e) { log.error('partyFinder.routes failed', { err: e.message }); }
+try { referrals?.routes?.(app); } catch (e) { log.error('referrals.routes failed', { err: e.message }); }
 
 const httpServer = http.createServer(app);
 const gameServer = new Server({

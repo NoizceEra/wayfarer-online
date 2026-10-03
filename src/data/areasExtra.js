@@ -40,7 +40,7 @@ export const EXTRA_AREAS = {
       { id: 'marsh_isle', name: 'Gloomtoad Isle', safe: false, lv: [13, 14], desc: 'A sunken island where the Old Gloomtoad broods (Lv 13-14).', rect: [MARSH.bossIsland.cx - 8, MARSH.bossIsland.cy - 7, 16, 14] },
     ],
     spawn: MARSH.spawn, exit: MARSH.exit, waystone: MARSH.waystone,
-    mobs: [['mtoad', 10, 'any'], ['mwisp', 8, 'any'], ['mleech', 8, 'any'], ['mserpent', 6, 'any'], ['mspore', 8, 'any'], ['mstalker', 6, 'any'], ['mkappa', 5, 'any'], ['mkappa', 3, 'isle'], ['mwisp', 3, 'isle'], ['gloomtoad', 1, 'boss']],
+    mobs: [['mtoad', 10, 'any'], ['mwisp', 8, 'any'], ['mleech', 8, 'any'], ['mserpent', 6, 'any'], ['mspore', 8, 'any'], ['mstalker', 6, 'any'], ['bogleech', 6, 'any'], ['mirelurker', 4, 'any'], ['mkappa', 5, 'any'], ['mkappa', 3, 'isle'], ['mwisp', 3, 'isle'], ['gloomtoad', 1, 'boss']],
     weather: 'marsh',
   },
   caverns: {

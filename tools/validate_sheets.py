@@ -58,6 +58,23 @@ for n in sorted(os.listdir(md)):
         out['bad'].append(f'mon {n}: empty cells {empty}')
     else:
         out['mon'][n] = {'file': f'{n}/{pngs[0]}'}
+
+CUSTOM_MON = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'public', 'assets', 'custom', 'monsters')
+out['custom_mon'] = {}
+if os.path.isdir(CUSTOM_MON):
+    for f in sorted(os.listdir(CUSTOM_MON)):
+        if not f.endswith('.png'):
+            continue
+        size, g = cells(os.path.join(CUSTOM_MON, f), 16, 16)
+        if size != (64, 64):
+            out['bad'].append(f'custom mon {f}: odd size {size}')
+            continue
+        empty = [(r, c) for r in range(4) for c in range(4) if g[r][c] == 0]
+        if empty:
+            out['bad'].append(f'custom mon {f}: empty cells {empty}')
+        else:
+            out['custom_mon'][f] = {'file': f}
+
 if '--emit-catalog' in sys.argv:
     path = sys.argv[sys.argv.index('--emit-catalog') + 1]
     with open(path, 'w') as f:
@@ -71,8 +88,15 @@ if '--emit-catalog' in sys.argv:
         f.write('export const MONSTER_FILES = {\n')
         for n, v in out['mon'].items():
             f.write("  %s: '%s',\n" % (n, v['file']))
+        f.write('};\n// CUSTOM_MONSTER_FILES: public/assets/custom/monsters -> sheet file (64x64, 4x4 frames)\n')
+        f.write('export const CUSTOM_MONSTER_FILES = {\n')
+        for f_name, v in out['custom_mon'].items():
+            k = f_name.replace('.png', '')
+            f.write("  %s: '%s',\n" % (k, v['file']))
         f.write('};\n')
 if '--json' in sys.argv:
     json.dump(out, open(sys.argv[sys.argv.index('--json') + 1], 'w'), indent=1)
-print(f"usable: {len(out['char'])} characters, {len(out['mon'])} monsters")
+custom_count_str = f", {len(out['custom_mon'])} custom monsters" if out['custom_mon'] else ""
+print(f"usable: {len(out['char'])} characters, {len(out['mon'])} monsters{custom_count_str}")
 print('BAD:', *out['bad'], sep='\n  ')
+

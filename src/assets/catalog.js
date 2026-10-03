@@ -164,3 +164,19 @@ export const MONSTER_FILES = {
   TRex: 'TRex/SpriteSheet.png',
   YellowsBat: 'YellowsBat/SpriteSheet.png',
 };
+// CUSTOM_MONSTER_FILES: public/assets/custom/monsters -> sheet file (64x64, 4x4 frames)
+export const CUSTOM_MONSTER_FILES = {
+  beach_coralcrab: 'beach_coralcrab.png',
+  beach_reefjelly: 'beach_reefjelly.png',
+  crypt_bonehound: 'crypt_bonehound.png',
+  crypt_shadowwraith: 'crypt_shadowwraith.png',
+  forest_brambleboar: 'forest_brambleboar.png',
+  forest_treant: 'forest_treant.png',
+  frost_frostfox: 'frost_frostfox.png',
+  frost_icegolem: 'frost_icegolem.png',
+  marsh_bogleech: 'marsh_bogleech.png',
+  marsh_mirelurker: 'marsh_mirelurker.png',
+  meadow_dewbeetle: 'meadow_dewbeetle.png',
+  meadow_quillkin: 'meadow_quillkin.png',
+  slime_slime_cyan: 'slime_slime_cyan.png',
+};

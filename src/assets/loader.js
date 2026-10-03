@@ -1,7 +1,7 @@
 // Asset loader — ports the Lanternfall curation (CC0 Ninja Adventure + Kenney)
 // into Wayfarer. Paths are relative to public/: assets/na/..., assets/audio/...,
 // assets/light/.... Only the subset Wayfarer Online actually uses is loaded.
-import { CHAR_SHEETS, MONSTER_FILES } from './catalog.js';
+import { CHAR_SHEETS, MONSTER_FILES, CUSTOM_MONSTER_FILES } from './catalog.js';
 import { NPC_SHEETS } from '../data/npcs.js';
 import { ENEMY_TABLE } from '../data/jobs.js';
 import { ITEM_LIST } from '../data/items.js';
@@ -35,6 +35,13 @@ const MONSTER_SHEETS = {
   YellowsBat: 'YellowsBat/SpriteSheet.png', SkullBlue: 'SkullBlue/SpriteSheet.png', Owl2: 'Owl2/Owl2.png',
   Grey_Trex: 'Grey_Trex/SpriteSheet.png', Flam2: 'Flam2/SpriteSheet.png', Larva2: 'Larva2/Larva2.png',
 };
+// Custom monster sheets from public/assets/custom/monsters
+const CUSTOM_MONSTER_DIR = 'assets/custom/monsters';
+const CUSTOM_MONSTER_SHEETS = {};
+for (const [key, file] of Object.entries(CUSTOM_MONSTER_FILES || {})) {
+  CUSTOM_MONSTER_SHEETS[key] = `${CUSTOM_MONSTER_DIR}/${file}`;
+}
+
 // Monsters referenced by the expanded ENEMY_TABLE + ambient critters (validated catalog).
 const AMBIENT_MONSTERS = ['Butterfly', 'ButterflyBlue', 'Fish', 'FishRed', 'Owl', 'Owl2', 'BlueBat', 'YellowsBat'];
 for (const def of Object.values(ENEMY_TABLE)) if (MONSTER_FILES[def.sprite] && !MONSTER_SHEETS[def.sprite]) MONSTER_SHEETS[def.sprite] = MONSTER_FILES[def.sprite];
@@ -163,6 +170,9 @@ export function preloadWorld(scene) {
   for (const [name, file] of Object.entries(MONSTER_SHEETS)) {
     L.spritesheet(`mon.${name}`, `${NA}/Actor/Monster/${file}`, { frameWidth: 16, frameHeight: 16 });
   }
+  for (const [name, path] of Object.entries(CUSTOM_MONSTER_SHEETS)) {
+    L.spritesheet(`mon.${name}`, path, { frameWidth: 16, frameHeight: 16 });
+  }
   for (const [key, path, fw, fh] of FX) L.spritesheet(key, `${NA}/${path}`, { frameWidth: fw, frameHeight: fh });
   for (const [key, path, fw, fh] of PROJ_SHEETS) L.spritesheet(key, `${NA}/${path}`, { frameWidth: fw, frameHeight: fh });
   for (const [key, path] of PROJ_IMAGES) L.image(key, `${NA}/${path}`);
@@ -223,7 +233,8 @@ export function createAnims(scene) {
       if (tex.has(16 + col)) makeAnim(scene, { key: `${key}.attack.${dir}`, texture: key, frames: [{ key, frame: 16 + col }], frameRate: 1 });
     });
   }
-  for (const name of Object.keys(MONSTER_SHEETS)) {
+  const allMonsters = { ...MONSTER_SHEETS, ...CUSTOM_MONSTER_SHEETS };
+  for (const name of Object.keys(allMonsters)) {
     const key = `mon.${name}`;
     if (!scene.textures.exists(key)) continue;
     DIRS.forEach((dir, col) => {

@@ -9,6 +9,8 @@ import { MarketPanel } from './MarketPanel.js';
 import { MailPanel } from './MailPanel.js';
 import { renderGuildTab, answerInvite } from './GuildTab.js';
 import { ClaimPanel } from './ClaimPanel.js';
+import { ReferralPanel, mountReferralCta } from './ReferralPanel.js';
+import { PartyFinderPanel } from './PartyFinderPanel.js';
 import { el, setIconScene } from './econDom.js';
 import { socialRoot } from './socialDom.js';
 
@@ -43,10 +45,12 @@ export function installEconomyUI(uiScene) {
 
   input.registerAction({ id: 'mail', label: 'Mailbox', group: 'Social', keys: ['KeyV'], gameplay: true });
   const claimP = new ClaimPanel();
-  const anyOpen = () => tradeP.isOpen || escrowP.isOpen || market.isOpen || mail.isOpen || claimP.isOpen;
+  const referralP = new ReferralPanel();
+  const partyFinderP = new PartyFinderPanel();
+  const anyOpen = () => tradeP.isOpen || escrowP.isOpen || market.isOpen || mail.isOpen || claimP.isOpen || referralP.isOpen || partyFinderP.isOpen;
   const offs = [
     input.on('mail', () => { market.close(); escrowP.close(); tradeP.close(); mail.toggle(); return true; }, { scene: uiScene }),
-    input.addCloser({ id: 'economy', priority: 960, isOpen: anyOpen, close: () => { if (mail.isOpen) mail.close(); else if (market.isOpen) market.close(); else if (escrowP.isOpen) escrowP.close(); else if (claimP.isOpen) claimP.close(); else tradeP.close(); }, scene: uiScene }),
+    input.addCloser({ id: 'economy', priority: 960, isOpen: anyOpen, close: () => { if (mail.isOpen) mail.close(); else if (market.isOpen) market.close(); else if (escrowP.isOpen) escrowP.close(); else if (referralP.isOpen) referralP.close(); else if (partyFinderP.isOpen) partyFinderP.close(); else if (claimP.isOpen) claimP.close(); else tradeP.close(); }, scene: uiScene }),
     social.registerAction('trade', (who) => trade.requestTrade(who)),
     social.registerAction('escrow', (who) => trade.requestEscrow(who)),
     social.registerAction('mail', (to) => mail.compose(to)),
@@ -60,11 +64,12 @@ export function installEconomyUI(uiScene) {
     bus.on(Events.NET_STATUS, drawBadge),
   ];
   drawBadge();
+  const refCta = mountReferralCta(() => referralP.open());
   installCommands(mail);
 
   const api = {
-    trade: tradeP, escrow: escrowP, market, mail, claim: claimP, anyOpen,
-    destroy() { offs.forEach((o) => { try { o(); } catch { /* ignore */ } }); tradeP.destroy(); escrowP.destroy(); market.destroy(); mail.destroy(); claimP.destroy(); badge.remove(); },
+    trade: tradeP, escrow: escrowP, market, mail, claim: claimP, referral: referralP, partyFinder: partyFinderP, anyOpen,
+    destroy() { offs.forEach((o) => { try { o(); } catch { /* ignore */ } }); tradeP.destroy(); escrowP.destroy(); market.destroy(); mail.destroy(); claimP.destroy(); referralP.destroy(); partyFinderP.destroy(); badge.remove(); refCta.destroy(); },
   };
   uiScene.events.once('shutdown', () => api.destroy());
   window.__econUI = api; // debug / automated tests
@@ -109,6 +114,11 @@ function installCommands(mail) {
       case 'gdeposit': return n > 0 ? econ.send('guild-deposit', { gold: n }, { rev: true, sync: true }) : say('Usage: /gdeposit gold');
       case 'gwithdraw': return n > 0 ? econ.send('guild-withdraw', { gold: n }, { rev: true, sync: true }) : say('Usage: /gwithdraw gold');
       case 'claim': return bus.emit('econ-ui', { panel: 'claim' });
+      case 'refer': case 'referral': return window.__econUI?.referral?.toggle();
+      case 'partyfinder': case 'finder': case 'lfg': return window.__econUI?.partyFinder?.toggle(uiScene);
+      case 'pets': case 'pet': return bus.emit(Events.SOCIAL_UI, { panel: 'pet-panel', open: true });
+      case 'petduel': case 'pd': case 'duel': if (!first) return say('Usage: /petduel name'); return social.challenge(first);
+      case 'petbattle': case 'pvb': return say('Walk up to a wild pet wisp and press E to capture it; /petduel name to challenge a player.');
       case 'ginfo': case 'guildinfo': {
         const g = econ.guild;
         if (!g) return say(econ.online ? 'You are not in a guild. /gcreate TAG Name' : 'Play Online to use guilds.');
@@ -116,7 +126,7 @@ function installCommands(mail) {
       }
       case 'help': case '?':
         orig(raw);
-        return say(`Economy: /trade name · /mail [name] · /claim · /ginvite /gaccept /gkick /gpromote /gdemote /gleader /gmotd /gdeposit /gwithdraw /ginfo. Mailbox: ${input.labelFor('mail')}. Market: talk to the notice-board clerks.`);
+        return say(`Economy: /trade name · /mail [name] · /claim · /refer · /finder · /pet · /petduel name · /ginvite /gaccept /gkick /gpromote /gdemote /gleader /gmotd /gdeposit /gwithdraw /ginfo. Mailbox: ${input.labelFor('mail')}. Market: talk to the notice-board clerks.`);
       default: return orig(raw);
     }
   };

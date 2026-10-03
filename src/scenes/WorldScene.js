@@ -25,6 +25,7 @@ import { Boss } from '../entities/Boss.js';
 import { MechBoss } from '../entities/MechBoss.js';
 import { DungeonRun } from '../world/dungeons.js';
 import { WorldEvents } from '../systems/worldEvents.js';
+import { WorldBossToast } from '../ui/WorldBossToast.js';
 import { AreaManager } from '../world/areas.js';
 import { buildOverworldFeatures, overworldClearings } from '../world/overworldFeatures.js';
 import { rollDefDrop, rollItemDrops, EXTRA_OVERWORLD_SPAWNS } from '../data/worldEnemies.js';
@@ -37,6 +38,9 @@ import { Achievements } from '../systems/achievements.js';
 import { addMat } from '../systems/pack.js';
 import { rollMatDrops } from '../data/materials.js';
 import { NPC_SPOTS } from '../data/quests.js';
+import { spawnPetMaster, onPetMasterTalk } from '../world/petMaster.js';
+import { OnboardingSystem } from '../systems/onboarding.js';
+import { PetEncounterSystem } from '../systems/petEncounter.js';
 import { Combat } from '../systems/combat.js';
 import { Spawner } from '../systems/spawner.js';
 import { RANKS, rollRank, rollMobLevel } from '../data/combatMath.js';
@@ -97,6 +101,8 @@ export class WorldScene extends Phaser.Scene {
 
     // NPCs: Pip (quests), Maren (shop/potions), Old Tob (lore) — real sprites
     this.npcs = [];
+    // Pet Master Li (pet unlock quest); purely additive
+    this._petMaster = spawnPetMaster(this);
     // Plaza layout: houses stand north (±60), NPCs in an open south row and
     // Old Tob up the middle — nothing stacks on torches (±36,+28 / 0,+54).
     const npcDefs = [
@@ -130,7 +136,12 @@ export class WorldScene extends Phaser.Scene {
     placeGatherNodes(this, null);
     this.craft.buildStations(this, null, spawn);
     this.dungeon = new DungeonRun(this); // Hollow Depths (world/dungeons.js)
-    this.worldEvents = new WorldEvents(this); // timed world events + world boss (systems/worldEvents.js)
+    this.worldEvents = new WorldEvents(this); // timed world events + local world boss (systems/worldEvents.js)
+    this._worldBossToast = null;
+    this._offWorldBoss = bus.on(Events.WORLDBOSS_SPAWN, (m) => {
+      if (this._worldBossToast) this._worldBossToast.destroy();
+      this._worldBossToast = new WorldBossToast(this, m);
+    });
     { // notice board (prop drawn by the overworld builder): bounties + '!' marker
       const bx = spawn.x - 118, by = spawn.y - 22;
       const bc = this.add.container(bx, by + 6).setDepth(by + 10);
@@ -177,6 +188,9 @@ export class WorldScene extends Phaser.Scene {
     // Hero combat: damage numbers, target lock (Tab/click), dodge (Space/Shift), statuses, loot, death (systems/combat.js)
     this.combat = new Combat(this);
 
+    this.onboarding = new OnboardingSystem(this);
+    this.petEncounter = new PetEncounterSystem(this);
+
     this.daynight = new DayNight(this);
     // Visual systems: weather, dynamic night lighting, water, foliage sway, ambient particles (systems/fx.js)
     this.fx = new Fx(this, { windows, spawn });
@@ -195,7 +209,14 @@ export class WorldScene extends Phaser.Scene {
     bus.emit(Events.QUEST, this.questText());
     bus.emit(Events.PLAYER_HP, this.hpPayload());
     bus.emit(Events.PLAYER_XP, this.xpPayload());
-    this.events.once('shutdown', () => { this.saveNow(); this.quests.destroy(); this.ach.destroy(); this.sync.destroy(); this.scene.stop('overlay'); });
+    this.events.once('shutdown', () => {
+      this.saveNow(); this.quests.destroy(); this.ach.destroy(); this.sync.destroy();
+      if (this._worldBossToast) { this._worldBossToast.destroy(); this._worldBossToast = null; }
+      if (this._offWorldBoss) { this._offWorldBoss(); this._offWorldBoss = null; }
+      this.onboarding?.destroy();
+      this.petEncounter?.destroy();
+      this.scene.stop('overlay');
+    });
     this.scene.launch('ui', { hero: this.heroData, name: this.pname, job: this.player.job });
     initPrompt(this); showRoomCode(this);
     this.scene.launch('character'); // RPG panels (C / K) + level-up toasts, see CharacterScene.js
@@ -546,6 +567,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   interact() {
+    if (this.petEncounter?.tryPrompt()) return;
     let best = null, bd = CONFIG.interactRadius;
     if (!this.areas?.current) {
       for (const n of this.npcs) {
@@ -567,6 +589,7 @@ export class WorldScene extends Phaser.Scene {
           bus.emit(Events.SYSTEM, `${def.name}: ${def.text}`);
         }
       };
+      if (onPetMasterTalk(this, def.name, plain)) return;
       if (this.quests.talk(def.name, plain, def.shop ? 'Browse wares' : 'Chat', best)) return;
       plain();
     }
@@ -633,6 +656,8 @@ export class WorldScene extends Phaser.Scene {
     this.quests.update(dt);
     this.ach.update(dt);
     this.combat.update(time, delta); // roll / stun / slow overrides, statuses, loot magnet
+    this.onboarding?.update();
+    this.petEncounter?.update();
     this.spawner.update(time);
 
     // zone tracking

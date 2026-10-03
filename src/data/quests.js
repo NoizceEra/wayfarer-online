@@ -8,6 +8,7 @@
 // Legacy ids (q_meadow..q_final, sq_*) are kept so old saves migrate cleanly.
 
 import { EXTRA_CHAINS, EXTRA_QUESTS, EXTRA_POIS, EXTRA_NPC_SPOTS, EXTRA_LORE, EXTRA_LORE_ON_ENTER } from './questsExtra.js';
+import { PET_UNLOCK_QUEST } from './quests/petUnlock.js';
 
 export const NPC_SPOTS = {
   // wild quest givers (overworld tile coords) - WorldScene adds them as real NPCs
@@ -227,6 +228,8 @@ export const QUEST_LIST = [
     remind: 'Four Iron Ore and visit the Sunken Altar.',
     done: 'The altar still hums. Good. Stay alert, there is more below.',
     obj: [{ t: 'collect', id: 'iron_ore', n: 4 }, { t: 'explore', poi: 'ruins_altar' }], reward: { xp: 300, gold: 130, mats: { guard_elixir: 1 } } }),
+
+  PET_UNLOCK_QUEST,
 ];
 
 QUEST_LIST.push(...EXTRA_QUESTS); // desert / marsh / caverns / Hollow Depths / world-event quests (data/questsExtra.js)

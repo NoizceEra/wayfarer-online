@@ -103,17 +103,39 @@ ENEMY_TABLE.glacierwyrm = {
   items: [{ id: 'bar_mithril', chance: 1 }, { id: 'chest_big', chance: 0.5 }, { id: 'scroll_thunder', chance: 0.6 }],
 };
 
+// ——— Custom Biome Monsters (12 new monsters across 6 biomes) ———
+// Meadowfield
+E('dewbeetle', 'Dew Beetle', 'meadow_dewbeetle', ['meadow'], 28, 6, 8, [1, 4], { items: [{ id: 'grass', chance: 0.18 }, { id: 'water_drop', chance: 0.12 }] });
+E('quillkin', 'Meadow Quillkin', 'meadow_quillkin', ['meadow'], 36, 7, 10, [2, 5], { items: [{ id: 'feather', chance: 0.15 }, { id: 'nut_bag', chance: 0.1 }] });
+// Mosswood
+E('brambleboar', 'Bramble Boar', 'forest_brambleboar', ['woods'], 65, 12, 22, [3, 8], { items: [{ id: 'meat', chance: 0.25 }, { id: 'branch', chance: 0.2 }] });
+E('moss_treant', 'Mosswood Treant', 'forest_treant', ['woods'], 85, 13, 26, [4, 10], { items: [{ id: 'branch', chance: 0.3 }, { id: 'herb_tea', chance: 0.15 }], drops: [{ id: 'iron_helm', chance: 0.03 }] });
+// Whisperfen Marsh
+E('bogleech', 'Bog Leech', 'marsh_bogleech', ['marsh'], 96, 20, 45, [6, 14], { items: [{ id: 'water_drop', chance: 0.25 }, { id: 'fish_fresh', chance: 0.12 }] });
+E('mirelurker', 'Mire Lurker', 'marsh_mirelurker', ['marsh'], 120, 22, 52, [7, 16], { items: [{ id: 'gem_green', chance: 0.05 }, { id: 'scroll_plant', chance: 0.04 }], drops: [{ id: 'fox_mask', chance: 0.02 }] });
+// Driftwood Beach
+E('coralcrab', 'Spiny Coral Crab', 'beach_coralcrab', ['dock_beach'], 48, 9, 16, [3, 8], { items: [{ id: 'shrimp', chance: 0.15 }, { id: 'tide_pearl', chance: 0.04 }], drops: [{ id: 'leather_cap', chance: 0.04 }] });
+E('reefjelly', 'Bioluminescent Reef Jelly', 'beach_reefjelly', ['dock_beach'], 42, 8, 14, [2, 7], { items: [{ id: 'water_flask', chance: 0.12 }, { id: 'feather_charm', chance: 0.03 }] });
+// Crypt of Ashenmoor
+E('shadowwraith', 'Shadow Wraith', 'crypt_shadowwraith', ['crypt'], 95, 20, 46, [6, 14], { items: [{ id: 'scroll_home', chance: 0.04 }, { id: 'gem_purple', chance: 0.04 }], drops: [{ id: 'bone_veil', chance: 0.05 }] });
+E('bonehound', 'Bone Hound', 'crypt_bonehound', ['crypt'], 110, 21, 48, [6, 15], { items: [{ id: 'bar_iron', chance: 0.06 }], drops: [{ id: 'iron_greatblade', chance: 0.04 }] });
+// Frostpeak Pass
+E('frostfox', 'Arctic Frost Fox', 'frost_frostfox', ['frost'], 105, 21, 50, [7, 16], { items: [{ id: 'feather', chance: 0.2 }, { id: 'gem_yellow', chance: 0.04 }], drops: [{ id: 'ember_charm', chance: 0.04 }] });
+E('icegolem', 'Glacier Brute', 'frost_icegolem', ['frost'], 160, 24, 60, [9, 20], { scale: 1.2, items: [{ id: 'bar_silver', chance: 0.06 }, { id: 'scroll_ice', chance: 0.05 }], drops: [{ id: 'iron_mail', chance: 0.06 }] });
+
 // Extra overworld spawns [type, count, zone]; WorldScene.spawnEnemies reads this list.
 export const EXTRA_OVERWORLD_SPAWNS = [
   ['fieldmouse', 10, 'meadow'], ['gelgreen', 10, 'meadow'], ['gelblue', 8, 'meadow'], ['gorselizard', 8, 'meadow'], ['burrower', 6, 'meadow'], ['meadowcap', 6, 'meadow'],
+  ['dewbeetle', 8, 'meadow'], ['quillkin', 6, 'meadow'],
   ['stinger', 8, 'woods'], ['bramblesnake', 8, 'woods'], ['hootling', 6, 'woods'], ['fernlizard', 6, 'woods'], ['lilykappa', 5, 'woods'], ['pondaxolot', 5, 'woods'], ['bamboolet', 6, 'woods'], ['mossbear', 3, 'woods'],
+  ['brambleboar', 6, 'woods'], ['moss_treant', 4, 'woods'],
   ['mudmollusc', 6, 'ruins'], ['reedoctopus', 5, 'ruins'], ['mirefiend', 5, 'ruins'], ['embercyclops', 4, 'ruins'], ['ruinlantern', 4, 'ruins'], ['rexling', 3, 'ruins'],
 ];
 // Area spawn additions (merged into data/areas.js AREAS[*].enemies / spawnRects).
-AREAS.dock.enemies.push(['sandadder', 3, 'dock_beach'], ['beachsnail', 3, 'dock_beach'], ['tideoctopus', 3, 'dock_beach'], ['bandit_racoon', 2, 'dock_beach'], ['redclaw', 1, 'beach_boss']);
+AREAS.dock.enemies.push(['sandadder', 3, 'dock_beach'], ['beachsnail', 3, 'dock_beach'], ['tideoctopus', 3, 'dock_beach'], ['bandit_racoon', 2, 'dock_beach'], ['coralcrab', 4, 'dock_beach'], ['reefjelly', 4, 'dock_beach'], ['redclaw', 1, 'beach_boss']);
 AREAS.dock.spawnRects.beach_boss = [50, 15, 4, 6];
-AREAS.crypt.enemies.push(['ashghost', 3, 'w'], ['bloodheart', 3, 'e'], ['gravedigger', 2, 'w'], ['bloodeye', 3, 'hall'], ['cryptadder', 3, 'e'], ['shadehound', 2, 'hall']);
-AREAS.frost.enemies.push(['icejelly', 5, 'field'], ['frostgel', 5, 'field'], ['glaciersnail', 4, 'field'], ['rimelizard', 4, 'field'], ['snowspecter', 4, 'field'], ['yeti', 3, 'field'], ['glacierwyrm', 1, 'wyrm']);
+AREAS.crypt.enemies.push(['ashghost', 3, 'w'], ['bloodheart', 3, 'e'], ['gravedigger', 2, 'w'], ['bloodeye', 3, 'hall'], ['cryptadder', 3, 'e'], ['shadehound', 2, 'hall'], ['shadowwraith', 3, 'hall'], ['bonehound', 3, 'w']);
+AREAS.frost.enemies.push(['icejelly', 5, 'field'], ['frostgel', 5, 'field'], ['glaciersnail', 4, 'field'], ['rimelizard', 4, 'field'], ['snowspecter', 4, 'field'], ['yeti', 3, 'field'], ['frostfox', 4, 'field'], ['icegolem', 3, 'field'], ['glacierwyrm', 1, 'wyrm']);
 AREAS.frost.spawnRects.wyrm = [44, 18, 8, 5];
 
 // Item drops (data/items.js ids) from def.items; plus a small generic food/resource roll.
@@ -150,6 +172,19 @@ const BEHAVIOUR = {
   gravemaw:     { lv: 13, ai: 'boss' },
   frostwisp:    { lv: 12, ai: 'ranged',  aggro: 125, inflict: { id: 'slow', chance: 0.5 }, shot: 0xbfe8ff },
   rimecrawler:  { lv: 13, ai: 'charger', aggro: 95,  social: true, inflict: { id: 'poison', chance: 0.3 } },
+  // 12 new custom biome monsters
+  dewbeetle:    { lv: 2,  ai: 'hopper',  aggro: 70,  social: true,  spd: 0.85 },
+  quillkin:     { lv: 3,  ai: 'charger', aggro: 80,  inflict: { id: 'bleed', chance: 0.25 } },
+  brambleboar:  { lv: 5,  ai: 'charger', aggro: 95,  social: true,  spd: 1.1,  inflict: { id: 'bleed', chance: 0.3 } },
+  moss_treant:  { lv: 6,  ai: 'melee',   aggro: 85,  spd: 0.75,     inflict: { id: 'stun', chance: 0.15 } },
+  bogleech:     { lv: 11, ai: 'swarm',   aggro: 105, social: true,  spd: 1.25, inflict: { id: 'bleed', chance: 0.35 } },
+  mirelurker:   { lv: 12, ai: 'melee',   aggro: 100, inflict: { id: 'poison', chance: 0.4 } },
+  coralcrab:    { lv: 4,  ai: 'melee',   aggro: 80,  social: true,  inflict: { id: 'bleed', chance: 0.25 } },
+  reefjelly:    { lv: 3,  ai: 'hopper',  aggro: 75,  social: true,  spd: 0.85, inflict: { id: 'slow', chance: 0.3 } },
+  shadowwraith: { lv: 11, ai: 'ranged',  aggro: 125, shot: 0xb080ff, inflict: { id: 'slow', chance: 0.4 } },
+  bonehound:    { lv: 10, ai: 'charger', aggro: 110, social: true,  spd: 1.3,  inflict: { id: 'bleed', chance: 0.35 } },
+  frostfox:     { lv: 12, ai: 'swarm',   aggro: 120, social: true,  spd: 1.4,  flee: 0.2, inflict: { id: 'slow', chance: 0.35 } },
+  icegolem:     { lv: 13, ai: 'melee',   aggro: 90,  spd: 0.8,      inflict: { id: 'stun', chance: 0.2 } },
 };
 for (const [id, b] of Object.entries(BEHAVIOUR)) if (ENEMY_TABLE[id]) Object.assign(ENEMY_TABLE[id], b);
 
