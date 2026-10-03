@@ -21,9 +21,21 @@
 - **Jobs:** Novice → 1st jobs (Swordsman/Archer/Mage/Thief/Acolyte/Merchant) → 2nd jobs; job level gives skill points.
 - **MMO feel:** party + shared XP, chat channels, shops/trade, storage, refine/upgrade gear, cards/sockets, pets, quest boards, towns + warps, PvE dungeons, world bosses.
 
+## New systems — shipped / in progress
+
+- [x] **LFG Dungeons** — role-based queue, instanced PvE, scalable difficulty, daily loot lockouts.
+- [x] **Guilds + Guild Hall** — guild progression, perks, roster upgrades, shared bank, hall facilities.
+- [x] **Season Pass** — free + premium tracks, seasonal cosmetics, weekly challenges.
+- [x] **World Boss Rotation** — scheduled overworld bosses, participation loot, seasonal bestiary.
+- [x] **Mobile UX Improvements** — resizable touch controls, auto-targeting, smart-cast, battery-saver mode.
+
 ## Planned build order
 1. Stat allocation + level curve + derived stats (STR/AGI/VIT/INT/DEX/LUK).
 2. Classes (extend jobs.js): base class → specialisation at Lv10, per-class skill trees.
 3. Equipment slots (head/face/body/back/weapon/off-hand) with stat bonuses + layered art; shop + drops + inventory UI.
 4. More maps: interiors (inn/shop), a dungeon, a coast/dock town, warps between maps.
 5. MMO polish: party UI, emotes, trade, bosses.
+6. Wallet connect + on-chain settlements.
+7. Mining & resource gathering expansion.
+8. Seasonal events & bestiary.
+9. Mobile app (PWA).

@@ -11,6 +11,13 @@ import { renderGuildTab, answerInvite } from './GuildTab.js';
 import { ClaimPanel } from './ClaimPanel.js';
 import { ReferralPanel, mountReferralCta } from './ReferralPanel.js';
 import { PartyFinderPanel } from './PartyFinderPanel.js';
+import { WorldBossAlert } from './WorldBossAlert.js';
+import LFGPanel from './LFGPanel.js';
+import SeasonPanel from './SeasonPanel.js';
+import GuildPanel from './GuildPanel.js';
+import DungeonSystem from '../systems/dungeonSystem.js';
+import SeasonSystem from '../systems/seasonSystem.js';
+import GuildSystem from '../systems/guildSystem.js';
 import { TokenSinkPanel } from './TokenSinkPanel.js';
 import { TokenBridgePanel } from './TokenBridgePanel.js';
 import { el, setIconScene } from './econDom.js';
@@ -47,14 +54,31 @@ export function installEconomyUI(uiScene) {
 
   input.registerAction({ id: 'mail', label: 'Mailbox', group: 'Social', keys: ['KeyV'], gameplay: true });
   const claimP = new ClaimPanel();
+
+  // Feature systems wired through economy UI slash commands and scene integration.
+  const dungeonSystem = new DungeonSystem(uiScene.world(), net);
+  const seasonSystem = new SeasonSystem(uiScene, { send: (t, p) => net.send(t, p), onBroadcast: (fn) => net.onAttach((room) => { const h = (type, payload) => fn(type, payload); room.onMessage('*', (type, payload) => h(type, payload)); }) });
+  const guildSystem = new GuildSystem(uiScene, { send: (t, p) => net.send(t, p), onBroadcast: (fn) => net.onAttach((room) => { const h = (type, payload) => fn(type, payload); room.onMessage('*', (type, payload) => h(type, payload)); }) });
+  const cx = uiScene.scale.width / 2 / (uiScene.uiZoom || 1);
+  const cy = uiScene.scale.height / 2 / (uiScene.uiZoom || 1);
+  const lfgPanel = new LFGPanel(uiScene, cx, cy);
+  lfgPanel.onQueue = (req) => dungeonSystem.queue(req.dungeonId, req.role, req.groupMode);
+  lfgPanel.onAccept = () => dungeonSystem.acceptMatch();
+  const seasonPanel = new SeasonPanel(uiScene, cx, cy, { seasonSystem, onClaim: (tier, track) => seasonSystem.claim(tier, track), onUpgrade: () => seasonSystem.upgradePremium() });
+  const guildPanel = new GuildPanel(uiScene, cx, cy, guildSystem);
+  const worldBossAlert = new WorldBossAlert(uiScene, uiScene.scale.width / 2 / (uiScene.uiZoom || 1), 110, {
+    onTeleport: () => { const w = uiScene.world(); if (w?.player) { w.player.x = 1620; w.player.y = 840; social.system('Teleported to the world boss.'); } },
+    onDismiss: () => {},
+  });
+  uiScene.worldBossAlert = worldBossAlert;
   const referralP = new ReferralPanel();
   const partyFinderP = new PartyFinderPanel();
   const sinksP = new TokenSinkPanel();
   const bridgeP = new TokenBridgePanel();
-  const anyOpen = () => tradeP.isOpen || escrowP.isOpen || market.isOpen || mail.isOpen || claimP.isOpen || referralP.isOpen || partyFinderP.isOpen || sinksP.isOpen || bridgeP.isOpen;
+  const anyOpen = () => tradeP.isOpen || escrowP.isOpen || market.isOpen || mail.isOpen || claimP.isOpen || referralP.isOpen || partyFinderP.isOpen || sinksP.isOpen || bridgeP.isOpen || lfgPanel.visible || seasonPanel.visible || guildPanel.visible;
   const offs = [
     input.on('mail', () => { market.close(); escrowP.close(); tradeP.close(); sinksP.close(); bridgeP.close(); mail.toggle(); return true; }, { scene: uiScene }),
-    input.addCloser({ id: 'economy', priority: 960, isOpen: anyOpen, close: () => { if (mail.isOpen) mail.close(); else if (market.isOpen) market.close(); else if (escrowP.isOpen) escrowP.close(); else if (referralP.isOpen) referralP.close(); else if (partyFinderP.isOpen) partyFinderP.close(); else if (sinksP.isOpen) sinksP.close(); else if (bridgeP.isOpen) bridgeP.close(); else if (claimP.isOpen) claimP.close(); else tradeP.close(); }, scene: uiScene }),
+    input.addCloser({ id: 'economy', priority: 960, isOpen: anyOpen, close: () => { if (mail.isOpen) mail.close(); else if (market.isOpen) market.close(); else if (escrowP.isOpen) escrowP.close(); else if (referralP.isOpen) referralP.close(); else if (partyFinderP.isOpen) partyFinderP.close(); else if (sinksP.isOpen) sinksP.close(); else if (bridgeP.isOpen) bridgeP.close(); else if (lfgPanel.visible) lfgPanel.close(); else if (seasonPanel.visible) seasonPanel.close(); else if (guildPanel.visible) guildPanel.close(); else if (claimP.isOpen) claimP.close(); else tradeP.close(); }, scene: uiScene }),
     social.registerAction('trade', (who) => trade.requestTrade(who)),
     social.registerAction('escrow', (who) => trade.requestEscrow(who)),
     social.registerAction('mail', (to) => mail.compose(to)),
@@ -65,6 +89,9 @@ export function installEconomyUI(uiScene) {
       else if (m?.panel === 'claim') { market.close(); tradeP.close(); escrowP.close(); mail.close(); sinksP.close(); bridgeP.close(); claimP.open(); }
       else if (m?.panel === 'sinks') { market.close(); tradeP.close(); escrowP.close(); mail.close(); claimP.close(); bridgeP.close(); sinksP.open(); }
       else if (m?.panel === 'bridge') { market.close(); tradeP.close(); escrowP.close(); mail.close(); claimP.close(); sinksP.close(); bridgeP.open({ link: !!m.link }); }
+      else if (m?.panel === 'lfg') { market.close(); tradeP.close(); escrowP.close(); mail.close(); claimP.close(); sinksP.close(); bridgeP.close(); lfgPanel.open(); }
+      else if (m?.panel === 'season') { market.close(); tradeP.close(); escrowP.close(); mail.close(); claimP.close(); sinksP.close(); bridgeP.close(); lfgPanel.close(); seasonPanel.open(); }
+      else if (m?.panel === 'guild') { market.close(); tradeP.close(); escrowP.close(); mail.close(); claimP.close(); sinksP.close(); bridgeP.close(); lfgPanel.close(); seasonPanel.close(); guildPanel.open(); }
     }),
     econ.on('mail-unread', drawBadge), econ.on('state', drawBadge), econ.on('status', drawBadge),
     bus.on(Events.NET_STATUS, drawBadge),
@@ -75,7 +102,7 @@ export function installEconomyUI(uiScene) {
 
   const api = {
     trade: tradeP, escrow: escrowP, market, mail, claim: claimP, referral: referralP, partyFinder: partyFinderP, sinks: sinksP, bridge: bridgeP, anyOpen,
-    destroy() { offs.forEach((o) => { try { o(); } catch { /* ignore */ } }); tradeP.destroy(); escrowP.destroy(); market.destroy(); mail.destroy(); claimP.destroy(); referralP.destroy(); partyFinderP.destroy(); sinksP.destroy(); bridgeP.destroy(); badge.remove(); refCta.destroy(); },
+    destroy() { offs.forEach((o) => { try { o(); } catch { /* ignore */ } }); tradeP.destroy(); escrowP.destroy(); market.destroy(); mail.destroy(); claimP.destroy(); referralP.destroy(); partyFinderP.destroy(); sinksP.destroy(); bridgeP.destroy(); lfgPanel.destroy(); seasonPanel.destroy(); guildPanel.destroy(); worldBossAlert.destroy(); dungeonSystem.destroy(); seasonSystem.destroy(); guildSystem.destroy(); badge.remove(); refCta.destroy(); },
   };
   uiScene.events.once('shutdown', () => api.destroy());
   window.__econUI = api; // debug / automated tests
@@ -123,7 +150,12 @@ function installCommands(mail) {
       case 'sinks': case 'tokensinks': return window.__econUI?.sinks?.toggle();
       case 'bridge': case 'tokenbridge': return window.__econUI?.bridge?.toggle();
       case 'refer': case 'referral': return window.__econUI?.referral?.toggle();
-      case 'partyfinder': case 'finder': case 'lfg': return window.__econUI?.partyFinder?.toggle(uiScene);
+      case 'partyfinder': case 'finder': return window.__econUI?.partyFinder?.toggle(uiScene);
+      case 'lfg': case 'dungeon': return lfgPanel.visible ? lfgPanel.close() : lfgPanel.open();
+      case 'season': case 'pass': return seasonPanel.visible ? seasonPanel.close() : seasonPanel.open();
+      case 'guild': return guildPanel.visible ? guildPanel.close() : guildPanel.open();
+      case 'boss': return say(net.connected ? 'A world boss roams the ruins on a UTC schedule. Watch for alerts.' : 'Play Online to fight world bosses.');
+      case 'boss tp': { const w = uiScene.world(); if (w?.player) { w.player.x = 1620; w.player.y = 840; return say('Teleported to world boss area.'); } return say('No player to teleport.'); }
       case 'pets': case 'pet': {
         // Toggle pet panel via the social UI if it's mounted; otherwise emit the generic event.
         const socialApi = window.__socialUI;
@@ -141,7 +173,7 @@ function installCommands(mail) {
       }
       case 'help': case '?':
         orig(raw);
-        return say(`Economy: /trade name · /mail [name] · /claim · /sinks · /bridge · /refer · /finder · /pet · /petduel name · /pda · /pdd · /ginvite /gaccept /gkick /gpromote /gdemote /gleader /gmotd /gdeposit /gwithdraw /ginfo. Mailbox: ${input.labelFor('mail')}. Market: talk to the notice-board clerks.`);
+        return say(`Economy: /trade name · /mail [name] · /claim · /sinks · /bridge · /refer · /finder · /lfg · /season · /guild · /boss · /pet · /petduel name · /pda · /pdd · /ginvite /gaccept /gkick /gpromote /gdemote /gleader /gmotd /gdeposit /gwithdraw /ginfo. Mailbox: ${input.labelFor('mail')}. Market: talk to the notice-board clerks.`);
       default: return orig(raw);
     }
   };

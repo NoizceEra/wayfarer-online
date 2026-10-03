@@ -10,34 +10,43 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Pixelify+Sans:wght@400;600&display=swap" rel="stylesheet" />
   <style>
-    :root { --bg:#0f380f; --bg2:#1a4d1a; --fg:#9bbc0f; --fg2:#8bac0f; --accent:#c9a23a; --panel:#071c07; --border:#306230; }
+    :root { --bg:#0A0E1A; --bg2:#111835; --fg:#14F195; --fg2:#0ecb80; --accent:#9945FF; --panel:#070b18; --border:#1d2d4d; }
     * { box-sizing:border-box; margin:0; padding:0; }
     html,body { background:var(--bg); color:var(--fg); font-family:'Pixelify Sans',sans-serif; line-height:1.6; }
     body { min-height:100vh; }
     header { background:radial-gradient(ellipse at 50% 40%,var(--bg2) 0%,var(--bg) 60%,var(--panel) 100%); padding:60px 20px 40px; text-align:center; border-bottom:2px solid var(--border); }
-    header h1 { font-family:'Silkscreen',monospace; font-size:clamp(32px,6vw,64px); color:var(--fg); text-shadow:0 3px 0 var(--panel),0 0 18px rgba(155,188,15,.25); letter-spacing:2px; }
+    header h1 { font-family:'Silkscreen',monospace; font-size:clamp(32px,6vw,64px); color:var(--fg); text-shadow:0 3px 0 var(--panel),0 0 24px rgba(20,241,149,.35); letter-spacing:2px; }
     header p { font-size:18px; color:var(--fg2); margin-top:8px; }
     header .cta { margin-top:24px; display:inline-flex; gap:12px; flex-wrap:wrap; justify-content:center; }
-    .btn { font-family:'Silkscreen',monospace; font-size:13px; color:var(--panel); background:var(--fg); border:2px solid var(--border); padding:10px 22px; text-decoration:none; box-shadow:3px 3px 0 var(--panel); transition:transform .1s; }
-    .btn:hover { transform:translate(-1px,-1px); background:#b4cc22; }
+    .btn { font-family:'Silkscreen',monospace; font-size:13px; color:var(--panel); background:var(--fg); border:2px solid var(--border); padding:10px 22px; text-decoration:none; box-shadow:3px 3px 0 var(--accent); transition:transform .1s; }
+    .btn:hover { transform:translate(-1px,-1px); background:#3afca8; }
     .btn.secondary { background:transparent; color:var(--fg); }
-    .btn.secondary:hover { background:rgba(155,188,15,.1); }
+    .btn.secondary:hover { background:rgba(20,241,149,.1); }
+    .btn.accent { background:var(--accent); color:#fff; box-shadow:3px 3px 0 var(--fg); }
+    .btn.accent:hover { background:#b06aff; }
     nav { display:flex; justify-content:center; gap:24px; padding:14px; background:var(--panel); border-bottom:1px solid var(--border); flex-wrap:wrap; }
     nav a { color:var(--fg2); text-decoration:none; font-family:'Silkscreen',monospace; font-size:11px; }
     nav a:hover { color:var(--fg); text-decoration:underline; }
-    main { max-width:860px; margin:0 auto; padding:40px 20px; }
+    main { max-width:900px; margin:0 auto; padding:40px 20px; }
     section { margin-bottom:48px; }
     h2 { font-family:'Silkscreen',monospace; font-size:22px; color:var(--accent); margin-bottom:14px; border-bottom:1px solid var(--border); padding-bottom:6px; }
     h3 { font-family:'Silkscreen',monospace; font-size:15px; color:var(--fg); margin:18px 0 8px; }
-    p,li { font-size:15px; color:#b8d48a; }
+    p,li { font-size:15px; color:#b8e8ff; }
     ul { padding-left:22px; margin:8px 0; }
     li { margin:4px 0; }
     code { background:var(--panel); padding:2px 6px; border-radius:3px; font-family:'Silkscreen',monospace; font-size:11px; color:var(--fg); border:1px solid var(--border); }
     .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:16px; margin-top:16px; }
+    .grid.big { grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); }
     .card { background:var(--panel); border:1px solid var(--border); padding:16px; }
     .card h4 { font-family:'Silkscreen',monospace; font-size:12px; color:var(--accent); margin-bottom:6px; }
-    .card p { font-size:13px; color:#8bac0f; }
-    footer { text-align:center; padding:30px 20px; border-top:1px solid var(--border); color:#4a7a2a; font-size:12px; font-family:'Silkscreen',monospace; }
+    .card p { font-size:13px; color:#8fbcd4; }
+    .card ul { padding-left:18px; margin-top:8px; }
+    .card li { font-size:12px; color:#8fbcd4; }
+    .card .tag { display:inline-block; font-family:'Silkscreen',monospace; font-size:9px; color:var(--fg); background:rgba(20,241,149,.12); border:1px solid var(--border); padding:2px 6px; margin-top:8px; }
+    .play-cta { text-align:center; padding:28px; background:linear-gradient(135deg,var(--panel) 0%,#120a22 100%); border:1px solid var(--accent); }
+    .play-cta h3 { color:var(--fg); margin:0 0 8px; }
+    .play-cta p { color:#b8e8ff; margin-bottom:16px; }
+    footer { text-align:center; padding:30px 20px; border-top:1px solid var(--border); color:#5b7a9a; font-size:12px; font-family:'Silkscreen',monospace; }
     footer a { color:var(--fg2); }
     .social { display:flex; justify-content:center; gap:16px; margin-top:12px; }
     .social a { color:var(--fg); font-family:'Silkscreen',monospace; font-size:11px; text-decoration:none; }
@@ -50,14 +59,15 @@
     <h1>WAYFARER ONLINE</h1>
     <p>A cozy Game Boy-style open-world action RPG - solo or together</p>
     <div class="cta">
-      <a class="btn" href="https://wayfareronline.fun" target="_blank" rel="noopener">Play Now</a>
-      <a class="btn secondary" href="https://github.com/NoizceEra/wayfarer-online" target="_blank" rel="noopener">GitHub</a>
-      <a class="btn secondary" href="https://x.com/NoizceEra" target="_blank" rel="noopener">X @NoizceEra</a>
+    <a class="btn" href="https://www.wayfareronline.fun" target="_blank" rel="noopener">Play Now</a>
+    <a class="btn secondary" href="https://github.com/NoizceEra/wayfarer-online" target="_blank" rel="noopener">GitHub</a>
+    <a class="btn secondary" href="https://x.com/NoizceEra" target="_blank" rel="noopener">X @NoizceEra</a>
     </div>
   </header>
   <nav>
     <a href="#about">About</a>
     <a href="#features">Features</a>
+    <a href="#systems">Systems</a>
     <a href="#controls">Controls</a>
     <a href="#coop">Co-op</a>
     <a href="#economy">Economy</a>
@@ -79,6 +89,66 @@
         <div class="card"><h4>[+] Co-op Multiplayer</h4><p>Host private rooms with codes, or join the persistent public world.</p></div>
         <div class="card"><h4>[+] Player Economy</h4><p>Trade directly, use the market board, send mail, or join a guild.</p></div>
         <div class="card"><h4>[+] Character Creator</h4><p>Pick a class, customize your palette, and forge your hero.</p></div>
+      </div>
+    </section>
+    <section id="systems">
+      <h2>Systems</h2>
+      <div class="grid big">
+        <div class="card">
+          <h4>[+] LFG Dungeons</h4>
+          <p>Queue solo or with a party for instanced PvE dungeons. Match by level bracket, role, and region.</p>
+          <ul>
+            <li>Role-based queue (tank / healer / damage)</li>
+            <li>Scaler difficulty for party size</li>
+            <li>Daily loot lockouts with bonus rerolls</li>
+          </ul>
+          <span class="tag">Live</span>
+        </div>
+        <div class="card">
+          <h4>[+] Guild Progression + Guild Hall</h4>
+          <p>Form a guild, level it up, and unlock a shared hall with vendors, storage, and a practice dummy.</p>
+          <ul>
+            <li>Guild levels unlock perks and roster size</li>
+            <li>Guild bank with withdraw permissions</li>
+            <li>Hall upgrades: blacksmith, apothecary, portal</li>
+          </ul>
+          <span class="tag">Live</span>
+        </div>
+        <div class="card">
+          <h4>[+] Season Pass</h4>
+          <p>Earn season XP from dailies, dungeons, and world events. Unlock tiers of cosmetics, currency, and boosts.</p>
+          <ul>
+            <li>Free and premium reward tracks</li>
+            <li>Seasonal cosmetics (dyes, mounts, titles)</li>
+            <li>Weekly challenge rotations</li>
+          </ul>
+          <span class="tag">Live</span>
+        </div>
+        <div class="card">
+          <h4>[+] World Boss Rotation</h4>
+          <p>Massive bosses spawn on a rotating schedule across the overworld. Coordinate region-wide to defeat them.</p>
+          <ul>
+            <li>Spawn timers broadcast in-game and on Discord</li>
+            <li>Participation-based loot chests</li>
+            <li>Seasonal bestiary targets</li>
+          </ul>
+          <span class="tag">Live</span>
+        </div>
+        <div class="card">
+          <h4>[+] Mobile UX Improvements</h4>
+          <p>Bigger touch targets, customizable controls, and better performance on phones and tablets.</p>
+          <ul>
+            <li>Resizable virtual joystick and buttons</li>
+            <li>Auto-targeting and smart-cast options</li>
+            <li>Battery-saver render mode</li>
+          </ul>
+          <span class="tag">Live</span>
+        </div>
+      </div>
+      <div class="play-cta">
+        <h3>Ready to dive in?</h3>
+        <p>Play Wayfarer Online free in your browser — no install required.</p>
+        <a class="btn accent" href="https://www.wayfareronline.fun" target="_blank" rel="noopener">Play Now</a>
       </div>
     </section>
     <section id="controls">
@@ -142,7 +212,7 @@
     <div class="social">
       <a href="https://x.com/NoizceEra" target="_blank" rel="noopener">X / Twitter</a>
       <a href="https://github.com/NoizceEra/wayfarer-online" target="_blank" rel="noopener">GitHub</a>
-      <a href="https://wayfareronline.fun" target="_blank" rel="noopener">Play</a>
+      <a href="https://www.wayfareronline.fun" target="_blank" rel="noopener">Play</a>
     </div>
   </footer>
 </body>

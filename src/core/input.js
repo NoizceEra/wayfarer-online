@@ -486,3 +486,110 @@ class InputManager {
 }
 
 export const input = new InputManager();
+
+// ── Mobile virtual joystick + action buttons (additive, used by touch HUD) ──
+export function isMobile() {
+  if (typeof window === 'undefined') return false;
+  return 'ontouchstart' in window || navigator.maxTouchPoints > 0 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+}
+
+export class MobileInput {
+  constructor(scene) {
+    this.scene = scene;
+    this.vector = { x: 0, y: 0 };
+    this.activeActions = new Set();
+    this.justPressed = new Set();
+    this.onAction = null;
+    this.onMove = null;
+    this.deadzone = 0.22;
+  }
+
+  createJoystick(x, y, radius = 64) {
+    this.joystickRadius = radius;
+    this.joystickBase = this.scene.add.circle(x, y, radius, 0x161b22, 0.55)
+      .setStrokeStyle(2, 0x9945ff, 0.7).setScrollFactor(0).setDepth(1000);
+    this.joystickKnob = this.scene.add.circle(x, y, radius * 0.42, 0x14f195, 0.85)
+      .setScrollFactor(0).setDepth(1001);
+    this.joystickCenter = { x, y };
+    this.joystickPointerId = null;
+    const zone = this.scene.add.zone(x, y, radius * 3.5, radius * 3.5).setScrollFactor(0).setDepth(999).setInteractive({ draggable: true });
+    this.joystickZone = zone;
+    zone.on('pointerdown', (pointer) => this.onJoystickStart(pointer));
+    this.scene.input.on('pointermove', (pointer) => this.onJoystickMove(pointer));
+    this.scene.input.on('pointerup', (pointer) => this.onJoystickEnd(pointer));
+  }
+
+  onJoystickStart(pointer) {
+    if (this.joystickPointerId !== null) return;
+    this.joystickPointerId = pointer.id;
+    this.joystickCenter.x = pointer.x;
+    this.joystickCenter.y = pointer.y;
+    this.joystickBase.setPosition(pointer.x, pointer.y);
+    this.joystickKnob.setPosition(pointer.x, pointer.y);
+    this.joystickBase.setAlpha(0.85);
+    this.joystickKnob.setAlpha(1);
+  }
+
+  onJoystickMove(pointer) {
+    if (this.joystickPointerId !== pointer.id) return;
+    const dx = pointer.x - this.joystickCenter.x;
+    const dy = pointer.y - this.joystickCenter.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const maxDist = this.joystickRadius;
+    const clampedDist = Math.min(dist, maxDist);
+    const angle = Math.atan2(dy, dx);
+    this.joystickKnob.setPosition(this.joystickCenter.x + Math.cos(angle) * clampedDist, this.joystickCenter.y + Math.sin(angle) * clampedDist);
+    let nx = 0, ny = 0;
+    if (dist > this.deadzone * maxDist) {
+      const scale = (clampedDist - this.deadzone * maxDist) / (maxDist * (1 - this.deadzone));
+      const clampedScale = Math.max(0, Math.min(1, scale));
+      nx = Math.cos(angle) * clampedScale;
+      ny = Math.sin(angle) * clampedScale;
+    }
+    this.vector.x = nx; this.vector.y = ny;
+    if (this.onMove) this.onMove(this.vector);
+  }
+
+  onJoystickEnd(pointer) {
+    if (this.joystickPointerId !== pointer.id) return;
+    this.joystickPointerId = null;
+    this.vector.x = 0; this.vector.y = 0;
+    this.joystickKnob.setPosition(this.joystickBase.x, this.joystickBase.y);
+    this.joystickBase.setAlpha(0.55);
+    this.joystickKnob.setAlpha(0.6);
+    if (this.onMove) this.onMove(this.vector);
+  }
+
+  createActionButtons(layout = {}) {
+    const { x = 820, y = 520, size = 64, gap = 76 } = layout;
+    const buttons = [
+      { name: 'attack', label: '⚔', color: 0xff4444, x: x - gap, y: y - gap },
+      { name: 'interact', label: '✋', color: 0x14f195, x, y: y - gap * 1.6 },
+      { name: 'dodge', label: '↷', color: 0x03e1ff, x, y },
+    ];
+    this.actionButtons = {};
+    for (const cfg of buttons) this.actionButtons[cfg.name] = this.createActionButton(cfg.x, cfg.y, size, cfg.color, cfg.label, cfg.name);
+  }
+
+  createActionButton(x, y, size, color, label, actionName) {
+    const container = this.scene.add.container(x, y).setScrollFactor(0).setDepth(1002);
+    const bg = this.scene.add.circle(0, 0, size / 2, color, 0.75).setStrokeStyle(2, 0xffffff, 0.5);
+    const text = this.scene.add.text(0, 0, label, { fontSize: `${Math.floor(size * 0.5)}px`, color: '#ffffff' }).setOrigin(0.5);
+    container.add([bg, text]);
+    const hit = this.scene.add.zone(0, 0, size * 1.4, size * 1.4).setScrollFactor(0).setDepth(1003).setInteractive();
+    container.add(hit);
+    hit.on('pointerdown', () => { bg.setFillStyle(color, 0.95); this.activeActions.add(actionName); this.justPressed.add(actionName); if (this.onAction) this.onAction(actionName); });
+    hit.on('pointerup', () => { bg.setFillStyle(color, 0.75); this.activeActions.delete(actionName); });
+    hit.on('pointerout', () => { bg.setFillStyle(color, 0.75); this.activeActions.delete(actionName); });
+    return { container, bg, text, actionName };
+  }
+
+  isActionDown(name) { return this.activeActions.has(name); }
+  consumeJustPressed(name) { const pressed = this.justPressed.has(name); this.justPressed.delete(name); return pressed; }
+  getVector() { return this.vector; }
+
+  destroy() {
+    this.joystickBase?.destroy(); this.joystickKnob?.destroy(); this.joystickZone?.destroy();
+    for (const key in this.actionButtons) this.actionButtons[key].container.destroy();
+  }
+}

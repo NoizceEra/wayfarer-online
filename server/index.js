@@ -5,7 +5,7 @@ import { Server, matchMaker } from 'colyseus';
 import { WebSocketTransport } from '@colyseus/ws-transport';
 import { CFG } from './config.js';
 import { log } from './log.js';
-import { initStore, flushAll, storeStats, stopStore, initSqlite } from './store.js';
+import { initStore, flushAll, storeStats, stopStore, initSqlite, loadChar, saveChar } from './store.js';
 import { WayfarerRoom, LIVE_ROOMS, STATS, setSocialModule, addRoomModule } from './WayfarerRoom.js';
 
 // Wayfarer relay: public persistent world shards + private co-op rooms,
@@ -42,6 +42,18 @@ let petDuel = null;
 try { petDuel = await import('./petDuel.js'); } catch (e) {
   if (e?.code !== 'ERR_MODULE_NOT_FOUND') log.error('petDuel.js failed to load', { err: e.message });
 }
+let dungeonMatch = null;
+try { dungeonMatch = await import('./dungeonMatch.js'); } catch (e) {
+  if (e?.code !== 'ERR_MODULE_NOT_FOUND') log.error('dungeonMatch.js failed to load', { err: e.message });
+}
+let season = null;
+try { season = await import('./season.js'); } catch (e) {
+  if (e?.code !== 'ERR_MODULE_NOT_FOUND') log.error('season.js failed to load', { err: e.message });
+}
+let guilds = null;
+try { guilds = await import('./guilds.cjs'); } catch (e) {
+  if (e?.code !== 'ERR_MODULE_NOT_FOUND') log.error('guilds.cjs failed to load', { err: e.message });
+}
 
 await initSqlite();
 initStore();
@@ -59,6 +71,41 @@ if (referrals) {
 }
 if (petDuel) {
   try { addRoomModule(petDuel); log.info('pet duel module loaded'); } catch (e) { log.error('pet duel init failed', { err: e.message }); petDuel = null; }
+}
+if (dungeonMatch) {
+  try { dungeonMatch.init?.(); addRoomModule(dungeonMatch); log.info('dungeon match module loaded'); } catch (e) { log.error('dungeon match init failed', { err: e.message }); dungeonMatch = null; }
+}
+if (season) {
+  try { season.init?.(); addRoomModule(season); log.info('season module loaded'); } catch (e) { log.error('season init failed', { err: e.message }); season = null; }
+}
+if (guilds) {
+  try {
+    const { GuildService } = guilds;
+    const guildService = new GuildService({
+      broadcast: (type, payload) => { for (const r of LIVE_ROOMS) { try { r.broadcast(type, payload); } catch {} } },
+      sendTo: (sid, type, payload) => {
+        for (const r of LIVE_ROOMS) {
+          const c = r.clients.find((x) => x.sessionId === sid);
+          if (c) { try { c.send(type, payload); } catch {} break; }
+        }
+      },
+      deductGold: (sid, amount) => {
+        for (const r of LIVE_ROOMS) {
+          const p = r.players.get(sid);
+          if (!p || !p.token) continue;
+          const rec = loadChar(p.token, p.name);
+          if (!rec || (rec.progress.gold || 0) < amount) return false;
+          rec.progress.gold -= amount;
+          saveChar(p.token, p.name, rec);
+          return true;
+        }
+        return false;
+      },
+      logger: log,
+    });
+    addRoomModule({ install: (room) => guildService.bindToRoom(room), onJoin: () => {}, onLeave: () => {} });
+    log.info('guilds module loaded');
+  } catch (e) { log.error('guilds init failed', { err: e.message }); guilds = null; }
 }
 
 const app = express();
@@ -94,6 +141,8 @@ try { economy?.routes?.(app); } catch (e) { log.error('economy.routes failed', {
 try { worldBoss?.routes?.(app); } catch (e) { log.error('worldBoss.routes failed', { err: e.message }); }
 try { partyFinder?.routes?.(app); } catch (e) { log.error('partyFinder.routes failed', { err: e.message }); }
 try { referrals?.routes?.(app); } catch (e) { log.error('referrals.routes failed', { err: e.message }); }
+try { dungeonMatch?.routes?.(app); } catch (e) { log.error('dungeonMatch.routes failed', { err: e.message }); }
+try { season?.routes?.(app); } catch (e) { log.error('season.routes failed', { err: e.message }); }
 
 const httpServer = http.createServer(app);
 const gameServer = new Server({

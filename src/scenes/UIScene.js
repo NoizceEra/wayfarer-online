@@ -22,6 +22,13 @@ import { PauseMenu } from '../ui/PauseMenu.js';
 import { HelpOverlay } from '../ui/HelpOverlay.js';
 import { WalletPanel } from '../ui/WalletPanel.js';
 import { DailyRewardPanel } from '../ui/DailyRewardPanel.js';
+import LFGPanel from '../ui/LFGPanel.js';
+import SeasonPanel from '../ui/SeasonPanel.js';
+import GuildPanel from '../ui/GuildPanel.js';
+import { WorldBossAlert } from '../ui/WorldBossAlert.js';
+import DungeonSystem from '../systems/dungeonSystem.js';
+import SeasonSystem from '../systems/seasonSystem.js';
+import GuildSystem from '../systems/guildSystem.js';
 import { DailyRewards } from '../systems/dailyRewards.js';
 import { econ } from '../net/economyNet.js';
 import { fullscreenSupported, isFullscreen, toggleFullscreen } from '../core/mobile.js';
@@ -304,6 +311,9 @@ export class UIScene extends Phaser.Scene {
       input.addCloser({ id: 'help', priority: 900, isOpen: () => this.help.isOpen, close: () => this.help.close() }),
       input.addCloser({ id: 'wallet', priority: 880, isOpen: () => this.walletPanel?.isOpen, close: () => this.walletPanel?.close() }),
       input.addCloser({ id: 'daily-reward', priority: 870, isOpen: () => this.dailyPanel?.isOpen, close: () => this.dailyPanel?.close() }),
+      input.addCloser({ id: 'lfg', priority: 940, isOpen: () => !!this.lfgPanel?.visible, close: () => this.lfgPanel?.close() }),
+      input.addCloser({ id: 'season', priority: 930, isOpen: () => !!this.seasonPanel?.visible, close: () => this.seasonPanel?.close() }),
+      input.addCloser({ id: 'guild', priority: 920, isOpen: () => !!this.guildPanel?.visible, close: () => this.guildPanel?.close() }),
       input.addCloser({ id: 'pause-sub', priority: 850, isOpen: () => this.menu.isOpen && this.menu.page !== 'main', close: () => this.menu.goto('main') }),
       input.addCloser({ id: 'shop', priority: 450, isOpen: () => !!this.shop?.isOpen, close: () => this.shop.close() }),
       input.addCloser({ id: 'equip', priority: 400, isOpen: () => !!this.equip?.isOpen, close: () => this.equip.toggle(false) }),
@@ -344,6 +354,8 @@ export class UIScene extends Phaser.Scene {
       this.equip?.destroy(); this.shop?.destroy(); this.journal?.destroy(); this.craftPanel?.destroy(); this.fishing?.destroy(); this.toast?.destroy(); this.walletPanel?.destroy();
       this.dailyPanel?.destroy(); this.dailyRewards?.destroy();
       this.partyFinderBtn?.destroy();
+      this.lfgPanel?.destroy(); this.seasonPanel?.destroy(); this.guildPanel?.destroy(); this.worldBossAlert?.destroy();
+      this.dungeonSystem?.destroy?.(); this.seasonSystem?.destroy?.(); this.guildSystem?.destroy?.();
     });
     // Mail unread indicator for the touch HUD
     this.offs.push(
@@ -379,6 +391,25 @@ export class UIScene extends Phaser.Scene {
     // Social UI: chat window, party frames, players/friends, emote wheel (src/ui/socialUI.js)
     this.social = installSocialUI(this, { name: this.pname, job: this.job.id, framesY: this.small ? 136 : 134 });
     this.economy = installEconomyUI(this); // trade / market board / mail / guild tab (src/ui/economyUI.js)
+
+    // ── Feature panels: LFG, season pass, guild, world boss alert ─────────────
+    this.dungeonSystem = new DungeonSystem(this.world(), net);
+    this.seasonSystem = new SeasonSystem(this, { send: (t, p) => net.send(t, p), onBroadcast: (fn) => net.onAttach((room) => { const h = (type, payload) => fn(type, payload); room.onMessage('*', (type, payload) => h(type, payload)); }) });
+    this.guildSystem = new GuildSystem(this, { send: (t, p) => net.send(t, p), onBroadcast: (fn) => net.onAttach((room) => { const h = (type, payload) => fn(type, payload); room.onMessage('*', (type, payload) => h(type, payload)); }) });
+    const cx = W / 2, cy = H / 2;
+    this.lfgPanel = new LFGPanel(this, cx, cy);
+    this.lfgPanel.onQueue = (req) => this.dungeonSystem.queue(req.dungeonId, req.role, req.groupMode);
+    this.lfgPanel.onAccept = () => this.dungeonSystem.acceptMatch();
+    this.seasonPanel = new SeasonPanel(this, cx, cy, { seasonSystem: this.seasonSystem, onClaim: (tier, track) => this.seasonSystem.claim(tier, track), onUpgrade: () => this.seasonSystem.upgradePremium() });
+    this.guildPanel = new GuildPanel(this, cx, cy, this.guildSystem);
+    this.worldBossAlert = new WorldBossAlert(this, W / 2, 110, {
+      onTeleport: () => { const w = this.world(); if (w?.player) { w.player.x = 1620; w.player.y = 840; this.say('Teleported to the world boss.'); } },
+      onDismiss: () => {},
+    });
+    // World boss server broadcasts
+    sub(Events.WORLDBOSS_SPAWN, (d) => { if (d && this.worldBossAlert) this.worldBossAlert.show({ name: d.name, zone: d.area, spawnAt: d.expiresAt - 30*60*1000 }); });
+    sub(Events.WORLDBOSS_SLAIN, (d) => { this.say(`${d.name} defeated by ${d.killerName || 'heroes'}!`); this.worldBossAlert?.hide(); });
+
     // Pet duel challenge listener: must live after social UI mounts so the request modal exists.
     this._petDuelOff = bus.on(Events.PET_DUEL_START, (payload) => {
       const challenger = payload?.challenger ?? payload;
@@ -488,6 +519,34 @@ export class UIScene extends Phaser.Scene {
     this.partyFinderBtn.on('pointerover', () => this.partyFinderBtn.setBackgroundColor('#3a2d20ee'));
     this.partyFinderBtn.on('pointerout', () => this.partyFinderBtn.setBackgroundColor('#2a1d10dd'));
     this.partyFinderBtn.on('pointerdown', () => { audio.play('ui', 0.6); this.economy?.partyFinder?.toggle(this); });
+
+
+    // LFG icon
+    this.lfgBtn = this.add.text(baseX - (iconSize + gap) * 3, startY, '⚔', {
+      fontFamily: '"Silkscreen", monospace', fontSize: '16px', color: '#14f195',
+      backgroundColor: '#2a1d10dd', padding: { x: 4, y: 2 },
+    }).setOrigin(1, 0).setDepth(110).setInteractive({ useHandCursor: true });
+    this.lfgBtn.on('pointerover', () => this.lfgBtn.setBackgroundColor('#3a2d20ee'));
+    this.lfgBtn.on('pointerout', () => this.lfgBtn.setBackgroundColor('#2a1d10dd'));
+    this.lfgBtn.on('pointerdown', () => { audio.play('ui', 0.6); this.lfgPanel?.open(); });
+
+    // Season pass icon
+    this.seasonBtn = this.add.text(baseX - (iconSize + gap) * 4, startY, '🏆', {
+      fontFamily: '"Silkscreen", monospace', fontSize: '16px', color: '#ffd84a',
+      backgroundColor: '#2a1d10dd', padding: { x: 4, y: 2 },
+    }).setOrigin(1, 0).setDepth(110).setInteractive({ useHandCursor: true });
+    this.seasonBtn.on('pointerover', () => this.seasonBtn.setBackgroundColor('#3a2d20ee'));
+    this.seasonBtn.on('pointerout', () => this.seasonBtn.setBackgroundColor('#2a1d10dd'));
+    this.seasonBtn.on('pointerdown', () => { audio.play('ui', 0.6); this.seasonPanel?.open(); });
+
+    // Guild icon
+    this.guildBtn = this.add.text(baseX - (iconSize + gap) * 5, startY, '⚜', {
+      fontFamily: '"Silkscreen", monospace', fontSize: '16px', color: '#9945ff',
+      backgroundColor: '#2a1d10dd', padding: { x: 4, y: 2 },
+    }).setOrigin(1, 0).setDepth(110).setInteractive({ useHandCursor: true });
+    this.guildBtn.on('pointerover', () => this.guildBtn.setBackgroundColor('#3a2d20ee'));
+    this.guildBtn.on('pointerout', () => this.guildBtn.setBackgroundColor('#2a1d10dd'));
+    this.guildBtn.on('pointerdown', () => { audio.play('ui', 0.6); this.guildPanel?.open(); });
 
     this.walletPanel = new WalletPanel(this);
   }
@@ -713,6 +772,7 @@ export class UIScene extends Phaser.Scene {
       else if (this.vignette.alpha < 0.2) this.vignette.setAlpha(Math.max(0, this.vignette.alpha - 0.02));
     }
     this.updateMinimap(w);
+    this.worldBossAlert?.update();
     if (this.fpsT?.visible && Math.floor(this.time.now / 500) !== this.fpsTick) {
       this.fpsTick = Math.floor(this.time.now / 500);
       this.fpsT.setText(`${Math.round(this.game.loop.actualFps)} FPS`);
