@@ -57,6 +57,8 @@ export function saveProgress(name, p, opts = {}) {
   try { localStorage.setItem(progressKey(name), JSON.stringify(rec)); } catch { /* quota */ }
   if (!opts.silent) saveHooks.forEach((fn) => { try { fn(name, rec); } catch { /* ignore */ } });
 }
+// Convenience: read the current hero's pet data (or defaults) for the client side.
+export function loadPets(name) { const p = loadProgress(name); return p?.ext?.pets || { unlocked: false, active: 0, roster: [], seen: {} }; }
 export function clearProgress(name) { localStorage.removeItem(progressKey(name)); }
 
 // RPG progression ({alloc, statPoints, skillPoints, skills, adv}) stored under
@@ -108,6 +110,25 @@ export function normalizeExtras(raw) {
     visited: flagMap(r.visited),
     lore: flagMap(r.lore),
     buyback: Array.isArray(r.buyback) ? r.buyback.filter((b) => b && typeof b.id === 'string').slice(0, 10).map((b) => ({ kind: b.kind === 'mat' ? 'mat' : 'gear', id: b.id, n: Math.max(1, Math.floor(b.n) || 1), price: Math.max(0, Math.floor(b.price) || 0) })) : [],
+    pets: isObj(r.pets) ? {
+      unlocked: !!r.pets.unlocked,
+      active: Math.max(0, Math.floor(Number(r.pets.active)) || 0),
+      roster: Array.isArray(r.pets.roster) ? r.pets.roster.slice(0, 6).map((p) => ({
+        id: String(p?.id || 'emberling'),
+        name: typeof p?.name === 'string' ? p.name.slice(0, 24) : undefined,
+        level: Math.max(1, Math.min(99, Math.floor(Number(p?.level)) || 1)),
+        xp: Math.max(0, Math.floor(Number(p?.xp)) || 0),
+        hp: Math.max(0, Math.floor(Number(p?.hp)) || 1),
+        stats: isObj(p?.stats) ? {
+          hp: Math.max(1, Math.floor(Number(p.stats.hp)) || 1),
+          atk: Math.max(1, Math.floor(Number(p.stats.atk)) || 1),
+          def: Math.max(1, Math.floor(Number(p.stats.def)) || 1),
+          spd: Math.max(1, Math.floor(Number(p.stats.spd)) || 1),
+        } : undefined,
+        moves: Array.isArray(p?.moves) ? p.moves.filter((m) => typeof m === 'string').slice(0, 4) : undefined,
+      })) : [],
+      seen: flagMap(r.pets.seen),
+    } : { unlocked: false, active: 0, roster: [], seen: {} },
     quests: q ? {
       active: isObj(q.active) ? q.active : {},
       done: flagMap(q.done),

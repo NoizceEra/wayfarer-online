@@ -116,8 +116,13 @@ function installCommands(mail) {
       case 'claim': return bus.emit('econ-ui', { panel: 'claim' });
       case 'refer': case 'referral': return window.__econUI?.referral?.toggle();
       case 'partyfinder': case 'finder': case 'lfg': return window.__econUI?.partyFinder?.toggle(uiScene);
-      case 'pets': case 'pet': return bus.emit(Events.SOCIAL_UI, { panel: 'pet-panel', open: true });
-      case 'petduel': case 'pd': if (!first) return say('Usage: /petduel name'); return social.challenge(first);
+      case 'pets': case 'pet': {
+        // Toggle pet panel via the social UI if it's mounted; otherwise emit the generic event.
+        const socialApi = window.__socialUI;
+        if (socialApi?.petPanel) { socialApi.petPanel.toggle(); return; }
+        return bus.emit(Events.SOCIAL_UI, { panel: 'pet-panel', open: true });
+      }
+      case 'petduel': case 'pd': if (!first) return say('Usage: /petduel name'); return social.challengePetDuel(first);
       case 'pda': return social.acceptPetDuel();
       case 'pdd': return social.declinePetDuel();
       case 'petbattle': case 'pvb': return say('Walk up to a wild pet wisp and press E to capture it; /petduel name to challenge a player.');

@@ -20,15 +20,16 @@ export function installSocialNet(social) {
     on('whisper', (m) => social.onWhisper(m));
     on('whisper-sent', (m) => social.onWhisperSent(m));
     on('emote', (m) => social.onEmote(m));
-    on('trade-offer', (m) => social.onTradeOffer(m));
-    on('trade-sent', (m) => social.onTradeSent(m));
-    on('trade-done', (m) => social.onTradeDone(m));
-    on('duel-challenge', (m) => social.onDuelChallenge(m));
-    on('duel-decline', (m) => social.system(`${m.fromName || '???'} declined your duel.`));
-    on('duel-start', (m) => social.onDuelStart(m));
-    on('duel-end', (m) => social.onDuelEnd(m));
-    on('pvp-hit', (m) => social.onPvpHit(m));
+    on('trade-offer', (m) => { if (m?.sessionId !== undefined) return; social.onTradeOffer(m); });
+    on('trade-sent', (m) => { if (m?.sessionId !== undefined) return; social.onTradeSent(m); });
+    on('trade-done', (m) => { if (m?.sessionId !== undefined) return; social.onTradeDone(m); });
+    on('duel-challenge', (m) => { if (m?.sessionId !== undefined) return; social.onDuelChallenge(m); });
+    on('duel-decline', (m) => { if (m?.sessionId !== undefined) return; social.system(`${m.fromName || '???'} declined your duel.`); });
+    on('duel-start', (m) => { if (m?.sessionId !== undefined) return; social.onDuelStart(m); });
+    on('duel-end', (m) => { if (m?.sessionId !== undefined) return; social.onDuelEnd(m); });
+    on('pvp-hit', (m) => { if (m?.sessionId !== undefined) return; social.onPvpHit(m); });
     on('pet-duel', (m) => {
+      if (m?.sessionId !== undefined) return;
       if (m?.action === 'challenge') {
         social.onPetDuelChallenge(m);
       } else if (m?.action === 'declined') {
@@ -48,13 +49,13 @@ export function installSocialNet(social) {
         bus.emit(Events.SOCIAL_ROSTER, social.players());
       }
     });
-    on('party-invite', (m) => social.onInvite(m));
-    on('party-update', (m) => social.onPartyUpdate(m));
-    on('party-msg', (m) => social.addLine({ ch: 'party', text: m.text, plain: true }));
-    on('party-xp', (m) => social.onPartyXp(m));
-    on('party-status', (m) => social.onPartyStatus(m));
-    on('guild-update', (m) => social.onGuildUpdate(m));
-    on('social-error', (m) => social.system(m.msg || 'Something went wrong.'));
+    on('party-invite', (m) => { if (m?.sessionId !== undefined) return; social.onInvite(m); });
+    on('party-update', (m) => { if (m?.sessionId !== undefined) return; social.onPartyUpdate(m); });
+    on('party-msg', (m) => { if (m?.sessionId !== undefined) return; social.addLine({ ch: 'party', text: m.text, plain: true }); });
+    on('party-xp', (m) => { if (m?.sessionId !== undefined) return; social.onPartyXp(m); });
+    on('party-status', (m) => { if (m?.sessionId !== undefined) return; social.onPartyStatus(m); });
+    on('guild-update', (m) => { if (m?.sessionId !== undefined) return; social.onGuildUpdate(m); });
+    on('social-error', (m) => { if (m?.sessionId !== undefined) return; social.system(m.msg || 'Something went wrong.'); });
     social.onConnected();
   });
   // NET_CONNECTED fires after attach(); re-announce presence in case the

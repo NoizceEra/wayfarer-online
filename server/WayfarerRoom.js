@@ -129,13 +129,24 @@ export class WayfarerRoom extends Room {
     // client (re)entered the world: resend everything in its AOI + dead enemies
     on('resync', (c, p) => { this.views.set(c.sessionId, { p: new Map(), e: new Map() }); this.sendDeadList(c, p.a); }, 'ping');
     on('ping', (c, p, m) => { this.sendTo(c, 'pong', { c: m.c, t: Date.now(), n: this.clients.length, rn: this.displayName }); }, 'ping');
-    // Generic passthrough (social/party/emote modules add types without server edits).
+    // Generic passthrough: only for types that no explicit handler/module consumed.
+    // Module-handled messages (party, trade, duel, pet-duel, social, economy, etc.)
+    // are routed by their own onMessage registrations in server/social.js or
+    // server/index.js; they must NOT be echoed to the whole room.
+    const moduleTypes = new Set([
+      'party-invite', 'party-accept', 'party-decline', 'party-leave', 'party-kick', 'party-promote', 'party-msg', 'party-xp', 'party-status',
+      'whisper', 'schat', 'emote', 'presence', 'who', 'guild-create', 'guild-join', 'guild-leave', 'guild-rank', 'guild-motd', 'guild-invite',
+      'trade-offer', 'trade-respond', 'trade-done', 'trade-sent',
+      'duel-challenge', 'duel-accept', 'duel-decline', 'duel-start', 'duel-end', 'pvp-hit',
+      'pet-duel', 'economy', 'mail', 'market', 'referral', 'world-boss', 'social-error',
+    ]);
     this.onMessage('*', (client, type, m) => {
       STATS.msgsIn++;
       const p = this.players.get(client.sessionId);
       if (!p) return;
       if (!p.buckets.misc.take()) { this.flood(client, p); return; }
       if (typeof type !== 'string' || type.length > 32) return;
+      if (moduleTypes.has(type)) return; // do not echo module-handled messages
       let size = 0; try { size = JSON.stringify(m ?? null).length; } catch { return; }
       if (size > 4096) return;
       const payload = m && typeof m === 'object' && !Array.isArray(m) ? { ...m, sessionId: client.sessionId } : { value: m, sessionId: client.sessionId };

@@ -379,6 +379,13 @@ export class UIScene extends Phaser.Scene {
     // Social UI: chat window, party frames, players/friends, emote wheel (src/ui/socialUI.js)
     this.social = installSocialUI(this, { name: this.pname, job: this.job.id, framesY: this.small ? 136 : 134 });
     this.economy = installEconomyUI(this); // trade / market board / mail / guild tab (src/ui/economyUI.js)
+    // Pet duel challenge listener: must live after social UI mounts so the request modal exists.
+    this._petDuelOff = bus.on(Events.PET_DUEL_START, (payload) => {
+      const challenger = payload?.challenger ?? payload;
+      if (this.social?.petDuelReq) this.social.petDuelReq.show(challenger);
+      else social.system(`${challenger} wants a pet duel — /pda to accept, /pdd to decline.`);
+    });
+    this.offs.push(this._petDuelOff);
     // WorldScene emits the initial QUEST/HP/XP before this overlay exists —
     // pull current values so the tracker never starts empty.
     const w0 = this.world();

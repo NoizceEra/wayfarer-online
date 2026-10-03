@@ -119,7 +119,7 @@ export class PetEncounterSystem {
     const s = this.scene;
     const def = ENEMY_TABLE[typeId];
     const petDef = baseFor(petId);
-    const texKey = petDef?.sprite ? `mon.${petDef.sprite}` : (s.textures.exists(`mon.${def.sprite}`) ? `mon.${def.sprite}` : 'mon.Slime');
+    const texKey = petDef?.sprite || (def?.sprite && s.textures.exists(`mon.${def.sprite}`) ? `mon.${def.sprite}` : 'mon.Slime');
     if (!s.textures.exists(texKey)) return;
 
     const c = s.add.container(x, y).setDepth(y).setAlpha(0);

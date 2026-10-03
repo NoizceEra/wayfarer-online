@@ -99,10 +99,12 @@ export class PetPanel {
       .setInteractive({ useHandCursor: true });
     c.add(bg);
 
-    const spriteKey = def ? `mon.${def.sprite}` : null;
+    const spriteKey = def?.sprite || null;
     let icon = null;
     if (spriteKey && s.textures.exists(spriteKey)) {
       icon = s.add.image(x + 18, y + h / 2, spriteKey).setScale(1.6);
+    } else if (spriteKey && s.textures.exists(`mon.${spriteKey}`)) {
+      icon = s.add.image(x + 18, y + h / 2, `mon.${spriteKey}`).setScale(1.6);
     } else {
       icon = s.add.rectangle(x + 18, y + h / 2, 24, 24, def?.tint || 0x888888).setStrokeStyle(1, 0x000000);
     }

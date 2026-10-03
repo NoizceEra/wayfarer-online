@@ -399,6 +399,13 @@ class Social {
     if (!p) { this.system(`No player named "${esc(who)}" here.`); return; }
     if (p.id === this.id) { this.system('You cannot duel yourself.'); return; }
     if (this.duel) { this.system('Finish your current duel first (/dtend).'); return; }
+    net.send('duel-challenge', { to: p.id });
+  }
+  challengePetDuel(who) {
+    if (!this.online) { this.system('(offline) pet duels need a room.'); return; }
+    const p = this.findPlayer(who);
+    if (!p) { this.system(`No player named "${esc(who)}" here.`); return; }
+    if (p.id === this.id) { this.system('You cannot duel yourself.'); return; }
     petDuel.challenge(p.name);
   }
   onDuelChallenge(m) {
@@ -517,7 +524,7 @@ class Social {
       case 'dtaccept': return this.acceptDuel();
       case 'dtdecline': return this.declineDuel();
       case 'dtend': case 'yield': return this.endDuel('ended');
-      case 'petduel': case 'pd': if (!first) return this.system('Usage: /petduel name'); return this.challenge(first);
+      case 'petduel': case 'pd': if (!first) return this.system('Usage: /petduel name'); return this.challengePetDuel(first);
       case 'pda': return this.acceptPetDuel();
       case 'pdd': return this.declinePetDuel();
       case 'accept': case 'join': return this.accept();

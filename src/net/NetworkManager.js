@@ -196,9 +196,11 @@ export class NetworkManager {
     room.onMessage('hero', (m) => { const p = this.peers.get(m.sessionId); if (p) p.hero = m.hero; bus.emit(Events.NET_STATE, { kind: 'hero', ...m }); emit('hero', m); });
     room.onMessage('result', (m) => { bus.emit(Events.NET_STATE, { kind: 'result', ...m }); emit('result', m); });
     room.onMessage('chat', (m) => { bus.emit(Events.CHAT, m); emit('chat', m); });
-    // anything else (social/party/emote/... modules): generic passthrough
+    // anything else (social/party/emote/... modules): generic passthrough,
+    // but drop module-handled echoes that include a sessionId to avoid double-processing.
     room.onMessage('*', (type, m) => {
       if (typeof type !== 'string') return;
+      if (m && typeof m === 'object' && m.sessionId !== undefined) return;
       emit(type, m);
       bus.emit(Events.NET_STATE, { kind: type, ...(m && typeof m === 'object' ? m : { value: m }) });
     });
@@ -319,7 +321,20 @@ export class NetworkManager {
   // ─── gameplay messages ─────────────────────────────────────────────
   sendMove(delta) { this.send('mv', delta); }
   sendPos(x, y, facing, hp) { this.send('mv', { x: Math.round(x), y: Math.round(y), f: facing, h: hp }); } // legacy
-  pushHero(hero) { this.hero = hero; this.send('hero', { hero }); }
+  pushHero(hero) {
+    this.hero = hero;
+    // Include the pets sub-snapshot so the server can build real pet duel teams.
+    const pets = (typeof window !== 'undefined' && window.__socialUI?.petPanel)
+      ? window.__socialUI.petPanel.getRoster?.()
+      : undefined;
+    this.send('hero', { hero, meta: pets !== undefined ? { pets } : undefined });
+  }
+  // helper for pet duel and other meta snapshots
+  petSnapshot() {
+    return (typeof window !== 'undefined' && window.__socialUI?.petPanel)
+      ? { roster: window.__socialUI.petPanel.getRoster?.() || [] }
+      : { roster: [] };
+  }
   sendChat(name, text) {
     if (!this.connected) { bus.emit(Events.CHAT, { name, text }); return; }
     this.room.send('chat', { name, text });

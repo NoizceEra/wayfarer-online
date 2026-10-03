@@ -35,6 +35,7 @@ function ensureWired() {
   net.onAttach((room) => {
     room.onMessage('pet-duel', (m) => {
       const msg = m && typeof m === 'object' ? m : {};
+      if (msg?.sessionId !== undefined) return; // ignore passthrough echo
       const action = msg.action;
       if (action === 'challenge') {
         for (const fn of handlers.challenge) safe(fn, msg);

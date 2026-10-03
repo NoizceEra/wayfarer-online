@@ -22,6 +22,7 @@ export const CAPS = {
 
 export function sanitizeProgress(p) {
   if (!p || typeof p !== 'object') return null;
+  const ext = sanitizeExtras(p.ext);
   const out = {
     job: str(p.job, 24) || 'wayfarer',
     level: int(p.level, 1, CAPS.LEVEL_MAX, 1),
@@ -38,6 +39,7 @@ export function sanitizeProgress(p) {
     quest: p.quest && typeof p.quest === 'object' && jsonSize(p.quest) < 24_000 ? p.quest : { idx: 0, kills: {} },
     prog: p.prog && typeof p.prog === 'object' && jsonSize(p.prog) < 12_000 ? p.prog : null,
     savedAt: int(p.savedAt, 0, 9e15, Date.now()),
+    ext,
   };
   if (p.equipped && typeof p.equipped === 'object') {
     for (const [k, v] of Object.entries(p.equipped).slice(0, 16)) if (typeof k === 'string' && k.length < 16 && (v === null || (typeof v === 'string' && v.length <= 48))) out.equipped[k] = v;
@@ -48,8 +50,14 @@ export function sanitizeProgress(p) {
   return out;
 }
 
+function sanitizeExtras(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  if (jsonSize(raw) > 48_000) return null;
+  return raw;
+}
+
 export function sanitizeHero(h) {
-  if (!h || typeof h !== 'object' || jsonSize(h) > 6000) return null;
+  if (!h || typeof h !== 'object' || jsonSize(h) > 8000) return null;
   return h;
 }
 

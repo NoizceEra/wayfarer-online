@@ -290,6 +290,7 @@ export class SocialPanels {
     item('Escrow Trade', () => social.act('escrow', sid || name), !social.online); // secure escrow with 2.5% fee
     item('Quick gift', () => bus.emit(Events.SOCIAL_UI, { panel: 'trade-compose', open: true, to: sid || name })); // 1 gear item + gold, trust model
     item('Duel', () => social.challenge(sid || name));
+    item('Pet Duel', () => social.challengePetDuel(sid || name));
     item('Send mail', () => social.act('mail', name), !social.online);
     if (st.isFriend(name)) item('Remove friend', () => social.removeFriend(name)); else item('Add friend', () => social.addFriend(name));
     if (st.isIgnored(name)) item('Unignore', () => social.unignore(name)); else item('Ignore', () => social.ignore(name));

@@ -44,10 +44,11 @@ export function installSocialUI(uiScene, { name, job, framesY = 134 } = {}) {
     input.on('petPanel', () => { petPanel.toggle(); return true; }, { scene: uiScene }),
   ];
   const api = {
-    chat, panels, wheel, frames, petPanel,
+    chat, panels, wheel, frames, petPanel, petDuelReq,
     anyOpen: () => chat.open || panels.anyOpen || wheel.open || !!petDuelReq.container || petPanel.isOpen,
     destroy() { offKeys.forEach((o) => o()); offA(); offB(); chat.destroy(); panels.destroy(); wheel.destroy(); frames.destroy(); petDuelReq.destroy(); petPanel.destroy(); },
   };
-  uiScene.events.once('shutdown', () => api.destroy());
+  if (typeof window !== 'undefined') window.__socialUI = api;
+  uiScene.events.once('shutdown', () => { api.destroy(); if (typeof window !== 'undefined' && window.__socialUI === api) window.__socialUI = null; });
   return api;
 }

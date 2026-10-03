@@ -18,7 +18,7 @@ export class PetDuelRequest {
       }
     });
     this._keyDown = (e) => {
-      if (e.key === 'Escape') this._decline();
+      if (e.key === 'Escape') { e.stopPropagation?.(); this._decline(); }
     };
   }
 
