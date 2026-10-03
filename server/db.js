@@ -114,6 +114,34 @@ export function initDb() {
     CREATE INDEX IF NOT EXISTS idx_referral_token_pair ON referral_token_bonuses(referrer, invitee);
     CREATE INDEX IF NOT EXISTS idx_wallet_address ON wallets(address);
     CREATE INDEX IF NOT EXISTS idx_wallet_player ON wallets(player_id);
+
+    -- Token bridge withdrawals (in-game Wayfarer Tokens -> on-chain $WAYFARER).
+    -- status: 'pending' (mint not sent yet) | 'sent' (signature persisted) | 'failed'
+    CREATE TABLE IF NOT EXISTS bridge_withdrawals (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ck TEXT NOT NULL,
+      address TEXT NOT NULL,
+      amount INTEGER NOT NULL DEFAULT 0,
+      fee INTEGER NOT NULL DEFAULT 0,
+      net INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'pending',
+      signature TEXT,
+      reason TEXT,
+      created_at INTEGER DEFAULT (unixepoch())
+    );
+    CREATE INDEX IF NOT EXISTS idx_bridge_wd_ck ON bridge_withdrawals(ck);
+
+    -- Token bridge deposits (on-chain $WAYFARER -> in-game). signature is the
+    -- PRIMARY KEY: a reused transaction signature is refused (replay guard).
+    CREATE TABLE IF NOT EXISTS bridge_deposits (
+      signature TEXT PRIMARY KEY,
+      ck TEXT NOT NULL,
+      address TEXT,
+      amount INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'confirmed',
+      confirmed_at INTEGER DEFAULT (unixepoch())
+    );
+    CREATE INDEX IF NOT EXISTS idx_bridge_dep_ck ON bridge_deposits(ck);
   `);
   log.info('db ready', { path: DB_PATH });
 }
@@ -283,4 +311,78 @@ export function getWalletByAddress(address, chain = 'solana') {
 
 export function getWalletsByPlayer(playerId) {
   return db.prepare('SELECT * FROM wallets WHERE player_id = ?').all(playerId);
+}
+
+// ─── token-bridge helpers (used by server/economy.js) ────────────────────
+// Every helper tolerates a null db handle (initDb never ran: file mode without
+// USE_SQLITE) and returns a safe empty value instead of throwing, so the
+// bridge degrades honestly rather than crashing the relay.
+const noDb = () => !db;
+
+// Resolve (creating if needed) the players row for a device token.
+export function playerIdForToken(token) {
+  if (noDb() || !token) return null;
+  try { return getPlayerId(deviceKey(token)); } catch { return null; }
+}
+
+// Bind an address for a device token. Idempotent for the same address; refuses
+// an address already claimed by a DIFFERENT player (one wallet = one account).
+export function bindWalletForToken(token, address, chain = 'solana') {
+  if (noDb()) return { ok: false, error: 'db_unavailable' };
+  const pid = playerIdForToken(token);
+  if (!pid) return { ok: false, error: 'no_player' };
+  const mine = db.prepare('SELECT * FROM wallets WHERE player_id = ? AND chain = ? LIMIT 1').get(pid, chain);
+  if (mine) return mine.address === address ? { ok: true, address } : { ok: false, error: 'already_bound', address: mine.address };
+  const other = getWalletByAddress(address, chain);
+  if (other) return { ok: false, error: 'address_taken' };
+  const r = bindWallet(pid, address, chain);
+  return r.ok ? { ok: true, address } : r;
+}
+
+export function getWalletForToken(token, chain = 'solana') {
+  if (noDb() || !token) return null;
+  const pid = playerIdForToken(token);
+  if (!pid) return null;
+  return db.prepare('SELECT * FROM wallets WHERE player_id = ? AND chain = ? LIMIT 1').get(pid, chain) || null;
+}
+
+export function insertBridgeWithdrawal({ ck, address, amount, fee, net, status, signature = null, reason = null }) {
+  if (noDb()) return false;
+  db.prepare(`INSERT INTO bridge_withdrawals (ck, address, amount, fee, net, status, signature, reason, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, unixepoch())`).run(ck, address, amount | 0, fee | 0, net | 0, status, signature, reason);
+  return true;
+}
+
+export function updateBridgeWithdrawal(id, { status, signature = null, reason = null }) {
+  if (noDb()) return false;
+  db.prepare('UPDATE bridge_withdrawals SET status = ?, signature = ?, reason = ? WHERE id = ?').run(status, signature, reason, id);
+  return true;
+}
+
+export function listBridgeWithdrawals(ck, limit = 10) {
+  if (noDb()) return [];
+  return db.prepare('SELECT * FROM bridge_withdrawals WHERE ck = ? ORDER BY id DESC LIMIT ?').all(ck, limit);
+}
+
+// Replay guard for deposits: returns false when the signature was already used.
+export function insertBridgeDeposit({ signature, ck, address = null, amount, status = 'confirmed' }) {
+  if (noDb()) return false;
+  try {
+    db.prepare('INSERT INTO bridge_deposits (signature, ck, address, amount, status, confirmed_at) VALUES (?, ?, ?, ?, ?, unixepoch())')
+      .run(signature, ck, address, amount | 0, status);
+    return true;
+  } catch (e) {
+    if (e.message?.includes('UNIQUE constraint failed')) return false;
+    throw e;
+  }
+}
+
+export function getBridgeDeposit(signature) {
+  if (noDb()) return null;
+  return db.prepare('SELECT * FROM bridge_deposits WHERE signature = ?').get(signature) || null;
+}
+
+export function listBridgeDeposits(ck, limit = 10) {
+  if (noDb()) return [];
+  return db.prepare('SELECT * FROM bridge_deposits WHERE ck = ? ORDER BY confirmed_at DESC LIMIT ?').all(ck, limit);
 }

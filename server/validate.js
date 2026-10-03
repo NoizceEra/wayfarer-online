@@ -127,7 +127,8 @@ export const ECON = {
   SUBJECT_MAX: 40,
   MOTD_MAX: 120,
   TOKEN_CLAIM_FEE: 0.05,     // platform fee on token claims (gold sink)
-  TOKEN_WITHDRAW_DAILY_CAP: 500, // max Wayfarer Tokens claimable per wallet per day
+  TOKEN_WITHDRAW_FEE: 0.075, // platform fee on bridge withdrawals (in-game -> on-chain)
+  TOKEN_WITHDRAW_DAILY_CAP: 500, // max Wayfarer Tokens claimable/withdrawable per wallet per day
   TOKEN_SINK_TYPES: new Set(['orb-upgrade', 'revive', 'pet-rename', 'stash-tab']),
 };
 

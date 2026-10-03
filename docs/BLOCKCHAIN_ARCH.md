@@ -378,3 +378,111 @@ balance and the new `stake` record. The ReferralPanel and WalletPanel display th
 
 *Document version: 1.1*  
 *Last updated: 2026-10-02*
+
+## 12. Token bridge (in-game Wayfarer Tokens <-> devnet $WAYFARER)
+
+The bridge links a Solana wallet to a character and moves currency across the
+boundary. It is devnet-only and **honestly degrades**: when the Solana env is
+not configured nothing is minted and nothing is deducted.
+
+### 12.1 Wallet binding (proof of ownership)
+
+Ownership is proven with an ed25519 signature over a server-issued challenge
+(no wallet address is trusted just because a client claims it):
+
+| Direction | Message | Payload |
+|---|---|---|
+| C→S | `wallet-bind-challenge` | `{address}` |
+| S→C | `wallet-bind-challenge` | `{address, nonce, message}` |
+| C→S | `wallet-bind` | `{address, signature}` (base58) |
+| S→C | `wallet-bound` | `{address}` — or `econ-error {msg, code}` |
+
+- The nonce challenge is single-use and expires after **5 minutes**.
+- The server verifies the base58 ed25519 signature of `message` against the
+  claimed address with **node:crypto** (`crypto.verify(null, msg, ed25519Key,
+  sig)`); the 32-byte base58 public key is wrapped in a DER SPKI key. No extra
+  dependency is required.
+- On success the binding is written with `bindWallet(playerId, address)`
+  (db.js `wallets` table). One wallet maps to one account: a second character
+  claiming an already-bound address is refused (`address_taken`).
+- **Persistence:** the `wallets` table lives in the SQLite store, so wallet
+  linking requires `USE_SQLITE=1`. Without it the server answers
+  `econ-error code 'db_unavailable'` and the panel says so.
+
+### 12.2 Withdraw (in-game → on-chain)
+
+`token-withdraw {amount, rev}` → `token-withdraw-result {ok, amount, fee, net, status, reason?}`
+
+- Requires a bound wallet (`econ-error code 'wallet'` otherwise).
+- `fee = max(1, floor(amount * ECON.TOKEN_WITHDRAW_FEE))` with
+  `ECON.TOKEN_WITHDRAW_FEE = 0.075` (7.5%); `net = amount - fee`.
+- The **daily cap shares the exact fields token-claim uses**
+  (`progress.ext.bridgeDailyClaimed`, `ECON.TOKEN_WITHDRAW_DAILY_CAP = 500`),
+  so claiming and withdrawing draw on the same daily allowance.
+- **Unconfigured** (`SOLANA_RPC` / `PROGRAM_ID` / `MINT_ADDRESS` /
+  `ORACLE_KEYPAIR` missing): returns `status: 'unconfigured'` and **does not
+  deduct** the player's tokens.
+- **Configured**: the tokens are deducted, the daily cap is reserved, and a row
+  is written to `bridge_withdrawals(ck, address, amount, fee, net, status,
+  signature, reason, created_at)`. `status` is `'sent'` when the on-chain
+  `mint_withdraw` transaction confirmed (signature persisted) or `'pending'`
+  when it could not be sent (reason recorded; an operator must settle it).
+- **Fee split:** 50% of the fee is burned, 50% is credited to the fee treasury
+  via `referrals.recordFee` (same pattern as token-claim).
+
+On-chain mint: the server dynamically imports `@solana/web3.js`, derives the
+`config` (`[b"config"]`) and `mint` (`[b"mint"]`) PDAs, reads the mint/treasury
+from the config account, derives the player ATA, and submits a
+`global:mint_withdraw` instruction (Anchor discriminator
+`sha256("global:mint_withdraw")[0..8]` + `u64` amount scaled by
+`TOKEN_DECIMALS`) signed by the oracle keypair.
+
+> **Unverified:** the live mint path has not been exercised against a deployed
+> devnet program (no deployed program / funded oracle keypair is available in
+> this repo). If `@solana/web3.js` is not resolvable on the server the mint is
+> skipped and the row stays `pending`. Adding `@solana/web3.js` to
+> `server/package.json` is required for a Railway deploy (it currently resolves
+> only from the repo-root `node_modules`).
+
+### 12.3 Deposit (on-chain → in-game)
+
+`token-deposit {signature}` → `token-deposit-result {ok, amount, credited, reason?}`
+
+- The server fetches the parsed transaction from the configured RPC and sums the
+  `postTokenBalances - preTokenBalances` deltas for the treasury ATA owned by the
+  `$WAYFARER` mint. The whole-token amount (raw / 10^decimals) is credited to
+  `progress.wayfarerTokens`.
+- The treasury is `TREASURY_ADDRESS` when set, else the ATA of the `config` PDA.
+- **Replay guard:** `bridge_deposits(signature PRIMARY KEY, ck, address, amount,
+  status, confirmed_at)`. A reused signature is refused before crediting.
+- **Unconfigured:** returns `ok:false, reason:'unconfigured'` and credits nothing.
+
+> **Unverified:** the deposit verifier has not run against a real devnet
+> transaction.
+
+### 12.4 Bridge state
+
+`token-bridge-state {}` → `token-bridge-state {configured, depositConfigured,
+dbReady, address, network, withdrawFee, dailyCap, claimedToday, tokenBalance,
+pendingWithdrawals[], deposits[]}` — polled by `TokenBridgePanel` on open.
+
+### 12.5 Client
+
+- `src/net/economyNet.js`: `walletChallenge`, `walletBind`, `requestWithdraw`,
+  `requestDeposit`, `getBridgeState`, plus listeners for the new server types.
+- `src/ui/TokenBridgePanel.js` (new): Solana palette + pixel fonts; wallet link,
+  in-game balance, daily-cap bar, withdraw form with 7.5% fee/net preview,
+  deposit-by-signature form, recent withdrawals/deposits, and an unconfigured
+  banner. Opened by `/bridge` and by WalletPanel's "Link to account" action.
+- `src/ui/WalletPanel.js`: adds the "Link to account" button.
+- `src/ui/economyUI.js`: registers the panel (anyOpen/closer/destroy) + `/bridge`.
+
+### 12.6 Forgery protection
+
+Every new server→client type (`wallet-bind-challenge`, `wallet-bound`,
+`token-withdraw-result`, `token-deposit-result`, `token-bridge-state`) is added
+to the swallow list at the top of `server/economy.js` so a client cannot forge
+it for its peers over the generic `'*'` passthrough.
+
+*Document version: 1.2*  
+*Last updated: 2026-10-02*

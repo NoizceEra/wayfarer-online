@@ -12,6 +12,7 @@ import { ClaimPanel } from './ClaimPanel.js';
 import { ReferralPanel, mountReferralCta } from './ReferralPanel.js';
 import { PartyFinderPanel } from './PartyFinderPanel.js';
 import { TokenSinkPanel } from './TokenSinkPanel.js';
+import { TokenBridgePanel } from './TokenBridgePanel.js';
 import { el, setIconScene } from './econDom.js';
 import { socialRoot } from './socialDom.js';
 
@@ -49,10 +50,11 @@ export function installEconomyUI(uiScene) {
   const referralP = new ReferralPanel();
   const partyFinderP = new PartyFinderPanel();
   const sinksP = new TokenSinkPanel();
-  const anyOpen = () => tradeP.isOpen || escrowP.isOpen || market.isOpen || mail.isOpen || claimP.isOpen || referralP.isOpen || partyFinderP.isOpen || sinksP.isOpen;
+  const bridgeP = new TokenBridgePanel();
+  const anyOpen = () => tradeP.isOpen || escrowP.isOpen || market.isOpen || mail.isOpen || claimP.isOpen || referralP.isOpen || partyFinderP.isOpen || sinksP.isOpen || bridgeP.isOpen;
   const offs = [
-    input.on('mail', () => { market.close(); escrowP.close(); tradeP.close(); sinksP.close(); mail.toggle(); return true; }, { scene: uiScene }),
-    input.addCloser({ id: 'economy', priority: 960, isOpen: anyOpen, close: () => { if (mail.isOpen) mail.close(); else if (market.isOpen) market.close(); else if (escrowP.isOpen) escrowP.close(); else if (referralP.isOpen) referralP.close(); else if (partyFinderP.isOpen) partyFinderP.close(); else if (sinksP.isOpen) sinksP.close(); else if (claimP.isOpen) claimP.close(); else tradeP.close(); }, scene: uiScene }),
+    input.on('mail', () => { market.close(); escrowP.close(); tradeP.close(); sinksP.close(); bridgeP.close(); mail.toggle(); return true; }, { scene: uiScene }),
+    input.addCloser({ id: 'economy', priority: 960, isOpen: anyOpen, close: () => { if (mail.isOpen) mail.close(); else if (market.isOpen) market.close(); else if (escrowP.isOpen) escrowP.close(); else if (referralP.isOpen) referralP.close(); else if (partyFinderP.isOpen) partyFinderP.close(); else if (sinksP.isOpen) sinksP.close(); else if (bridgeP.isOpen) bridgeP.close(); else if (claimP.isOpen) claimP.close(); else tradeP.close(); }, scene: uiScene }),
     social.registerAction('trade', (who) => trade.requestTrade(who)),
     social.registerAction('escrow', (who) => trade.requestEscrow(who)),
     social.registerAction('mail', (to) => mail.compose(to)),
@@ -60,8 +62,9 @@ export function installEconomyUI(uiScene) {
     bus.on('econ-ui', (m) => {
       if (m?.panel === 'market') { mail.close(); tradeP.close(); escrowP.close(); claimP.close(); market.open(m.tab); }
       else if (m?.panel === 'mail') { market.close(); tradeP.close(); escrowP.close(); claimP.close(); mail.open(m.tab); }
-      else if (m?.panel === 'claim') { market.close(); tradeP.close(); escrowP.close(); mail.close(); sinksP.close(); claimP.open(); }
-      else if (m?.panel === 'sinks') { market.close(); tradeP.close(); escrowP.close(); mail.close(); claimP.close(); sinksP.open(); }
+      else if (m?.panel === 'claim') { market.close(); tradeP.close(); escrowP.close(); mail.close(); sinksP.close(); bridgeP.close(); claimP.open(); }
+      else if (m?.panel === 'sinks') { market.close(); tradeP.close(); escrowP.close(); mail.close(); claimP.close(); bridgeP.close(); sinksP.open(); }
+      else if (m?.panel === 'bridge') { market.close(); tradeP.close(); escrowP.close(); mail.close(); claimP.close(); sinksP.close(); bridgeP.open({ link: !!m.link }); }
     }),
     econ.on('mail-unread', drawBadge), econ.on('state', drawBadge), econ.on('status', drawBadge),
     bus.on(Events.NET_STATUS, drawBadge),
@@ -71,8 +74,8 @@ export function installEconomyUI(uiScene) {
   installCommands(mail);
 
   const api = {
-    trade: tradeP, escrow: escrowP, market, mail, claim: claimP, referral: referralP, partyFinder: partyFinderP, sinks: sinksP, anyOpen,
-    destroy() { offs.forEach((o) => { try { o(); } catch { /* ignore */ } }); tradeP.destroy(); escrowP.destroy(); market.destroy(); mail.destroy(); claimP.destroy(); referralP.destroy(); partyFinderP.destroy(); sinksP.destroy(); badge.remove(); refCta.destroy(); },
+    trade: tradeP, escrow: escrowP, market, mail, claim: claimP, referral: referralP, partyFinder: partyFinderP, sinks: sinksP, bridge: bridgeP, anyOpen,
+    destroy() { offs.forEach((o) => { try { o(); } catch { /* ignore */ } }); tradeP.destroy(); escrowP.destroy(); market.destroy(); mail.destroy(); claimP.destroy(); referralP.destroy(); partyFinderP.destroy(); sinksP.destroy(); bridgeP.destroy(); badge.remove(); refCta.destroy(); },
   };
   uiScene.events.once('shutdown', () => api.destroy());
   window.__econUI = api; // debug / automated tests
@@ -118,6 +121,7 @@ function installCommands(mail) {
       case 'gwithdraw': return n > 0 ? econ.send('guild-withdraw', { gold: n }, { rev: true, sync: true }) : say('Usage: /gwithdraw gold');
       case 'claim': return bus.emit('econ-ui', { panel: 'claim' });
       case 'sinks': case 'tokensinks': return window.__econUI?.sinks?.toggle();
+      case 'bridge': case 'tokenbridge': return window.__econUI?.bridge?.toggle();
       case 'refer': case 'referral': return window.__econUI?.referral?.toggle();
       case 'partyfinder': case 'finder': case 'lfg': return window.__econUI?.partyFinder?.toggle(uiScene);
       case 'pets': case 'pet': {
@@ -137,7 +141,7 @@ function installCommands(mail) {
       }
       case 'help': case '?':
         orig(raw);
-        return say(`Economy: /trade name · /mail [name] · /claim · /sinks · /refer · /finder · /pet · /petduel name · /pda · /pdd · /ginvite /gaccept /gkick /gpromote /gdemote /gleader /gmotd /gdeposit /gwithdraw /ginfo. Mailbox: ${input.labelFor('mail')}. Market: talk to the notice-board clerks.`);
+        return say(`Economy: /trade name · /mail [name] · /claim · /sinks · /bridge · /refer · /finder · /pet · /petduel name · /pda · /pdd · /ginvite /gaccept /gkick /gpromote /gdemote /gleader /gmotd /gdeposit /gwithdraw /ginfo. Mailbox: ${input.labelFor('mail')}. Market: talk to the notice-board clerks.`);
       default: return orig(raw);
     }
   };

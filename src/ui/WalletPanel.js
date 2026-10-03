@@ -46,7 +46,7 @@ export class WalletPanel {
     const { w: W, h: H } = s.view();
     this.dim = s.add.rectangle(0, 0, W * 2, H * 2, 0x000000, 0.55).setInteractive();
     this.c.add(this.dim);
-    const pw = Math.min(W - 24, 360), ph = 280;
+    const pw = Math.min(W - 24, 360), ph = 320;
     const [bg, ns] = s._nsPair(0, 0, pw, ph, 'ui.panel', 4, 4, 4, 4);
     this.c.add(bg); this.c.add(ns);
 
@@ -88,7 +88,18 @@ export class WalletPanel {
     }, 0x1a103c, 0x03e1ff);
     this.copyBtn.setVisible(!!this.wallet);
 
-    mkBtn(124, 'CLOSE', () => this.close(), 0x0a0e1a, 0x6b7a99);
+    // Link the connected wallet to the game account (opens the token bridge
+    // panel, which requests an ed25519 signature challenge to prove ownership).
+    this.linkBtn = mkBtn(120, 'Link to account', () => {
+      if (!this.wallet?.addr) { this.say('Connect a wallet first.'); return; }
+      const bridge = window.__econUI?.bridge;
+      if (!bridge) { this.say('Token bridge UI not available.'); return; }
+      bridge.open({ link: true });
+      this.close();
+    }, 0x14f195, 0x03e1ff);
+    this.linkBtn.setVisible(!!this.wallet);
+
+    mkBtn(164, 'CLOSE', () => this.close(), 0x0a0e1a, 0x6b7a99);
 
     this.toastT = s.add.text(0, ph / 2 - 20, '', {
       fontFamily: FONT, fontSize: '9px', color: '#14f195', align: 'center',
@@ -208,6 +219,7 @@ export class WalletPanel {
     this.connectBtn?.setVisible(!this.wallet);
     this.disconnectBtn?.setVisible(!!this.wallet);
     this.copyBtn?.setVisible(!!this.wallet);
+    this.linkBtn?.setVisible(!!this.wallet);
   }
 
   open() {

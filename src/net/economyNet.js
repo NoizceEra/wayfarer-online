@@ -22,7 +22,9 @@ import ITEM_IDS from '../data/item_ids.json'; // copy of server/shared/item_ids.
 //
 // Events (econ.on(evt, fn)): state, sync, msg, error, trade-request,
 // trade-open, trade-update, trade-result, trade-closed, market-page,
-// mail-box, mail-unread, guild-info, guild-invite, status.
+// mail-box, mail-unread, guild-info, guild-invite, status, wallet-bound,
+// wallet-bind-challenge, token-withdraw-result, token-deposit-result,
+// token-bridge-state.
 export const GEAR_WHITELIST = ITEM_IDS.gear || {};
 export const isTradable = (id) => typeof id === 'string' && Object.prototype.hasOwnProperty.call(GEAR_WHITELIST, id) && !!gearById(id);
 const REV_KEY = 'wayfarer.econrev.v1.';
@@ -38,6 +40,7 @@ class EconNet {
     this.guild = null;        // last guild-info payload
     this.cfg = { bag: BAG_SIZE, tradeItems: 8, tax: 0.05, hours: [2, 8, 24, 48], postage: 5, mailItems: 5, priceMax: 1_000_000, tokenWithdrawDailyCap: 500 };
     this.sinksState = { dailyClaimed: 0, stashTabs: 0 };
+    this.bridge = null;       // last token-bridge-state payload (wallet link + withdraw/deposit)
     this.worldFn = null;
     if (typeof window === 'undefined') return;
     net.onAttach((room) => this.attach(room));
@@ -78,6 +81,16 @@ class EconNet {
     on('econ-state', (m) => this.onState(m));
     on('econ-sync', (m) => this.onSync(m));
     on('token-spend-ok', (m) => this.onTokenSpendOk(m));
+    on('wallet-bind-challenge', (m) => this.emit('wallet-bind-challenge', m));
+    on('wallet-bound', (m) => {
+      this.bridge = { ...(this.bridge || {}), address: m.address || '' };
+      bus.emit(Events.SYSTEM, `Wallet linked: ${String(m.address || '').slice(0, 4)}...`);
+      this.emit('wallet-bound', m);
+      this.getBridgeState();
+    });
+    on('token-withdraw-result', (m) => this.emit('token-withdraw-result', m));
+    on('token-deposit-result', (m) => this.emit('token-deposit-result', m));
+    on('token-bridge-state', (m) => { this.bridge = m; this.emit('token-bridge-state', m); });
     on('econ-msg', (m) => { bus.emit(Events.SYSTEM, m.text); this.emit('msg', m); });
     on('econ-error', (m) => { bus.emit(Events.SYSTEM, m.msg || 'That did not work.'); this.emit('error', m); });
     on('trade-result', (m) => {
@@ -207,6 +220,33 @@ class EconNet {
     const n = Math.max(0, Math.floor(Number(amount) || 0));
     if (n <= 0) { bus.emit(Events.SYSTEM, 'Enter a positive token amount.'); return false; }
     return this.send('token-spend', { type, amount: n, ...meta }, { rev: true, sync: true });
+  }
+
+  // ── token bridge (wallet link + withdraw/deposit) ──
+  walletChallenge(address) {
+    if (!this.online) { bus.emit(Events.SYSTEM, 'Play Online to link a wallet.'); return false; }
+    if (!address) { bus.emit(Events.SYSTEM, 'Connect a Solana wallet first.'); return false; }
+    return net.send('wallet-bind-challenge', { address });
+  }
+  walletBind(address, signature) {
+    if (!this.online) return false;
+    return net.send('wallet-bind', { address, signature });
+  }
+  requestWithdraw(amount) {
+    if (!this.online) { bus.emit(Events.SYSTEM, 'Play Online to withdraw tokens.'); return false; }
+    const n = Math.max(0, Math.floor(Number(amount) || 0));
+    if (n <= 0) { bus.emit(Events.SYSTEM, 'Enter a positive token amount.'); return false; }
+    return this.send('token-withdraw', { amount: n }, { rev: true, sync: true });
+  }
+  requestDeposit(signature) {
+    if (!this.online) { bus.emit(Events.SYSTEM, 'Play Online to deposit tokens.'); return false; }
+    const sig = String(signature || '').trim();
+    if (!sig) { bus.emit(Events.SYSTEM, 'Paste a Solana transaction signature.'); return false; }
+    return net.send('token-deposit', { signature: sig });
+  }
+  getBridgeState() {
+    if (!this.online) return false;
+    return net.send('token-bridge-state', {});
   }
 
   onTokenSpendOk(m) {
