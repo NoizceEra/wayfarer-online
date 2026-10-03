@@ -41,6 +41,7 @@ import { NPC_SPOTS } from '../data/quests.js';
 import { spawnPetMaster, onPetMasterTalk } from '../world/petMaster.js';
 import { OnboardingSystem } from '../systems/onboarding.js';
 import { PetEncounterSystem } from '../systems/petEncounter.js';
+import { installReviveSystem } from '../systems/reviveSystem.js';
 import { Combat } from '../systems/combat.js';
 import { Spawner } from '../systems/spawner.js';
 import { RANKS, rollRank, rollMobLevel } from '../data/combatMath.js';
@@ -190,6 +191,7 @@ export class WorldScene extends Phaser.Scene {
 
     this.onboarding = new OnboardingSystem(this);
     this.petEncounter = new PetEncounterSystem(this);
+    installReviveSystem(this);
 
     this.daynight = new DayNight(this);
     // Visual systems: weather, dynamic night lighting, water, foliage sway, ambient particles (systems/fx.js)

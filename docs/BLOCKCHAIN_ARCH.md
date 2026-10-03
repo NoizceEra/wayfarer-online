@@ -347,3 +347,34 @@ Future blockchain phase:
 
 *Document version: 1.0*  
 *Last updated: 2026-10-01*
+
+## 10. Referral Token Bonus (new)
+
+When a referred player claims Wayfarer Tokens, the existing 5% token-claim fee is split:
+
+- **2.5% to the referrer** as a Wayfarer Token bonus.
+- **2.5% to the treasury** (same fee pool that funds gold referral rewards).
+
+The claiming player still pays the full 5% fee in gold; the split only changes where the fee goes.
+Bonuses are recorded in `referral_token_bonuses(referrer, invitee, amount, source_claim, paid_at)`.
+The referrer's running total is returned in `referral-state.tokenBonusPaid` and can be inspected
+via `referral-token-stats`.
+
+## 11. Holder Staking Preview (mock/devnet)
+
+A preview/mock staking system lets players lock Wayfarer Tokens in-game for drop-rate perks.
+This is **not on-chain yet**; locked tokens are deducted from `progress.wayfarerTokens` and held
+in `progress.ext.stake { amount, lockedUntil, tier, dropRate }` by the server.
+
+| Shop entry | Tokens | Lock | Drop-rate perk |
+|---|---|---|---|
+| `stake_bronze` | 100 | 7 days | +5% |
+| `stake_silver` | 500 | 14 days | +10% |
+| `stake_gold` | 2000 | 30 days | +15% |
+
+Client sends `token-stake {tier, amount}`; server validates the tier/amount, checks the balance,
+refuses an overlapping active stake, and replies with `econ-sync` carrying the updated token
+balance and the new `stake` record. The ReferralPanel and WalletPanel display the active stake.
+
+*Document version: 1.1*  
+*Last updated: 2026-10-02*

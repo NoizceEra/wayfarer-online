@@ -47,6 +47,18 @@ export function sanitizeProgress(p) {
   if (p.dyes && typeof p.dyes === 'object') {
     for (const [k, v] of Object.entries(p.dyes).slice(0, 48)) if (k.length <= 48 && typeof v === 'string' && v.length <= 24) out.dyes[k] = v;
   }
+  // sanitize token-sink progress fields inside ext
+  if (out.ext && typeof out.ext === 'object') {
+    out.ext.stashTabs = Math.max(0, Math.min(5, Math.floor(Number(out.ext.stashTabs)) || 0));
+    if (!out.ext.bridgeDailyClaimed || typeof out.ext.bridgeDailyClaimed !== 'object') {
+      out.ext.bridgeDailyClaimed = { date: '', amount: 0 };
+    } else {
+      out.ext.bridgeDailyClaimed = {
+        date: String(out.ext.bridgeDailyClaimed.date || '').slice(0, 10),
+        amount: Math.max(0, Math.floor(Number(out.ext.bridgeDailyClaimed.amount)) || 0),
+      };
+    }
+  }
   return out;
 }
 
@@ -115,6 +127,8 @@ export const ECON = {
   SUBJECT_MAX: 40,
   MOTD_MAX: 120,
   TOKEN_CLAIM_FEE: 0.05,     // platform fee on token claims (gold sink)
+  TOKEN_WITHDRAW_DAILY_CAP: 500, // max Wayfarer Tokens claimable per wallet per day
+  TOKEN_SINK_TYPES: new Set(['orb-upgrade', 'revive', 'pet-rename', 'stash-tab']),
 };
 
 export const isGearId = (id) => typeof id === 'string' && id.length <= 48 && Object.prototype.hasOwnProperty.call(GEAR_META, id);
@@ -132,6 +146,7 @@ export function itemList(v, max) {
 }
 export const cleanLine = (t, max) => String(t ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
 export const cleanCharName = (t) => String(t ?? '').replace(/[^\w \-']/g, '').trim().slice(0, 14);
+export const cleanPetName = (t) => String(t ?? '').replace(/[^\w \-']/g, '').trim().slice(0, 24);
 export const revOf = (v) => (typeof v === 'number' && Number.isInteger(v) && v >= 0 ? v : null);
 // multiset check: does `inv` contain every id of `want` (with multiplicity)?
 export function hasItems(inv, want) {

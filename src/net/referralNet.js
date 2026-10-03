@@ -16,10 +16,12 @@ import { bus, Events } from '../core/events.js';
 class ReferralNet {
   constructor() {
     this.state = null; // last referral-state payload
+    this.tokenStats = null; // last referral-token-stats payload
     this.handlers = new Map();
     if (typeof window === 'undefined') return;
     net.on('referral-state', (m) => this.onState(m));
     net.on('referral-paid', (m) => this.onPaid(m));
+    net.on('referral-token-stats', (m) => this.onTokenStats(m));
     bus.on(Events.NET_DISCONNECTED, () => this.emit('status', { online: false }));
     bus.on(Events.NET_STATUS, (s) => this.emit('status', { online: s?.status === 'online' }));
   }

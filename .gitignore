@@ -8,3 +8,11 @@ dist/
 .omc/
 tools/_gen/
 server/data/
+nul
+
+# Anchor / Rust build output (never commit compiled artifacts)
+programs/**/target/
+programs/**/.anchor/
+.anchor/
+test-ledger/
+

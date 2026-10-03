@@ -46,6 +46,7 @@ import { ledger, commit } from './econStore.js';
 // economy.js's swallow list so they can never ride the generic '*' broadcast):
 //   client->server  referral-info {}                server->client referral-state
 //   client->server  referral-apply {code}           referral-state (updated) | econ-error
+//   client->server  referral-token-stats {}         server->client referral-token-stats {total, rows}
 //                  (receiver of a payout)           referral-paid {milestone, gold}
 //                                                  econ-sync {why:'referral', delta:{gold}} (adopted rev+gold)
 
@@ -73,7 +74,7 @@ class Tok {
 function fileStore() {
   const DIR = path.join(CFG.DATA_DIR, 'economy');
   const FILE = path.join(DIR, 'referrals.json');
-  let doc = { codes: {}, byCk: {}, milestones: {}, treasury: { fees: 0 } };
+  let doc = { codes: {}, byCk: {}, milestones: {}, tokenBonuses: [], treasury: { fees: 0 } };
   try {
     const parsed = JSON.parse(fs.readFileSync(FILE, 'utf8'));
     if (parsed && typeof parsed === 'object') doc = { ...doc, ...parsed, treasury: { fees: parsed.treasury?.fees | 0 } };
@@ -91,10 +92,11 @@ function fileStore() {
   return {
     kind: 'file',
     byCode(c) { const e = doc.codes[c]; return e ? { ck: e.ck, name: e.name } : null; },
-    byPlayer(ck) { const c = doc.byCk[ck]; const e = c && doc.codes[c]; return e ? { code: c, name: e.name, invited: e.invited | 0, goldPaid: e.goldPaid | 0 } : null; },
-    insertCode(ck, name, code) { doc.codes[code] = { ck, name, createdAt: now(), invited: 0, goldPaid: 0 }; doc.byCk[ck] = code; write(); },
+    byPlayer(ck) { const c = doc.byCk[ck]; const e = c && doc.codes[c]; return e ? { code: c, name: e.name, invited: e.invited | 0, goldPaid: e.goldPaid | 0, tokenBonusPaid: e.tokenBonusPaid | 0 } : null; },
+    insertCode(ck, name, code) { doc.codes[code] = { ck, name, createdAt: now(), invited: 0, goldPaid: 0, tokenBonusPaid: 0 }; doc.byCk[ck] = code; write(); },
     bumpInvited(ck) { const c = doc.byCk[ck]; if (c && doc.codes[c]) { doc.codes[c].invited = (doc.codes[c].invited | 0) + 1; write(); } },
     bumpGoldPaid(ck, n) { const c = doc.byCk[ck]; if (c && doc.codes[c]) { doc.codes[c].goldPaid = (doc.codes[c].goldPaid | 0) + n; write(); } },
+    bumpTokenBonus(ck, n) { const c = doc.byCk[ck]; if (c && doc.codes[c]) { doc.codes[c].tokenBonusPaid = (doc.codes[c].tokenBonusPaid | 0) + n; write(); } },
     bindOf(ck) { for (const [k, v] of Object.entries(doc.milestones)) { const a = k.split('|'); if (a[1] === ck && a[2] === 'bind') return { referrer: a[0], at: v.paidAt }; } return null; },
     insertBind(r, i) { doc.milestones[k3(r, i, 'bind')] = { gold: 0, paidAt: now() }; write(); },
     milestoneOf(r, i, m) { const v = doc.milestones[k3(r, i, m)]; return v ? { gold: v.gold | 0, paidAt: v.paidAt ?? null } : null; },
@@ -109,6 +111,9 @@ function fileStore() {
     treasuryGold() { return doc.treasury.fees | 0; },
     addFee(n) { doc.treasury.fees = (doc.treasury.fees | 0) + (n | 0); write(); },
     spend(n) { if ((doc.treasury.fees | 0) < n) return false; doc.treasury.fees -= n; write(); return true; },
+    tokenBonusTotal(ck) { return doc.tokenBonuses.filter((b) => b.referrer === ck).reduce((s, b) => s + (b.amount | 0), 0); },
+    tokenBonusRows(ck) { return doc.tokenBonuses.filter((b) => b.referrer === ck).map((b) => ({ ...b })); },
+    addTokenBonus(r, i, amount, sourceClaim) { doc.tokenBonuses.push({ referrer: r, invitee: i, amount: amount | 0, sourceClaim: sourceClaim | 0, paidAt: now() }); write(); },
     counts() {
       let binds = 0, pending = 0;
       for (const [k, v] of Object.entries(doc.milestones)) { if (k.endsWith('|bind')) binds++; else if (v.paidAt == null) pending++; }
@@ -137,13 +142,25 @@ function sqliteStore(dbh) {
       paid_at INTEGER,
       PRIMARY KEY(referrer, invitee, milestone)
     );
+    CREATE TABLE IF NOT EXISTS referral_token_bonuses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      referrer TEXT NOT NULL,
+      invitee TEXT NOT NULL,
+      amount INTEGER NOT NULL DEFAULT 0,
+      source_claim INTEGER NOT NULL DEFAULT 0,
+      paid_at INTEGER,
+      created_at INTEGER DEFAULT (unixepoch())
+    );
+    CREATE INDEX IF NOT EXISTS idx_referral_token_referrer ON referral_token_bonuses(referrer);
+    CREATE INDEX IF NOT EXISTS idx_referral_token_pair ON referral_token_bonuses(referrer, invitee);
   `);
   const q = {
     byCode: dbh.prepare('SELECT code, player AS ck, name FROM referrals WHERE code = ?'),
-    byPlayer: dbh.prepare('SELECT code, player AS ck, name, invited_count AS invited, gold_paid AS goldPaid FROM referrals WHERE player = ?'),
+    byPlayer: dbh.prepare('SELECT code, player AS ck, name, invited_count AS invited, gold_paid AS goldPaid, token_bonus_paid AS tokenBonusPaid FROM referrals WHERE player = ?'),
     insertCode: dbh.prepare('INSERT INTO referrals (code, player, name) VALUES (?, ?, ?)'),
     bumpInvited: dbh.prepare('UPDATE referrals SET invited_count = invited_count + 1 WHERE player = ?'),
     bumpGoldPaid: dbh.prepare('UPDATE referrals SET gold_paid = gold_paid + ? WHERE player = ?'),
+    bumpTokenBonus: dbh.prepare('UPDATE referrals SET token_bonus_paid = token_bonus_paid + ? WHERE player = ?'),
     bindOf: dbh.prepare("SELECT referrer, paid_at AS at FROM referral_milestones WHERE invitee = ? AND milestone = 'bind' LIMIT 1"),
     insertBind: dbh.prepare("INSERT OR IGNORE INTO referral_milestones (referrer, invitee, milestone, gold, paid_at) VALUES (?, ?, 'bind', 0, unixepoch())"),
     milestoneOf: dbh.prepare('SELECT gold, paid_at AS paidAt FROM referral_milestones WHERE referrer = ? AND invitee = ? AND milestone = ?'),
@@ -154,6 +171,9 @@ function sqliteStore(dbh) {
     pending: dbh.prepare("SELECT referrer, invitee, milestone FROM referral_milestones WHERE paid_at IS NULL AND milestone <> 'bind' ORDER BY rowid LIMIT " + SWEEP_MAX),
     binds: dbh.prepare("SELECT COUNT(*) AS n FROM referral_milestones WHERE milestone = 'bind'"),
     pendingN: dbh.prepare("SELECT COUNT(*) AS n FROM referral_milestones WHERE paid_at IS NULL AND milestone <> 'bind'"),
+    tokenBonusTotal: dbh.prepare('SELECT COALESCE(SUM(amount), 0) AS total FROM referral_token_bonuses WHERE referrer = ?'),
+    tokenBonusRows: dbh.prepare('SELECT invitee, amount, source_claim AS sourceClaim, paid_at AS paidAt FROM referral_token_bonuses WHERE referrer = ? ORDER BY paid_at DESC LIMIT 100'),
+    addTokenBonus: dbh.prepare('INSERT INTO referral_token_bonuses (referrer, invitee, amount, source_claim, paid_at) VALUES (?, ?, ?, ?, unixepoch())'),
     codes: dbh.prepare('SELECT COUNT(*) AS n FROM referrals'),
     treasury: dbh.prepare('SELECT total_fees AS fees FROM treasury WHERE id = 1'),
     addFee: dbh.prepare('UPDATE treasury SET total_fees = total_fees + ?, updated_at = unixepoch() WHERE id = 1'),
@@ -176,6 +196,9 @@ function sqliteStore(dbh) {
     treasuryGold() { return q.treasury.get()?.fees | 0; },
     addFee(n) { q.addFee.run(n | 0); },
     spend(n) { return q.spend.run(n, n).changes === 1; },
+    tokenBonusTotal(ck) { return q.tokenBonusTotal.get(ck)?.total | 0; },
+    tokenBonusRows(ck) { return q.tokenBonusRows.all(ck); },
+    addTokenBonus(r, i, amount, sourceClaim) { q.addTokenBonus.run(r, i, amount | 0, sourceClaim | 0); },
     counts() { return { codes: q.codes.get().n, binds: q.binds.get().n, pending: q.pendingN.get().n }; },
   };
 }
@@ -251,7 +274,7 @@ export function install(room) {
   // (a client could forge a referral-paid / referral-state for its peers).
   // economy.js's swallow list also covers these; re-registered here so this
   // module is safe even when loaded alone.
-  for (const t of ['referral-state', 'referral-paid']) room.onMessage(t, () => {});
+  for (const t of ['referral-state', 'referral-paid', 'referral-token-stats']) room.onMessage(t, () => {});
 
   const on = (type, fn) => room.onMessage(type, (client, m) => {
     const p = room.players.get(client.sessionId);
@@ -295,6 +318,44 @@ export function install(room) {
     const refOn = ONLINE.get(owner.ck);
     if (refOn) { try { clientOf(refOn.room, refOn.sid)?.send('referral-state', stateFor(owner.ck)); } catch { /* closing */ } }
   });
+
+  on('referral-token-stats', (c, p) => {
+    const ck = ckOf(p);
+    if (!ck) { err(c, 'You need a saved online character.'); return; }
+    c.send('referral-token-stats', tokenStatsFor(ck));
+  });
+}
+
+// Public API used by server/economy.js token-claim. Pays a 5% token bonus to
+// the referrer from the existing 5% claim fee (2.5% referrer, 2.5% treasury).
+// The invitee's fee is unchanged; the treasury still receives half the fee.
+export function payReferralTokenBonus(inviteeCk, amount, sourceClaim) {
+  if (!S || !amount || amount <= 0) return 0;
+  const bind = S.bindOf(inviteeCk);
+  if (!bind) return 0;
+  const referrer = bind.referrer;
+  S.addTokenBonus(referrer, inviteeCk, amount, sourceClaim);
+  S.bumpTokenBonus(referrer, amount);
+  const on = ONLINE.get(referrer);
+  if (on) {
+    try {
+      const c = clientOf(on.room, on.sid);
+      if (c) {
+        c.send('referral-state', stateFor(referrer));
+        c.send('referral-token-stats', tokenStatsFor(referrer));
+      }
+    } catch { /* closing */ }
+  }
+  ledger({ op: 'referral-token-bonus', referrer, invitee: inviteeCk, amount, sourceClaim });
+  log.info('referral token bonus', { referrer, invitee: inviteeCk, amount, sourceClaim });
+  return amount;
+}
+
+function tokenStatsFor(ck) {
+  return {
+    total: S.tokenBonusTotal(ck),
+    rows: S.tokenBonusRows(ck),
+  };
 }
 
 // ─── internals ─────────────────────────────────────────────────────────────
@@ -332,6 +393,7 @@ function stateFor(ck) {
     code: row?.code || '',
     invited: row?.invited | 0,
     goldPaid: row?.goldPaid | 0,
+    tokenBonusPaid: row?.tokenBonusPaid | 0,
     boundTo,
     treasuryGold: S.treasuryGold(),
   };
@@ -407,5 +469,6 @@ export const _test = {
   ensureCode,
   sweepPending,
   stateFor: (ck) => (S ? stateFor(ck) : null),
+  tokenStatsFor: (ck) => (S ? tokenStatsFor(ck) : null),
   treasuryGold: () => (S ? S.treasuryGold() : 0),
 };

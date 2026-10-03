@@ -90,7 +90,8 @@ export function initDb() {
       name TEXT,
       created_at INTEGER DEFAULT (unixepoch()),
       invited_count INTEGER NOT NULL DEFAULT 0,
-      gold_paid INTEGER NOT NULL DEFAULT 0
+      gold_paid INTEGER NOT NULL DEFAULT 0,
+      token_bonus_paid INTEGER NOT NULL DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS referral_milestones (
       referrer TEXT,
@@ -100,6 +101,17 @@ export function initDb() {
       paid_at INTEGER,
       PRIMARY KEY(referrer, invitee, milestone)
     );
+    CREATE TABLE IF NOT EXISTS referral_token_bonuses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      referrer TEXT NOT NULL,
+      invitee TEXT NOT NULL,
+      amount INTEGER NOT NULL DEFAULT 0,
+      source_claim INTEGER NOT NULL DEFAULT 0,
+      paid_at INTEGER,
+      created_at INTEGER DEFAULT (unixepoch())
+    );
+    CREATE INDEX IF NOT EXISTS idx_referral_token_referrer ON referral_token_bonuses(referrer);
+    CREATE INDEX IF NOT EXISTS idx_referral_token_pair ON referral_token_bonuses(referrer, invitee);
     CREATE INDEX IF NOT EXISTS idx_wallet_address ON wallets(address);
     CREATE INDEX IF NOT EXISTS idx_wallet_player ON wallets(player_id);
   `);

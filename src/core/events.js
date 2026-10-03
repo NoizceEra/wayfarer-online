@@ -36,9 +36,11 @@ export const Events = {
   // KILL (see combat) — {typeId, name, level, rank, boss, xp, x, y, areaId, by}
   //KILL_DUP: 'kill',           // hero killed an enemy {typeId, name, level, rank, boss, xp, x, y, areaId, by}
   PLAYER_DIED: 'player-died', // {xpLoss, goldLoss, respawn}
+  REVIVE_OFFER: 'revive-offer', // {accept?, cost} premium revive flow
   PARTY_KILL: 'party-kill',   // (consumed) party-mate kill share {typeId, xp, by, questCredit?}
-  REFERRAL_STATE: 'referral-state', // {code, invited, goldPaid, boundTo, treasuryGold} referral code / bind / stats
+  REFERRAL_STATE: 'referral-state', // {code, invited, goldPaid, tokenBonusPaid, boundTo, treasuryGold} referral code / bind / stats
   REFERRAL_PAID: 'referral-paid',   // {milestone, gold} a referral milestone was paid to this player
+  REFERRAL_TOKEN_STATS: 'referral-token-stats', // {total, rows[]} token bonus breakdown
   WORLDBOSS_SPAWN: 'worldboss-spawn', // {area, x, y, name, expiresAt, hp, maxHp} server-authoritative world boss
   WORLDBOSS_SLAIN: 'worldboss-slain', // {name, killerName, contributors:[{name, damage}]}
   PET_DUEL_START: 'pet-duel-start',   // {a, b, aName, bName, aTeam, bTeam, seed, round, mySide}

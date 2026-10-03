@@ -188,15 +188,27 @@ export class PetEncounterSystem {
   }
 
   _ownedOrbs() {
-    return ['wayfarer_orb', 'golden_orb']
+    // Prefer upgraded orbs if owned; fall back to base orbs.
+    const ids = ['wayfarer_orb_plus', 'wayfarer_orb', 'golden_orb_plus', 'golden_orb'];
+    const seen = new Set();
+    return ids
       .map((id) => ({ id, ...ITEMS[id], n: packCount(this.scene, id) }))
-      .filter((o) => o.n > 0);
+      .filter((o) => { if (o.n <= 0) return false; if (seen.has(o.name)) return false; seen.add(o.name); return true; });
   }
 
   _attemptCapture(w, orbId) {
     const s = this.scene;
     const orbs = this._ownedOrbs();
-    const orb = orbs.find((o) => o.id === orbId) || orbs[0];
+    let orb = orbs.find((o) => o.id === orbId) || orbs[0];
+    if (orb) {
+      // If the selected id is the base but the player owns the plus version,
+      // promote the selection to the plus variant for capture stats.
+      const plusId = orb.id === 'wayfarer_orb' ? 'wayfarer_orb_plus' : orb.id === 'golden_orb' ? 'golden_orb_plus' : null;
+      if (plusId && packCount(this.scene, plusId) > 0) {
+        const plus = { id: plusId, ...ITEMS[plusId], n: packCount(this.scene, plusId) };
+        orb = plus;
+      }
+    }
 
     // consume orb
     if (!orb) {

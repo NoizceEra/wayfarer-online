@@ -1,7 +1,7 @@
 import { log } from './log.js';
 import { loadChar, saveChar, deviceKey } from './store.js';
 import {
-  ECON, GEAR_META, isGearId, goldAmount, itemList, cleanLine, cleanCharName, revOf, hasItems, withoutItems,
+  ECON, GEAR_META, isGearId, goldAmount, itemList, cleanLine, cleanCharName, cleanPetName, revOf, hasItems, withoutItems,
 } from './validate.js';
 import { db, initEconStore, markDirty, commit, flushEcon, ledger, stopEcon } from './econStore.js';
 
@@ -216,9 +216,14 @@ export function install(room) {
     } catch (e) { log.warn('econ handler error', { type, err: e.message }); }
   });
 
+  const STAKE_TIERS = {
+    bronze: { amount: 100, days: 7, dropRate: 0.05 },
+    silver: { amount: 500, days: 14, dropRate: 0.10 },
+    gold:   { amount: 2000, days: 30, dropRate: 0.15 },
+  };
   // Server->client economy types must never ride the generic '*' passthrough
   // (a client could forge a trade-result / econ-sync for its peers): swallow them.
-  for (const t of ['econ-state', 'econ-sync', 'econ-msg', 'econ-error', 'trade-open', 'trade-update', 'trade-result', 'trade-closed', 'trade-done', 'escrow-open', 'escrow-update', 'escrow-result', 'escrow-closed', 'market-page', 'mail-box', 'mail-unread', 'guild-info', 'guild-update', 'saved', 'referral-state', 'referral-paid', 'worldboss-announce', 'worldboss-state', 'worldboss-slain']) {
+  for (const t of ['econ-state', 'econ-sync', 'econ-msg', 'econ-error', 'trade-open', 'trade-update', 'trade-result', 'trade-closed', 'trade-done', 'escrow-open', 'escrow-update', 'escrow-result', 'escrow-closed', 'market-page', 'mail-box', 'mail-unread', 'guild-info', 'guild-update', 'saved', 'referral-state', 'referral-paid', 'worldboss-announce', 'worldboss-state', 'worldboss-slain', 'token-spend-ok']) {
     room.onMessage(t, () => {});
   }
 
@@ -226,11 +231,15 @@ export function install(room) {
     const rec = charRec(p);
     const ck = ckOf(p);
     const box = ck ? db.mail.boxes[ck] || [] : [];
+    const ext = rec?.progress?.ext || {};
+    const today = new Date().toISOString().slice(0, 10);
+    const bridgeDailyClaimed = ext.bridgeDailyClaimed?.date === today ? (ext.bridgeDailyClaimed?.amount || 0) : 0;
     c.send('econ-state', {
       hasSave: !!rec, ...(rec ? stateOf(rec) : { rev: 0 }),
       mailUnread: box.filter((x) => !x.read).length,
       guild: ck ? db.guilds.memberOf[ck] || '' : '',
-      cfg: { bag: ECON.BAG_SIZE, tradeItems: ECON.TRADE_ITEMS, tax: ECON.MARKET_TAX, hours: ECON.MARKET_HOURS, postage: ECON.MAIL_POSTAGE, mailItems: ECON.MAIL_ITEMS, priceMax: ECON.PRICE_MAX, tokenClaimFee: ECON.TOKEN_CLAIM_FEE },
+      cfg: { bag: ECON.BAG_SIZE, tradeItems: ECON.TRADE_ITEMS, tax: ECON.MARKET_TAX, hours: ECON.MARKET_HOURS, postage: ECON.MAIL_POSTAGE, mailItems: ECON.MAIL_ITEMS, priceMax: ECON.PRICE_MAX, tokenClaimFee: ECON.TOKEN_CLAIM_FEE, tokenWithdrawDailyCap: ECON.TOKEN_WITHDRAW_DAILY_CAP, stakeTiers: STAKE_TIERS },
+      sinksState: { stashTabs: Math.max(0, Math.min(5, Math.floor(Number(ext.stashTabs)) || 0)), dailyClaimed: bridgeDailyClaimed },
     });
   }, 'browse');
 
@@ -715,6 +724,10 @@ export function install(room) {
   });
 
   // ── token-claim (Wayfarer Tokens) ──
+  // Fee split: the player still pays the full 5% claim fee in gold. Half (2.5%)
+  // goes to the fee treasury; the other half is paid as a token bonus to the
+  // referrer when this player was referred. If there is no referrer the entire
+  // fee stays in the treasury.
   on('token-claim', async (c, p, m) => {
     const rec = requireRec(c, p, m); if (!rec) return;
     const amount = goldAmount(m.amount); // token points to claim
@@ -724,6 +737,17 @@ export function install(room) {
     const net = amount - fee;
     if (net <= 0) { err(c, 'Amount too small after fee.', 'invalid'); return; }
     if ((rec.progress.gold | 0) < fee) { err(c, `You need ${fee} gold to cover the claim fee.`, 'gold'); return; }
+    // daily cap tracking
+    const today = new Date().toISOString().slice(0, 10);
+    const prev = rec.progress.ext?.bridgeDailyClaimed || { date: '', amount: 0 };
+    const claimedToday = prev.date === today ? (prev.amount || 0) : 0;
+    if (claimedToday + net > ECON.TOKEN_WITHDRAW_DAILY_CAP) {
+      err(c, `Daily token claim cap reached: ${claimedToday}/${ECON.TOKEN_WITHDRAW_DAILY_CAP} tokens today.`, 'cap');
+      return;
+    }
+    rec.progress.ext = rec.progress.ext || {};
+    rec.progress.ext.bridgeDailyClaimed = { date: today, amount: claimedToday + net };
+
     rec.progress.tokenPoints = (rec.progress.tokenPoints | 0) - amount;
     rec.progress.wayfarerTokens = (rec.progress.wayfarerTokens | 0) + net;
     rec.progress.gold = (rec.progress.gold | 0) - fee;
@@ -734,7 +758,103 @@ export function install(room) {
     sync(c, rec, 'token-claim', delta);
     note(c, `Claimed ${net} Wayfarer Token${net !== 1 ? 's' : ''} (fee ${fee}g).`);
     ledger({ op: 'token-claim', ck: ckOf(p), name: p.name, amount, fee, net, rev: rec.rev });
-    try { const { recordFee } = await import('./referrals.js'); recordFee(fee); } catch { /* referrals not loaded */ }
+    const treasuryFee = Math.floor(fee / 2);
+    const referralBonus = fee - treasuryFee; // the remainder so fee = treasuryFee + referralBonus
+    try {
+      const refs = await import('./referrals.js');
+      refs.recordFee(treasuryFee);
+      const bonus = refs.payReferralTokenBonus(ckOf(p), referralBonus, amount);
+      if (bonus > 0) note(c, `Your referrer earned ${bonus} Wayfarer Token bonus.`);
+    } catch { /* referrals not loaded */ }
+    await commit({ deviceKeys: [dkOf(p)] });
+  });
+
+  // ── token-spend (Wayfarer Token sinks) ──
+  on('token-spend', async (c, p, m) => {
+    const rec = requireRec(c, p, m); if (!rec) return;
+    const amount = goldAmount(m.amount);
+    if (!amount || amount <= 0) { err(c, 'Enter a positive number of tokens to spend.', 'invalid'); return; }
+    const type = String(m.type || '');
+    if (!ECON.TOKEN_SINK_TYPES.has(type)) { err(c, 'That is not a token sink.', 'invalid'); return; }
+    if ((rec.progress.wayfarerTokens | 0) < amount) { err(c, `You only have ${rec.progress.wayfarerTokens | 0} Wayfarer Tokens.`, 'missing'); return; }
+
+    const ext = rec.progress.ext || (rec.progress.ext = {});
+    const sinksState = { stashTabs: Math.max(0, Math.min(5, Math.floor(Number(ext.stashTabs)) || 0)) };
+    let ok = false, note = '';
+
+    if (type === 'orb-upgrade') {
+      const item = String(m.item || '');
+      if (!['wayfarer_orb_plus', 'golden_orb_plus'].includes(item)) { err(c, 'Invalid orb upgrade.', 'invalid'); return; }
+      // require owning the base orb; the upgrade is the reward (not consumed)
+      const base = item === 'wayfarer_orb_plus' ? 'wayfarer_orb' : 'golden_orb';
+      if (!hasItems(rec.progress.inventory, [base])) { err(c, `You need a ${base} to upgrade.`, 'missing'); return; }
+      if (hasItems(rec.progress.inventory, [item])) { err(c, 'You already own this upgrade.', 'invalid'); return; }
+      const cost = item === 'wayfarer_orb_plus' ? 50 : 150;
+      if (amount !== cost) { err(c, `This upgrade costs ${cost} tokens.`, 'invalid'); return; }
+      ext[item] = (ext[item] || 0) + 1;
+      ok = true; note = `Upgraded to ${item.replace(/_/g, ' ')}!`;
+    } else if (type === 'revive') {
+      const cost = 25;
+      if (amount !== cost) { err(c, `Premium revive costs ${cost} tokens.`, 'invalid'); return; }
+      ok = true; note = 'Premium revive purchased. Stand up and fight!';
+    } else if (type === 'pet-rename') {
+      const cost = 10;
+      if (amount !== cost) { err(c, `Pet rename costs ${cost} tokens.`, 'invalid'); return; }
+      const name = cleanPetName(m.name);
+      if (!name) { err(c, 'Pet name must be 1-24 characters.', 'invalid'); return; }
+      ok = true; note = `Pet renamed to ${name}.`;
+    } else if (type === 'stash-tab') {
+      const tabs = sinksState.stashTabs;
+      if (tabs >= 5) { err(c, 'You already have the maximum stash tabs.', 'invalid'); return; }
+      const cost = 100 * (tabs + 1);
+      if (amount !== cost) { err(c, `Next stash tab costs ${cost} tokens.`, 'invalid'); return; }
+      ext.stashTabs = tabs + 1;
+      sinksState.stashTabs = ext.stashTabs;
+      ok = true; note = `Stash tab ${ext.stashTabs}/5 unlocked!`;
+    }
+
+    if (!ok) { err(c, 'That token spend could not be completed.', 'invalid'); return; }
+
+    rec.progress.wayfarerTokens = (rec.progress.wayfarerTokens | 0) - amount;
+    rec.rev = (rec.rev || 0) + 1;
+    rec.savedAt = now(); rec.progress.savedAt = rec.savedAt;
+    saveChar(p.token, p.name, rec);
+    ledger({ op: 'token-spend', ck: ckOf(p), name: p.name, type, amount, rev: rec.rev });
+    c.send('token-spend-ok', {
+      type, amount,
+      wayfarerTokens: rec.progress.wayfarerTokens,
+      sinksState,
+      petId: type === 'pet-rename' ? String(m.petId || '') : undefined,
+      name: type === 'pet-rename' ? cleanPetName(m.name) : undefined,
+    });
+    note(c, note);
+    await commit({ deviceKeys: [dkOf(p)] });
+  });
+
+  // ── token-stake (mock/devnet holder preview) ──
+  // Lock Wayfarer Tokens in-game for a fixed term to earn drop-rate perks.
+  // This is a server-side preview: tokens are deducted from the character's
+  // wayfarerTokens balance and held in progress.ext.stake until lockedUntil.
+  on('token-stake', async (c, p, m) => {
+    const rec = requireRec(c, p, m); if (!rec) return;
+    const tier = (m.tier || '').toLowerCase();
+    const meta = STAKE_TIERS[tier];
+    if (!meta) { err(c, 'Invalid stake tier (bronze/silver/gold).', 'invalid'); return; }
+    const amount = goldAmount(m.amount);
+    if (amount !== meta.amount) { err(c, `${tier} stake requires exactly ${meta.amount} tokens.`, 'invalid'); return; }
+    const cur = rec.progress.wayfarerTokens | 0;
+    if (cur < amount) { err(c, `You need ${amount} Wayfarer Tokens to ${tier}-stake.`, 'missing'); return; }
+    const ext = rec.progress.ext || (rec.progress.ext = {});
+    if (ext.stake && ext.stake.amount > 0 && ext.stake.lockedUntil > Date.now()) { err(c, 'You already have an active stake.', 'invalid'); return; }
+    rec.progress.wayfarerTokens = cur - amount;
+    ext.stake = { amount, lockedUntil: now() + meta.days * 86400000, tier, dropRate: meta.dropRate };
+    rec.rev = (rec.rev || 0) + 1;
+    rec.savedAt = now(); rec.progress.savedAt = rec.savedAt;
+    saveChar(p.token, p.name, rec);
+    const delta = { wayfarerTokens: -amount, stake: { ...ext.stake } };
+    sync(c, rec, 'token-stake', delta);
+    note(c, `${tier.charAt(0).toUpperCase() + tier.slice(1)} stake locked: ${amount} tokens for ${meta.days} days (+${Math.round(meta.dropRate * 100)}% drop rate).`);
+    ledger({ op: 'token-stake', ck: ckOf(p), name: p.name, tier, amount, lockedUntil: ext.stake.lockedUntil, rev: rec.rev });
     await commit({ deviceKeys: [dkOf(p)] });
   });
 }

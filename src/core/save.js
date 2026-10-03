@@ -110,6 +110,11 @@ export function normalizeExtras(raw) {
     visited: flagMap(r.visited),
     lore: flagMap(r.lore),
     buyback: Array.isArray(r.buyback) ? r.buyback.filter((b) => b && typeof b.id === 'string').slice(0, 10).map((b) => ({ kind: b.kind === 'mat' ? 'mat' : 'gear', id: b.id, n: Math.max(1, Math.floor(b.n) || 1), price: Math.max(0, Math.floor(b.price) || 0) })) : [],
+    stashTabs: Math.max(0, Math.min(5, Math.floor(Number(r.stashTabs)) || 0)),
+    bridgeDailyClaimed: isObj(r.bridgeDailyClaimed) ? {
+      date: String(r.bridgeDailyClaimed.date || '').slice(0, 10),
+      amount: Math.max(0, Math.floor(Number(r.bridgeDailyClaimed.amount)) || 0),
+    } : { date: '', amount: 0 },
     pets: isObj(r.pets) ? {
       unlocked: !!r.pets.unlocked,
       active: Math.max(0, Math.floor(Number(r.pets.active)) || 0),

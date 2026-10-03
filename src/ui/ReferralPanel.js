@@ -1,5 +1,6 @@
 import { referral } from '../net/referralNet.js';
 import { econ } from '../net/economyNet.js';
+import { stakeTokens, getStakeTierMeta } from '../net/economyNet.js';
 import { net } from '../net/NetworkManager.js';
 import { bus, Events } from '../core/events.js';
 import { loadProgress } from '../core/save.js';
@@ -44,8 +45,28 @@ function injectCss() {
 #wf-social .ref-status .ref-dim{color:#4a5a7a}
 #wf-social .ref-note{font-size:8px;color:${PAL.muted};line-height:1.6;padding:0 12px 8px;text-align:center}
 #wf-social .ref-lev{color:${PAL.cyan}}
+#wf-social .ref-hold{margin:4px 8px 2px;padding:8px;background:#0d1420;border:1px solid #1c2c44;text-align:center}
+#wf-social .ref-hold button{background:${PAL.purple};color:${PAL.white};border:1px solid ${PAL.purple};font-size:9px;padding:4px 10px}
+#wf-social .ref-hold button:hover{background:${PAL.green};border-color:${PAL.green}}
+#wf-social .ref-token-bonus{color:${PAL.green};font-weight:bold}
+#wf-social .holder-modal{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:100;background:${PAL.bg};border:2px solid ${PAL.purple};box-shadow:0 0 24px #9945FF55;padding:12px;width:min(360px,calc(100vw - 24px));font:9px "Silkscreen",monospace;color:${PAL.white}}
+#wf-social .holder-modal h3{color:${PAL.green};margin:0 0 8px;font-size:11px}
+#wf-social .holder-modal .tier{display:flex;justify-content:space-between;align-items:center;padding:6px;margin:4px 0;background:#0d1420;border:1px solid #1c2c44}
+#wf-social .holder-modal .tier b{color:${PAL.cyan}}
+#wf-social .holder-modal .active{border-color:${PAL.green};box-shadow:0 0 8px #14F19533}
+#wf-social .holder-modal .x{float:right;color:${PAL.muted};cursor:pointer}
+#wf-social .holder-modal .note{color:${PAL.muted};font-size:8px;line-height:1.5;margin-top:8px}
 `  ;
   document.head.appendChild(s);
+}
+
+function getStakeFromStored() {
+  try {
+    const n = window.__econ?.name || (typeof net !== 'undefined' && net.name);
+    if (!n) return null;
+    const pr = JSON.parse(localStorage.getItem(`wayfarer.progress.${n}`) || 'null');
+    return pr?.ext?.stake || null;
+  } catch { return null; }
 }
 
 export class ReferralPanel {
@@ -57,7 +78,9 @@ export class ReferralPanel {
     this.foot = el('div', 'ec-foot');
     p.append(this.body, this.foot);
     this.applied = false;
+    this.holderModal = null;
     this.offs = [
+      referral.on('token-stats', () => { if (this.isOpen) this.render(); }),
       referral.on('state', () => { if (this.isOpen) this.render(); }),
       referral.on('status', () => { if (this.isOpen) this.render(); }),
       econ.on('msg', () => { if (this.isOpen) this.render(); }),
@@ -112,6 +135,12 @@ export class ReferralPanel {
     stats.appendChild(el('div', 'ref-stat pu', `<b>${st.treasuryGold}</b><span>REWARD POOL g</span>`));
     b.appendChild(stats);
 
+    // TOKEN BONUS EARNED
+    const tokenBonus = st.tokenBonusPaid | 0;
+    const tokenRow = el('div', 'ref-hold');
+    tokenRow.innerHTML = `<div class="ref-lbl">TOKEN BONUS EARNED</div><div class="ref-token-bonus">${tokenBonus} Wayfarer Token${tokenBonus !== 1 ? 's' : ''}</div>`;
+    b.appendChild(tokenRow);
+
     // APPLY box
     const lv = this.level();
     const apply = el('div', 'ref-apply');
@@ -132,6 +161,13 @@ export class ReferralPanel {
       apply.appendChild(row);
     }
     b.appendChild(apply);
+
+    // HOLDER PERKS button
+    const holder = el('div', 'ref-hold');
+    const perksBtn = el('button', '', 'HOLDER PERKS');
+    perksBtn.addEventListener('click', () => this.openHolderModal());
+    holder.appendChild(perksBtn);
+    b.appendChild(holder);
 
     this.statusEl = el('div', 'ref-status', this.statusMsg || '');
     if (this.statusKind) this.statusEl.classList.add(this.statusKind);
@@ -175,7 +211,38 @@ export class ReferralPanel {
     this.status('Entering code…', '');
   }
 
-  destroy() { this.offs.forEach((o) => o()); this.el.remove(); }
+  openHolderModal() {
+    if (this.holderModal) { this.holderModal.remove(); this.holderModal = null; }
+    const cfg = econ.cfg || {};
+    const tiers = cfg.stakeTiers || {
+      bronze: { amount: 100, days: 7, dropRate: 0.05 },
+      silver: { amount: 500, days: 14, dropRate: 0.10 },
+      gold:   { amount: 2000, days: 30, dropRate: 0.15 },
+    };
+    const p = econ.player();
+    const stake = p?.ext?.stake || (econ.usable && getStakeFromStored());
+    const now = Date.now();
+    const active = stake && stake.lockedUntil > now;
+    const modal = el('div', 'holder-modal');
+    modal.innerHTML = `<div class="x">X</div><h3>HOLDER PERKS (PREVIEW)</h3>`;
+    const x = modal.querySelector('.x');
+    x.addEventListener('click', () => { modal.remove(); this.holderModal = null; });
+    for (const [tier, meta] of Object.entries(tiers)) {
+      const row = el('div', `tier${active && stake.tier === tier ? ' active' : ''}`);
+      const drop = Math.round(meta.dropRate * 100);
+      row.innerHTML = `<div><b>${tier.toUpperCase()}</b><br><span class="ref-dim">${meta.amount} tokens · ${meta.days} days · +${drop}% drops</span></div><button data-tier="${tier}">STAKE</button>`;
+      const btn = row.querySelector('button');
+      if (active) { btn.textContent = stake.tier === tier ? 'LOCKED' : 'WAIT'; btn.disabled = true; }
+      else { btn.addEventListener('click', () => { stakeTokens(tier, meta.amount); this.status(`Staking ${meta.amount} tokens for ${tier}…`, ''); }); }
+      modal.appendChild(row);
+    }
+    const note = el('div', 'ref-note', `Mock/devnet preview: locked tokens are deducted from your in-game Wayfarer Token balance and held server-side until unlocked. This is not an on-chain stake yet.`);
+    modal.appendChild(note);
+    this.el.parentNode.appendChild(modal);
+    this.holderModal = modal;
+  }
+
+  destroy() { this.offs.forEach((o) => o()); if (this.holderModal) { this.holderModal.remove(); } this.el.remove(); }
 }
 
 // Optional HUD entry point for the parent to mount in UIScene (one line):

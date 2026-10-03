@@ -1,5 +1,6 @@
 import { Connection, PublicKey, clusterApiUrl } from '@solana/web3.js';
 import { input } from '../core/input.js';
+import { net } from '../net/NetworkManager.js';
 import { bus, Events } from '../core/events.js';
 import { loadProfile, saveProfile } from '../core/save.js';
 
@@ -176,6 +177,17 @@ export class WalletPanel {
     saveProfile(prof);
   }
 
+  activeStake() {
+    try {
+      const n = window.__econ?.name || (typeof net !== 'undefined' && net?.name);
+      if (!n) return null;
+      const pr = JSON.parse(localStorage.getItem(`wayfarer.progress.${n}`) || 'null');
+      const s = pr?.ext?.stake;
+      if (s && s.lockedUntil > Date.now()) return s;
+    } catch { /* ignore */ }
+    return null;
+  }
+
   refresh() {
     if (!this.statusT?.active) return;
     if (this.netT?.active) this.netT.setText((this.network || 'devnet').toUpperCase());
@@ -183,7 +195,9 @@ export class WalletPanel {
       const addr = this.wallet.addr;
       const short = addr.slice(0, 6) + '...' + addr.slice(-4);
       const bal = this.balance !== null ? (this.balance / 1e9).toFixed(4) + ' SOL' : '...';
-      this.statusT.setText(`${short}\nBalance: ${bal}\nNetwork: ${NETWORKS[this.network]?.name || this.network}`);
+      const stake = this.activeStake();
+      const stakeLine = stake ? `Stake: ${stake.tier.toUpperCase()} (+${Math.round(stake.dropRate * 100)}% drops)` : '';
+      this.statusT.setText(`${short}\nBalance: ${bal}\nNetwork: ${NETWORKS[this.network]?.name || this.network}${stakeLine ? '\n' + stakeLine : ''}`);
       this.statusT.setColor('#14f195');
       this.titleT.setText('\uD83D\uDD10 WALLET CONNECTED');
     } else {

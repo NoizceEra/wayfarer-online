@@ -36,7 +36,8 @@ class EconNet {
     this.mailUnread = 0;
     this.guildTag = '';
     this.guild = null;        // last guild-info payload
-    this.cfg = { bag: BAG_SIZE, tradeItems: 8, tax: 0.05, hours: [2, 8, 24, 48], postage: 5, mailItems: 5, priceMax: 1_000_000 };
+    this.cfg = { bag: BAG_SIZE, tradeItems: 8, tax: 0.05, hours: [2, 8, 24, 48], postage: 5, mailItems: 5, priceMax: 1_000_000, tokenWithdrawDailyCap: 500 };
+    this.sinksState = { dailyClaimed: 0, stashTabs: 0 };
     this.worldFn = null;
     if (typeof window === 'undefined') return;
     net.onAttach((room) => this.attach(room));
@@ -76,6 +77,7 @@ class EconNet {
     });
     on('econ-state', (m) => this.onState(m));
     on('econ-sync', (m) => this.onSync(m));
+    on('token-spend-ok', (m) => this.onTokenSpendOk(m));
     on('econ-msg', (m) => { bus.emit(Events.SYSTEM, m.text); this.emit('msg', m); });
     on('econ-error', (m) => { bus.emit(Events.SYSTEM, m.msg || 'That did not work.'); this.emit('error', m); });
     on('trade-result', (m) => {
@@ -100,6 +102,7 @@ class EconNet {
   onState(m) {
     this.hasSave = !!m.hasSave;
     if (m.cfg) this.cfg = { ...this.cfg, ...m.cfg };
+    if (m.sinksState) this.sinksState = { ...this.sinksState, ...m.sinksState };
     this.mailUnread = m.mailUnread | 0;
     this.guildTag = m.guild || '';
     if (m.hasSave) {
@@ -119,6 +122,7 @@ class EconNet {
     if (m.delta) { this.applyDelta(m.delta); this.setRev(m.rev); }
     else if (m.rev !== this.rev) { this.replaceFrom(m, m.stale ? 'Bag re-synced with the server.' : null); this.setRev(m.rev); }
     else if (m.stale) this.world()?.saveNow?.(); // our state is current: re-upload progress
+    if (m.sinksState) this.sinksState = { ...this.sinksState, ...m.sinksState };
     this.emit('sync', m);
   }
 
@@ -130,6 +134,7 @@ class EconNet {
       p.gold = Math.max(0, (p.gold | 0) + (d.gold | 0));
       if (d.tokenPoints !== undefined) p.tokenPoints = Math.max(0, (p.tokenPoints | 0) + d.tokenPoints);
       if (d.wayfarerTokens !== undefined) p.wayfarerTokens = Math.max(0, (p.wayfarerTokens | 0) + d.wayfarerTokens);
+      if (d.stake) { p.ext ||= {}; p.ext.stake = d.stake; }
       for (const id of d.remove || []) {
         const i = p.inventory.indexOf(id);
         if (i >= 0) { p.inventory.splice(i, 1); continue; }
@@ -143,6 +148,7 @@ class EconNet {
         pr.gold = Math.max(0, (pr.gold | 0) + (d.gold | 0));
         if (d.tokenPoints !== undefined) pr.tokenPoints = Math.max(0, (pr.tokenPoints | 0) + d.tokenPoints);
         if (d.wayfarerTokens !== undefined) pr.wayfarerTokens = Math.max(0, (pr.wayfarerTokens | 0) + d.wayfarerTokens);
+        if (d.stake) { pr.ext ||= {}; pr.ext.stake = d.stake; }
         for (const id of d.remove || []) { const i = pr.inventory.indexOf(id); if (i >= 0) pr.inventory.splice(i, 1); }
         for (const id of d.add || []) pr.inventory.push(id);
       });
@@ -195,6 +201,53 @@ class EconNet {
     if (sync) this.syncSave();
     return net.send(type, rev ? { ...payload, rev: this.rev ?? 0 } : payload);
   }
+
+  spendTokens(type, amount, meta = {}) {
+    if (!this.online) { bus.emit(Events.SYSTEM, 'Play Online to spend Wayfarer Tokens.'); return false; }
+    const n = Math.max(0, Math.floor(Number(amount) || 0));
+    if (n <= 0) { bus.emit(Events.SYSTEM, 'Enter a positive token amount.'); return false; }
+    return this.send('token-spend', { type, amount: n, ...meta }, { rev: true, sync: true });
+  }
+
+  onTokenSpendOk(m) {
+    if (!m || !m.type) return;
+    const p = this.player();
+    if (m.wayfarerTokens !== undefined) {
+      if (p) p.wayfarerTokens = Math.max(0, m.wayfarerTokens | 0);
+      else this.patchStored((pr) => { pr.wayfarerTokens = Math.max(0, m.wayfarerTokens | 0); });
+    }
+    if (m.sinksState) this.sinksState = { ...this.sinksState, ...m.sinksState };
+    this.afterChange();
+    // Let feature modules react (revive, pet rename, stash expansion).
+    bus.emit(Events.SYSTEM, `Spent ${m.amount} token${m.amount !== 1 ? 's' : ''} on ${m.type}.`);
+    if (m.type === 'pet-rename') {
+      const panel = window.__socialUI?.petPanel;
+      if (panel?.renameWithToken && m.petId && m.name) {
+        const roster = panel.roster;
+        const pet = roster.find((x) => x.id === m.petId || x.slot === m.petId);
+        if (pet) panel.renameWithToken(pet, m.name);
+      }
+    }
+    if (m.type === 'stash-tab') {
+      this.patchStored((pr) => { pr.ext = pr.ext || {}; pr.ext.stashTabs = Math.max(0, m.sinksState?.stashTabs | 0); });
+    }
+    if (m.type === 'orb-upgrade' && m.item) {
+      this.patchStored((pr) => { pr.ext = pr.ext || {}; pr.ext[m.item] = (pr.ext[m.item] || 0) + 1; });
+    }
+  }
+}
+
+export function stakeTokens(tier, amount) {
+  if (!econ.usable) { bus.emit(Events.SYSTEM, 'Play Online to stake tokens.'); return false; }
+  return econ.send('token-stake', { tier, amount }, { rev: true, sync: true });
+}
+
+export function getStakeTierMeta() {
+  return econ.cfg?.stakeTiers || {
+    bronze: { amount: 100, days: 7, dropRate: 0.05 },
+    silver: { amount: 500, days: 14, dropRate: 0.10 },
+    gold: { amount: 2000, days: 30, dropRate: 0.15 },
+  };
 }
 
 export const econ = new EconNet();

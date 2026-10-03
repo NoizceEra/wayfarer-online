@@ -128,6 +128,25 @@ export class PetPanel {
     const box = s.add.rectangle(x + w / 2, y + h / 2, w, h, 0x10140f, 0.9).setStrokeStyle(2, 0x4a3a2a);
     c.add(box);
 
+    // Add a small token-rename button in the detail pane.
+    if (p) {
+      const renameBtn = s.add.text(x + w - 10, y + 10, '\u270e', T(12, '#ffe07a')).setOrigin(1, 0).setInteractive({ useHandCursor: true });
+      renameBtn.setText('Rename (10 tokens)');
+      renameBtn.setFontSize('8px');
+      renameBtn.on('pointerdown', () => {
+        audio.play('ui', 0.4);
+        const input = this.nameInput;
+        const name = input?.value.trim();
+        if (!name || name.length > 24) { bus.emit(Events.SYSTEM, 'Pet name must be 1-24 characters.'); return; }
+        // Fire-and-forget spend; server will confirm. On success we apply locally
+        // through the token-spend-ok handler in economyNet.
+        import('../net/economyNet.js').then(({ econ }) => {
+          econ.spendTokens('pet-rename', 10, { petId: p.id || p.slot, name });
+        });
+      });
+      c.add(renameBtn);
+    }
+
     if (!p) {
       c.add(s.add.text(x + w / 2, y + h / 2, 'Select a pet to manage\n(nickname, release, set active).', T(9, '#6f6a5a', { align: 'center' })).setOrigin(0.5));
       return;
@@ -211,10 +230,20 @@ export class PetPanel {
 
   _rename(p, name) {
     if (!name) return;
+    // Token rename: if the name came from the premium rename flow it is already
+    // paid; otherwise this is the free inline rename from the panel input.
+    const free = !this._renamePaid;
+    if (free && name === (p.name || p.id)) return;
     p.name = name;
+    this._renamePaid = false;
     this._persist();
     this.build();
     bus.emit(Events.SYSTEM, `Pet renamed to ${name}.`);
+  }
+
+  renameWithToken(p, name) {
+    this._renamePaid = true;
+    this._rename(p, name);
   }
 
   _setActive(slot) {
