@@ -1,0 +1,42 @@
+name: Anchor build
+
+# The Solana program cannot be compile-verified on the Windows dev host (the
+# MSVC Windows SDK import libs, e.g. kernel32.lib, are not installed there, so
+# no host Rust link can succeed). This workflow is the authoritative compile
+# gate for programs/wayfarer_token: it builds the SBF artifact on Linux.
+
+on:
+  push:
+    paths:
+      - 'programs/**'
+      - '.github/workflows/anchor-build.yml'
+  pull_request:
+    paths:
+      - 'programs/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Solana toolchain (stable)
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+
+      - name: Show toolchain versions
+        run: |
+          solana --version
+          cargo-build-sbf --version
+
+      - name: Build program
+        working-directory: programs/wayfarer_token
+        run: cargo-build-sbf --manifest-path programs/programs-wayfarer-token/Cargo.toml
+
+      - name: Report artifact
+        working-directory: programs/wayfarer_token
+        run: |
+          ls -la target/deploy/
+          test -f target/deploy/programs_wayfarer_token.so
