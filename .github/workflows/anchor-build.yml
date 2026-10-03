@@ -36,8 +36,11 @@ jobs:
 
       - name: Install Solana toolchain (stable)
         run: |
-          if [ ! -d "$HOME/.local/share/solana/install/active_release/bin" ]; then
-            sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
+          if [ -d "$HOME/.local/share/solana/install/active_release/bin" ]; then
+            echo "Solana toolchain found in cache."
+          else
+            echo "Downloading Solana installer..."
+            curl -sSfL https://release.anza.xyz/stable/install | sh
           fi
           echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
 
