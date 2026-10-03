@@ -18,12 +18,27 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
+      - name: Cache Solana + Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local/share/solana
+            ~/.cargo/registry
+            ~/.cargo/git
+            programs/wayfarer_token/target
+          key: ${{ runner.os }}-solana-${{ hashFiles('programs/wayfarer_token/Cargo.lock', 'programs/wayfarer_token/programs/programs-wayfarer-token/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-solana-
+
       - name: Install Solana toolchain (stable)
         run: |
-          sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
+          if [ ! -d "$HOME/.local/share/solana/install/active_release/bin" ]; then
+            sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
+          fi
           echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
 
       - name: Show toolchain versions
