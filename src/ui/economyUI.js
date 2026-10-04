@@ -19,6 +19,7 @@ import SeasonSystem from '../systems/seasonSystem.js';
 import GuildSystem from '../systems/guildSystem.js';
 import { TokenSinkPanel } from './TokenSinkPanel.js';
 import { TokenBridgePanel } from './TokenBridgePanel.js';
+import { LeaderboardPanel } from './LeaderboardPanel.js';
 import { el, setIconScene } from './econDom.js';
 import { socialRoot } from './socialDom.js';
 
@@ -83,7 +84,8 @@ export function installEconomyUI(uiScene) {
   const partyFinderP = new PartyFinderPanel();
   const sinksP = new TokenSinkPanel();
   const bridgeP = new TokenBridgePanel();
-  const anyOpen = () => tradeP.isOpen || escrowP.isOpen || market.isOpen || mail.isOpen || claimP.isOpen || referralP.isOpen || partyFinderP.isOpen || sinksP.isOpen || bridgeP.isOpen || lfgPanel.visible || seasonPanel.visible || guildPanel.visible;
+  const leaderboardPanel = new LeaderboardPanel();
+  const anyOpen = () => tradeP.isOpen || escrowP.isOpen || market.isOpen || mail.isOpen || claimP.isOpen || referralP.isOpen || partyFinderP.isOpen || sinksP.isOpen || bridgeP.isOpen || leaderboardPanel.visible || lfgPanel.visible || seasonPanel.visible || guildPanel.visible;
   const offs = [
     input.on('mail', () => { market.close(); escrowP.close(); tradeP.close(); sinksP.close(); bridgeP.close(); mail.toggle(); return true; }, { scene: uiScene }),
     input.addCloser({ id: 'economy', priority: 960, isOpen: anyOpen, close: () => { if (mail.isOpen) mail.close(); else if (market.isOpen) market.close(); else if (escrowP.isOpen) escrowP.close(); else if (referralP.isOpen) referralP.close(); else if (partyFinderP.isOpen) partyFinderP.close(); else if (sinksP.isOpen) sinksP.close(); else if (bridgeP.isOpen) bridgeP.close(); else if (lfgPanel.visible) lfgPanel.close(); else if (seasonPanel.visible) seasonPanel.close(); else if (guildPanel.visible) guildPanel.close(); else if (claimP.isOpen) claimP.close(); else tradeP.close(); }, scene: uiScene }),
@@ -100,6 +102,7 @@ export function installEconomyUI(uiScene) {
       else if (m?.panel === 'lfg') { market.close(); tradeP.close(); escrowP.close(); mail.close(); claimP.close(); sinksP.close(); bridgeP.close(); lfgPanel.open(); }
       else if (m?.panel === 'season') { market.close(); tradeP.close(); escrowP.close(); mail.close(); claimP.close(); sinksP.close(); bridgeP.close(); lfgPanel.close(); seasonPanel.open(); }
       else if (m?.panel === 'guild') { market.close(); tradeP.close(); escrowP.close(); mail.close(); claimP.close(); sinksP.close(); bridgeP.close(); lfgPanel.close(); seasonPanel.close(); guildPanel.open(); }
+      else if (m?.panel === 'leaderboard') { market.close(); tradeP.close(); escrowP.close(); mail.close(); claimP.close(); sinksP.close(); bridgeP.close(); lfgPanel.close(); seasonPanel.close(); guildPanel.close(); leaderboardPanel.open(); }
     }),
     econ.on('mail-unread', drawBadge), econ.on('state', drawBadge), econ.on('status', drawBadge),
     bus.on(Events.NET_STATUS, drawBadge),
@@ -109,9 +112,9 @@ export function installEconomyUI(uiScene) {
   installCommands(mail);
 
   const api = {
-    trade: tradeP, escrow: escrowP, market, mail, claim: claimP, referral: referralP, partyFinder: partyFinderP, sinks: sinksP, bridge: bridgeP, anyOpen,
+    trade: tradeP, escrow: escrowP, market, mail, claim: claimP, referral: referralP, partyFinder: partyFinderP, sinks: sinksP, bridge: bridgeP, leaderboardPanel, anyOpen,
     lfgPanel, seasonPanel, guildPanel, seasonSystem, guildSystem,
-    destroy() { offs.forEach((o) => { try { o(); } catch { /* ignore */ } }); tradeP.destroy(); escrowP.destroy(); market.destroy(); mail.destroy(); claimP.destroy(); referralP.destroy(); partyFinderP.destroy(); sinksP.destroy(); bridgeP.destroy(); lfgPanel.destroy(); seasonPanel.destroy(); guildPanel.destroy(); dungeonSystem.destroy(); seasonSystem.destroy(); guildSystem.destroy(); badge.remove(); refCta.destroy(); },
+    destroy() { offs.forEach((o) => { try { o(); } catch { /* ignore */ } }); tradeP.destroy(); escrowP.destroy(); market.destroy(); mail.destroy(); claimP.destroy(); referralP.destroy(); partyFinderP.destroy(); sinksP.destroy(); bridgeP.destroy(); leaderboardPanel.destroy(); lfgPanel.destroy(); seasonPanel.destroy(); guildPanel.destroy(); dungeonSystem.destroy(); seasonSystem.destroy(); guildSystem.destroy(); badge.remove(); refCta.destroy(); },
   };
   uiScene.events.once('shutdown', () => api.destroy());
   window.__econUI = api; // debug / automated tests
@@ -167,6 +170,11 @@ function installCommands(mail) {
       }
       case 'season': case 'pass': return window.__econUI?.seasonPanel?.visible ? window.__econUI.seasonPanel.close() : window.__econUI.seasonPanel?.open();
       case 'guild': return window.__econUI?.guildPanel?.visible ? window.__econUI.guildPanel.close() : window.__econUI.guildPanel?.open();
+      case 'leaderboard': case 'lb': {
+        const panel = window.__econUI?.leaderboardPanel;
+        if (!panel) return say('Leaderboard panel not ready.');
+        return panel.visible ? panel.close() : panel.open();
+      }
       case 'boss': {
         const wb = uiScene.worldBossAlert;
         if (wb && wb.visible) wb.close();
@@ -196,7 +204,7 @@ function installCommands(mail) {
       }
       case 'help': case '?':
         orig(raw);
-        return say(`Economy: /trade name · /mail [name] · /claim · /sinks · /bridge · /refer · /finder · /lfg · /season · /guild · /boss · /pet · /petduel name · /pda · /pdd · /ginvite /gaccept /gkick /gpromote /gdemote /gleader /gmotd /gdeposit /gwithdraw /ginfo. Mailbox: ${input.labelFor('mail')}. Market: talk to the notice-board clerks.`);
+        return say(`Economy: /trade name · /mail [name] · /claim · /sinks · /bridge · /refer · /finder · /lfg · /season · /guild · /leaderboard · /boss · /pet · /petduel name · /pda · /pdd · /ginvite /gaccept /gkick /gpromote /gdemote /gleader /gmotd /gdeposit /gwithdraw /ginfo. Mailbox: ${input.labelFor('mail')}. Market: talk to the notice-board clerks.`);
       default: return orig(raw);
     }
   };

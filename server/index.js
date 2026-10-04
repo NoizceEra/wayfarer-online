@@ -54,6 +54,10 @@ let guilds = null;
 try { guilds = await import('./guilds.cjs'); } catch (e) {
   if (e?.code !== 'ERR_MODULE_NOT_FOUND') log.error('guilds.cjs failed to load', { err: e.message });
 }
+let leaderboard = null;
+try { leaderboard = await import('./leaderboard.js'); } catch (e) {
+  if (e?.code !== 'ERR_MODULE_NOT_FOUND') log.error('leaderboard.js failed to load', { err: e.message });
+}
 
 await initSqlite();
 initStore();
@@ -143,6 +147,7 @@ try { partyFinder?.routes?.(app); } catch (e) { log.error('partyFinder.routes fa
 try { referrals?.routes?.(app); } catch (e) { log.error('referrals.routes failed', { err: e.message }); }
 try { dungeonMatch?.routes?.(app); } catch (e) { log.error('dungeonMatch.routes failed', { err: e.message }); }
 try { season?.routes?.(app); } catch (e) { log.error('season.routes failed', { err: e.message }); }
+try { leaderboard?.routes?.(app); } catch (e) { log.error('leaderboard.routes failed', { err: e.message }); }
 
 const httpServer = http.createServer(app);
 const gameServer = new Server({
