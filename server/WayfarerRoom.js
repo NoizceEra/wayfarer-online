@@ -136,9 +136,12 @@ export class WayfarerRoom extends Room {
     const moduleTypes = new Set([
       'party-invite', 'party-accept', 'party-decline', 'party-leave', 'party-kick', 'party-promote', 'party-msg', 'party-xp', 'party-status',
       'whisper', 'schat', 'emote', 'presence', 'who', 'guild-create', 'guild-join', 'guild-leave', 'guild-rank', 'guild-motd', 'guild-invite',
+      'guild:create', 'guild:leave', 'guild:invite', 'guild:acceptInvite', 'guild:declineInvite', 'guild:promote', 'guild:demote', 'guild:kick', 'guild:upgradeLevel', 'guild:upgradePerk', 'guild:contribute', 'guild:state', 'guild:created', 'guild:left', 'guild:inviteSent', 'guild:joined', 'guild:inviteAccepted', 'guild:promoted', 'guild:demoted', 'guild:kicked', 'guild:upgraded', 'guild:perkUpgraded', 'guild:contributed', 'guild:error',
       'trade-offer', 'trade-respond', 'trade-done', 'trade-sent',
       'duel-challenge', 'duel-accept', 'duel-decline', 'duel-start', 'duel-end', 'pvp-hit',
       'pet-duel', 'economy', 'mail', 'market', 'referral', 'world-boss', 'social-error',
+      'season:getState', 'season:earnXp', 'season:claim', 'season:upgradePremium', 'season:state', 'season:xp', 'season:claimed', 'season:premium', 'season:error',
+      'lfg:queue', 'lfg:cancel', 'lfg:accept', 'lfg:queued', 'lfg:waiting', 'lfg:match', 'dungeon:enter', 'dungeon:wave', 'dungeon:complete', 'dungeon:match',
     ]);
     this.onMessage('*', (client, type, m) => {
       STATS.msgsIn++;

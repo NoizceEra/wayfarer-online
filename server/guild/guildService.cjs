@@ -140,10 +140,15 @@ class GuildService {
       }
     };
 
-    room.onMessage('guild:create', makeHandler((client, msg) => this.handleCreate(client.sessionId, client.playerName || client.sessionId, msg)));
+    const playerName = (sid) => {
+      const p = room.players?.get(sid);
+      return p?.name || sid;
+    };
+
+    room.onMessage('guild:create', makeHandler((client, msg) => this.handleCreate(client.sessionId, playerName(client.sessionId), msg)));
     room.onMessage('guild:leave', makeHandler((client) => this.handleLeave(client.sessionId)));
     room.onMessage('guild:invite', makeHandler((client, msg) => this.handleInvite(client.sessionId, msg)));
-    room.onMessage('guild:acceptInvite', makeHandler((client, msg) => this.handleAcceptInvite(client.sessionId, client.playerName || client.sessionId, msg)));
+    room.onMessage('guild:acceptInvite', makeHandler((client, msg) => this.handleAcceptInvite(client.sessionId, playerName(client.sessionId), msg)));
     room.onMessage('guild:declineInvite', makeHandler((client, msg) => this.handleDeclineInvite(client.sessionId, msg)));
     room.onMessage('guild:promote', makeHandler((client, msg) => this.handlePromote(client.sessionId, msg)));
     room.onMessage('guild:demote', makeHandler((client, msg) => this.handleDemote(client.sessionId, msg)));

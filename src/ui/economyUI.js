@@ -11,7 +11,6 @@ import { renderGuildTab, answerInvite } from './GuildTab.js';
 import { ClaimPanel } from './ClaimPanel.js';
 import { ReferralPanel, mountReferralCta } from './ReferralPanel.js';
 import { PartyFinderPanel } from './PartyFinderPanel.js';
-import { WorldBossAlert } from './WorldBossAlert.js';
 import LFGPanel from './LFGPanel.js';
 import SeasonPanel from './SeasonPanel.js';
 import GuildPanel from './GuildPanel.js';
@@ -56,9 +55,22 @@ export function installEconomyUI(uiScene) {
   const claimP = new ClaimPanel();
 
   // Feature systems wired through economy UI slash commands and scene integration.
+  const onceAttach = (handler) => {
+    let off = null;
+    let attached = false;
+    const hook = (room) => {
+      if (attached) return;
+      attached = true;
+      const h = (type, payload) => handler(type, payload);
+      room.onMessage('*', (type, payload) => h(type, payload));
+      off = () => room.onMessage('*', () => {});
+    };
+    const detach = net.onAttach(hook);
+    return () => { detach(); off?.(); };
+  };
   const dungeonSystem = new DungeonSystem(uiScene.world(), net);
-  const seasonSystem = new SeasonSystem(uiScene, { send: (t, p) => net.send(t, p), onBroadcast: (fn) => net.onAttach((room) => { const h = (type, payload) => fn(type, payload); room.onMessage('*', (type, payload) => h(type, payload)); }) });
-  const guildSystem = new GuildSystem(uiScene, { send: (t, p) => net.send(t, p), onBroadcast: (fn) => net.onAttach((room) => { const h = (type, payload) => fn(type, payload); room.onMessage('*', (type, payload) => h(type, payload)); }) });
+  const seasonSystem = new SeasonSystem(uiScene, { send: (t, p) => net.send(t, p), onBroadcast: onceAttach });
+  const guildSystem = new GuildSystem(uiScene, { send: (t, p) => net.send(t, p), onBroadcast: onceAttach });
   const cx = uiScene.scale.width / 2 / (uiScene.uiZoom || 1);
   const cy = uiScene.scale.height / 2 / (uiScene.uiZoom || 1);
   const lfgPanel = new LFGPanel(uiScene, cx, cy);
@@ -66,11 +78,7 @@ export function installEconomyUI(uiScene) {
   lfgPanel.onAccept = () => dungeonSystem.acceptMatch();
   const seasonPanel = new SeasonPanel(uiScene, cx, cy, { seasonSystem, onClaim: (tier, track) => seasonSystem.claim(tier, track), onUpgrade: () => seasonSystem.upgradePremium() });
   const guildPanel = new GuildPanel(uiScene, cx, cy, guildSystem);
-  const worldBossAlert = new WorldBossAlert(uiScene, uiScene.scale.width / 2 / (uiScene.uiZoom || 1), 110, {
-    onTeleport: () => { const w = uiScene.world(); if (w?.player) { w.player.x = 1620; w.player.y = 840; social.system('Teleported to the world boss.'); } },
-    onDismiss: () => {},
-  });
-  uiScene.worldBossAlert = worldBossAlert;
+  // WorldBossAlert is constructed once in UIScene and shared through uiScene.worldBossAlert.
   const referralP = new ReferralPanel();
   const partyFinderP = new PartyFinderPanel();
   const sinksP = new TokenSinkPanel();
@@ -102,7 +110,8 @@ export function installEconomyUI(uiScene) {
 
   const api = {
     trade: tradeP, escrow: escrowP, market, mail, claim: claimP, referral: referralP, partyFinder: partyFinderP, sinks: sinksP, bridge: bridgeP, anyOpen,
-    destroy() { offs.forEach((o) => { try { o(); } catch { /* ignore */ } }); tradeP.destroy(); escrowP.destroy(); market.destroy(); mail.destroy(); claimP.destroy(); referralP.destroy(); partyFinderP.destroy(); sinksP.destroy(); bridgeP.destroy(); lfgPanel.destroy(); seasonPanel.destroy(); guildPanel.destroy(); worldBossAlert.destroy(); dungeonSystem.destroy(); seasonSystem.destroy(); guildSystem.destroy(); badge.remove(); refCta.destroy(); },
+    lfgPanel, seasonPanel, guildPanel, seasonSystem, guildSystem,
+    destroy() { offs.forEach((o) => { try { o(); } catch { /* ignore */ } }); tradeP.destroy(); escrowP.destroy(); market.destroy(); mail.destroy(); claimP.destroy(); referralP.destroy(); partyFinderP.destroy(); sinksP.destroy(); bridgeP.destroy(); lfgPanel.destroy(); seasonPanel.destroy(); guildPanel.destroy(); dungeonSystem.destroy(); seasonSystem.destroy(); guildSystem.destroy(); badge.remove(); refCta.destroy(); },
   };
   uiScene.events.once('shutdown', () => api.destroy());
   window.__econUI = api; // debug / automated tests
@@ -151,11 +160,25 @@ function installCommands(mail) {
       case 'bridge': case 'tokenbridge': return window.__econUI?.bridge?.toggle();
       case 'refer': case 'referral': return window.__econUI?.referral?.toggle();
       case 'partyfinder': case 'finder': return window.__econUI?.partyFinder?.toggle(uiScene);
-      case 'lfg': case 'dungeon': return lfgPanel.visible ? lfgPanel.close() : lfgPanel.open();
-      case 'season': case 'pass': return seasonPanel.visible ? seasonPanel.close() : seasonPanel.open();
-      case 'guild': return guildPanel.visible ? guildPanel.close() : guildPanel.open();
-      case 'boss': return say(net.connected ? 'A world boss roams the ruins on a UTC schedule. Watch for alerts.' : 'Play Online to fight world bosses.');
-      case 'boss tp': { const w = uiScene.world(); if (w?.player) { w.player.x = 1620; w.player.y = 840; return say('Teleported to world boss area.'); } return say('No player to teleport.'); }
+      case 'lfg': case 'dungeon': {
+        const panel = window.__econUI?.lfgPanel;
+        if (!panel) return say('LFG panel not ready.');
+        return panel.visible ? panel.close() : panel.open();
+      }
+      case 'season': case 'pass': return window.__econUI?.seasonPanel?.visible ? window.__econUI.seasonPanel.close() : window.__econUI.seasonPanel?.open();
+      case 'guild': return window.__econUI?.guildPanel?.visible ? window.__econUI.guildPanel.close() : window.__econUI.guildPanel?.open();
+      case 'boss': {
+        const wb = uiScene.worldBossAlert;
+        if (wb && wb.visible) wb.close();
+        return say(net.connected ? 'World bosses spawn on a UTC schedule. Watch for alerts.' : 'Play Online to fight world bosses.');
+      }
+      case 'boss tp': {
+        const d = uiScene._worldBossData;
+        const w = uiScene.world();
+        if (w?.player && d) { w.player.x = d.x; w.player.y = d.y; return say(`Teleported to ${d.name} in ${(d.area || 'ruins').toUpperCase()}.`); }
+        if (w?.player) { w.player.x = 1620; w.player.y = 840; return say('Teleported to world boss area.'); }
+        return say('No player to teleport.');
+      }
       case 'pets': case 'pet': {
         // Toggle pet panel via the social UI if it's mounted; otherwise emit the generic event.
         const socialApi = window.__socialUI;

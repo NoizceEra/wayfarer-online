@@ -108,8 +108,9 @@ export class GuildNet extends Phaser.Events.EventEmitter {
           break;
       }
     };
-    onBroadcast(handler);
-    this.unbind = () => offBroadcast?.(handler);
+    this.unbind = onBroadcast(handler);
+    if (typeof this.unbind !== 'function') this.unbind = () => {};
+    return this.unbind;
   }
 
   createGuild(name, tag) {

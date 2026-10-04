@@ -16,3 +16,4 @@ programs/**/.anchor/
 .anchor/
 test-ledger/
 
+asset-staging/

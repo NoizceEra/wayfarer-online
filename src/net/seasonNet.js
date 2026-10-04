@@ -43,8 +43,9 @@ export default class SeasonNet extends Phaser.Events.EventEmitter {
       }
     };
 
-    onBroadcast(handler);
-    this.unbindFn = () => offBroadcast?.(handler);
+    this.unbindFn = onBroadcast(handler);
+    if (typeof this.unbindFn !== 'function') this.unbindFn = () => {};
+    return this.unbindFn;
   }
 
   sendStateRequest() {

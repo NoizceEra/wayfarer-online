@@ -35,10 +35,17 @@ export default class DungeonSystem extends EventEmitter {
     this.state = 'idle';
 
     if (this.net && typeof this.net.on === 'function') {
-      this.net.on('dungeon:match', (payload) => this.handleMatch(payload));
-      this.net.on('dungeon:enter', (payload) => this.handleEnter(payload));
-      this.net.on('dungeon:wave', (payload) => this.handleWave(payload));
-      this.net.on('dungeon:complete', (payload) => this.handleComplete(payload));
+      const types = ['dungeon:match', 'dungeon:enter', 'dungeon:wave', 'dungeon:complete', 'lfg:queued', 'lfg:waiting', 'lfg:match'];
+      for (const t of types) {
+        this.net.on(t, (payload) => {
+          if (t === 'lfg:queued') this.emit(DUNGEON_EVENTS.QUEUED, payload);
+          else if (t === 'lfg:match' || t === 'dungeon:match') { this.state = 'ready'; this.emit(DUNGEON_EVENTS.MATCH_READY, payload); }
+          else if (t === 'lfg:waiting') this.emit(DUNGEON_EVENTS.MATCH_READY, { ...payload, waiting: true });
+          else if (t === 'dungeon:enter') this.handleEnter(payload);
+          else if (t === 'dungeon:wave') this.handleWave(payload);
+          else if (t === 'dungeon:complete') this.handleComplete(payload);
+        });
+      }
     }
   }
 

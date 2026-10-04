@@ -353,9 +353,9 @@ export class UIScene extends Phaser.Scene {
       this.resizeTimer?.remove(false);
       this.equip?.destroy(); this.shop?.destroy(); this.journal?.destroy(); this.craftPanel?.destroy(); this.fishing?.destroy(); this.toast?.destroy(); this.walletPanel?.destroy();
       this.dailyPanel?.destroy(); this.dailyRewards?.destroy();
-      this.partyFinderBtn?.destroy();
+      this.partyFinderBtn?.destroy(); this.lfgBtn?.destroy(); this.seasonBtn?.destroy(); this.guildBtn?.destroy(); this.worldBossBtn?.destroy();
       this.lfgPanel?.destroy(); this.seasonPanel?.destroy(); this.guildPanel?.destroy(); this.worldBossAlert?.destroy();
-      this.dungeonSystem?.destroy?.(); this.seasonSystem?.destroy?.(); this.guildSystem?.destroy?.();
+      this.dungeonSystem?.destroy(); this.seasonSystem?.destroy(); this.guildSystem?.destroy();
     });
     // Mail unread indicator for the touch HUD
     this.offs.push(
@@ -394,8 +394,21 @@ export class UIScene extends Phaser.Scene {
 
     // ── Feature panels: LFG, season pass, guild, world boss alert ─────────────
     this.dungeonSystem = new DungeonSystem(this.world(), net);
-    this.seasonSystem = new SeasonSystem(this, { send: (t, p) => net.send(t, p), onBroadcast: (fn) => net.onAttach((room) => { const h = (type, payload) => fn(type, payload); room.onMessage('*', (type, payload) => h(type, payload)); }) });
-    this.guildSystem = new GuildSystem(this, { send: (t, p) => net.send(t, p), onBroadcast: (fn) => net.onAttach((room) => { const h = (type, payload) => fn(type, payload); room.onMessage('*', (type, payload) => h(type, payload)); }) });
+    const onceAttach = (handler) => {
+      let off = null;
+      let attached = false;
+      const hook = (room) => {
+        if (attached) return;
+        attached = true;
+        const h = (type, payload) => handler(type, payload);
+        room.onMessage('*', (type, payload) => h(type, payload));
+        off = () => room.onMessage('*', () => {});
+      };
+      const detach = net.onAttach(hook);
+      return () => { detach(); off?.(); };
+    };
+    this.seasonSystem = new SeasonSystem(this, { send: (t, p) => net.send(t, p), onBroadcast: onceAttach });
+    this.guildSystem = new GuildSystem(this, { send: (t, p) => net.send(t, p), onBroadcast: onceAttach });
     const cx = W / 2, cy = H / 2;
     this.lfgPanel = new LFGPanel(this, cx, cy);
     this.lfgPanel.onQueue = (req) => this.dungeonSystem.queue(req.dungeonId, req.role, req.groupMode);
@@ -403,12 +416,21 @@ export class UIScene extends Phaser.Scene {
     this.seasonPanel = new SeasonPanel(this, cx, cy, { seasonSystem: this.seasonSystem, onClaim: (tier, track) => this.seasonSystem.claim(tier, track), onUpgrade: () => this.seasonSystem.upgradePremium() });
     this.guildPanel = new GuildPanel(this, cx, cy, this.guildSystem);
     this.worldBossAlert = new WorldBossAlert(this, W / 2, 110, {
-      onTeleport: () => { const w = this.world(); if (w?.player) { w.player.x = 1620; w.player.y = 840; this.say('Teleported to the world boss.'); } },
+      onTeleport: () => {
+        const d = this._worldBossData;
+        const w = this.world();
+        if (d && w?.player) { w.player.x = d.x; w.player.y = d.y; this.say(`Teleported to ${d.name} in ${(d.area || 'ruins').toUpperCase()}.`); }
+      },
       onDismiss: () => {},
     });
     // World boss server broadcasts
-    sub(Events.WORLDBOSS_SPAWN, (d) => { if (d && this.worldBossAlert) this.worldBossAlert.show({ name: d.name, zone: d.area, spawnAt: d.expiresAt - 30*60*1000 }); });
-    sub(Events.WORLDBOSS_SLAIN, (d) => { this.say(`${d.name} defeated by ${d.killerName || 'heroes'}!`); this.worldBossAlert?.hide(); });
+    this._worldBossSpawnOff = sub(Events.WORLDBOSS_SPAWN, (d) => {
+      if (!d || !this.worldBossAlert) return;
+      this._worldBossData = d;
+      this.worldBossAlert.show({ name: d.name, zone: d.area, area: d.area, x: d.x, y: d.y, spawnAt: d.expiresAt - 30*60*1000, expiresAt: d.expiresAt });
+    });
+    this._worldBossSlainOff = sub(Events.WORLDBOSS_SLAIN, (d) => { this.say(`${d.name} defeated by ${d.killerName || 'heroes'}!`); this.worldBossAlert?.hide(); });
+    this.offs.push(this._worldBossSpawnOff, this._worldBossSlainOff);
 
     // Pet duel challenge listener: must live after social UI mounts so the request modal exists.
     this._petDuelOff = bus.on(Events.PET_DUEL_START, (payload) => {

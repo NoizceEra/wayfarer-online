@@ -102,8 +102,9 @@ export class WorldBossAlert extends Phaser.GameObjects.Container {
 
   show(data) {
     this.bossData = data || {};
-    this.nameText.setText(`${data.name || 'Unknown'} — ${data.zone || 'Unknown Zone'}`);
-    this.targetTime = data.spawnAt || (Date.now() + 15 * 60 * 1000);
+    this.nameText.setText(`${data.name || 'Unknown'} — ${(data.area || data.zone || 'Unknown Zone').toUpperCase()}`);
+    this.targetTime = data.expiresAt || (Date.now() + 15 * 60 * 1000);
+    this.active = data.expiresAt != null;
     this.updateTimer();
     this.setVisible(true);
     this.setAlpha(0);
@@ -116,7 +117,10 @@ export class WorldBossAlert extends Phaser.GameObjects.Container {
     });
   }
 
+  close() { this.hide(); }
+
   hide() {
+    if (!this.visible) return;
     this.scene.tweens.add({
       targets: this,
       alpha: 0,
@@ -132,7 +136,7 @@ export class WorldBossAlert extends Phaser.GameObjects.Container {
     const remaining = Math.max(0, this.targetTime - Date.now());
     const min = Math.floor(remaining / 60000);
     const sec = Math.floor((remaining % 60000) / 1000);
-    this.timerText.setText(`Spawns in ${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`);
+    this.timerText.setText(`${this.active ? 'Active for' : 'Spawns in'} ${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`);
   }
 
   update() {

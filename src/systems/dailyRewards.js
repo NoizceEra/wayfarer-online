@@ -182,6 +182,10 @@ export class DailyRewards {
     }
     bus.emit(Events.DAILY_REWARD, { claimed: true, day: streak, gold: reward.gold, tokens: reward.tokens });
 
+    // Feed daily login into the season pass.
+    const ui = this.scene.scene?.get ? this.scene.scene.get('ui') : null;
+    if (ui?.seasonSystem?.earnXp) ui.seasonSystem.earnXp('dailyLogin', 500);
+
     return { day: streak, gold: reward.gold, tokens: reward.tokens };
   }
 

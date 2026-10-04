@@ -208,14 +208,17 @@ export class NetworkManager {
     room.onLeave((code) => this.onRoomLeave(room, code));
     room.onError((code, msg) => console.warn('[net] room error', code, msg));
     // module hooks (src/net/socialNet.js registers its typed handlers here on every (re)attach)
-    for (const fn of this._attachHooks || []) { try { fn(room); } catch (e) { console.error(e); } }
+    for (const fn of this._attachListeners || []) { try { fn(room); } catch (e) { console.error(e); } }
   }
 
   // onAttach(fn): fn(room) runs each time a room is attached (host/join/reconnect); returns an unsubscribe.
   onAttach(fn) {
-    (this._attachHooks ||= []).push(fn);
+    (this._attachListeners ||= []).push(fn);
     if (this.room) fn(this.room);
-    return () => { this._attachHooks = (this._attachHooks || []).filter((f) => f !== fn); };
+    return () => { const i = this._attachListeners.indexOf(fn); if (i >= 0) this._attachListeners.splice(i, 1); };
+  }
+  offAttach(fn) {
+    const i = this._attachListeners.indexOf(fn); if (i >= 0) this._attachListeners.splice(i, 1);
   }
 
   // ─── generic API ───────────────────────────────────────────────────
