@@ -166,6 +166,10 @@ export class UIScene extends Phaser.Scene {
     this.mpBar = mkBar('mana', 52, 11, 0x0c1a3a, 0x3a9cf0);
     this.mpT   = this.add.text(barX + pbw / 2, 57.5, '', F(8, '#ffffff', { stroke: '#1a1024', strokeThickness: 3 })).setOrigin(0.5).setDepth(104);
     this.xpBar = mkBar('xp', 69, 7, 0x2a2008, 0xffd84a);
+    // A percentage makes the thin XP bar useful at a glance, especially on a
+    // phone where exact XP totals would compete with the resource readout.
+    this.xpT = this.add.text(barX + pbw, 72.5, '0%', F(7, '#2a1d10', { fontStyle: 'bold' }))
+      .setOrigin(1, 0.5).setDepth(104);
 
     // gold / potions / atk+def as glyph + number
     this.add.image(18, 92, 'hud.coin').setOrigin(0, 0.5).setDepth(102);
@@ -237,13 +241,18 @@ export class UIScene extends Phaser.Scene {
       }).setOrigin(0, 0.5).setDepth(104);
       badgeBg.width = Math.max(13, badgeT.width + 4);
 
-      const cdBg = this.add.rectangle(x, hotY, cellW - 2, cellH - 2, 0x000000, 0.70)
-        .setDepth(105).setVisible(false);
+      // Cooldowns drain down from the slot's top edge. Keeping a fixed edge
+      // avoids the old centre-shrinking mask, which made remaining time harder
+      // to judge during busy combat.
+      const cdBg = this.add.rectangle(x, hotY - cellH / 2 + 1, cellW - 2, cellH - 2, 0x000000, 0.70)
+        .setOrigin(0.5, 0).setDepth(105).setVisible(false);
       const cdT  = this.add.text(x, hotY, '', {
         fontFamily: '"Silkscreen", monospace', fontSize: '14px', color: '#fff', fontStyle: 'bold',
         stroke: '#1a1024', strokeThickness: 3,
       }).setOrigin(0.5).setDepth(106).setVisible(false);
 
+      bg.on('pointerover', () => this.setHotbarHint(`${input.labelFor(s.action)} · ${s.name}`));
+      bg.on('pointerout', () => this.setHotbarHint(''));
       bg.on('pointerdown', () => {
         const w = this.world();
         if (!w?.player) return;
@@ -253,6 +262,13 @@ export class UIScene extends Phaser.Scene {
       });
       this.hotbar.push({ bg, s, cdBg, cdT, bw: cellW, bh: cellH, badgeBg, badgeT });
     });
+
+    // A compact contextual label confirms what a hotbar icon does without
+    // permanently adding another row of text to the combat HUD.
+    this.hotbarHint = this.add.text(W / 2, hotY - cellH / 2 - (this.small ? 10 : 12), '', F(8, '#fff0b2', {
+      backgroundColor: '#1a1024cc', padding: { x: 4, y: 2 },
+      stroke: '#1a1024', strokeThickness: 2,
+    })).setOrigin(0.5, 1).setDepth(130).setVisible(false);
 
     createAdvBar(this, W / 2, hotY - cellH / 2 - (this.small ? 24 : 26), this.small ? 34 : 40); // class skills 5/6
 
@@ -493,12 +509,24 @@ export class UIScene extends Phaser.Scene {
     this.potCount?.setText(String(p.potions));
   }
   setQuest(q) {
-    this.questT.setText(q);
+    // An empty tracker looked like a rendering failure. Give a short next
+    // action while retaining the compact fixed HUD footprint.
+    this.questT.setText(q || `No active quest\nJournal [${input.labelFor('journal')}]`);
     const h = Math.ceil(this.questT.height) + 26 + 8;
     this.questPanel.setSize(this.questW, h);
     this.questPanel.fallbackRect.setSize(this.questW, h);
   }
-  drawXp(p) { this.xpBar.setDisplaySize(this.hpBarW * Math.min(1, p.xp / p.xpNext), this.barH.xp); }
+  drawXp(p) {
+    const frac = Math.max(0, Math.min(1, p.xp / Math.max(1, p.xpNext)));
+    this.xpBar.setDisplaySize(this.hpBarW * frac, this.barH.xp);
+    this.xpT?.setText(`${Math.floor(frac * 100)}%`);
+  }
+
+  setHotbarHint(text) {
+    if (!this.hotbarHint?.active) return;
+    this.hotbarHint.setText(text);
+    this.hotbarHint.setVisible(!!text);
+  }
 
   openChat() { social.act('openChat'); } // Enter -> chat input (closes on Enter/Esc)
 

@@ -5,6 +5,7 @@ import { Server, matchMaker } from 'colyseus';
 import { WebSocketTransport } from '@colyseus/ws-transport';
 import { CFG } from './config.js';
 import { log } from './log.js';
+import { publicApiRateLimit } from './httpRateLimit.js';
 import { initStore, flushAll, storeStats, stopStore, initSqlite, loadChar, saveChar } from './store.js';
 import { WayfarerRoom, LIVE_ROOMS, STATS, setSocialModule, addRoomModule } from './WayfarerRoom.js';
 
@@ -114,18 +115,28 @@ if (guilds) {
 
 const app = express();
 app.use(cors({ origin: CFG.CORS_ORIGIN === '*' ? true : CFG.CORS_ORIGIN.split(',') }));
+// Set TRUST_PROXY_HOPS to the exact number of trusted reverse proxies in
+// front of this service (usually 1 on a single platform edge). Keep Express's
+// default untrusted-proxy behavior when unset so clients cannot spoof req.ip.
+const trustProxyHops = Number(process.env.TRUST_PROXY_HOPS || 0);
+app.set('trust proxy', Number.isInteger(trustProxyHops) && trustProxyHops > 0 && trustProxyHops <= 8 ? trustProxyHops : false);
+app.use(publicApiRateLimit);
 
 let shuttingDown = false;
 app.get('/health', (req, res) => {
   res.status(shuttingDown ? 503 : 200).json({ ok: !shuttingDown, game: 'wayfarer-online', uptime: Math.round(process.uptime()) });
 });
 app.get('/stats', (req, res) => {
-  const rooms = [...LIVE_ROOMS].map((r) => r.stats());
+  const allRooms = [...LIVE_ROOMS];
+  // Party room IDs are join credentials; expose only public world shard
+  // details and keep aggregate counts for the status pill.
+  const rooms = allRooms.filter((r) => r.kind === 'world').map((r) => r.stats());
   const mem = process.memoryUsage();
   res.json({
     ok: true, uptime: Math.round(process.uptime()),
-    players: rooms.reduce((s, r) => s + r.players, 0),
-    rooms, world: CFG.WORLD_NAME, maxPlayers: CFG.MAX_PLAYERS,
+    players: allRooms.reduce((s, r) => s + r.clients.length, 0),
+    rooms, privateRooms: allRooms.filter((r) => r.kind === 'party').length,
+    world: CFG.WORLD_NAME, maxPlayers: CFG.MAX_PLAYERS,
     counters: { ...STATS }, store: storeStats(), rssMb: Math.round(mem.rss / 1048576),
   });
 });
@@ -133,6 +144,10 @@ app.get('/stats', (req, res) => {
 app.get('/rooms/:code', async (req, res) => {
   try {
     const code = String(req.params.code || '').toUpperCase();
+    if (!/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{5}$/.test(code)) {
+      res.status(400).json({ error: 'invalid_room_code' });
+      return;
+    }
     const rooms = await matchMaker.query({ name: 'party' });
     const match = rooms.find((r) => String(r.roomId).toUpperCase().endsWith(code))
       || rooms.find((r) => String(r.roomId).toUpperCase() === code);
@@ -153,7 +168,10 @@ const httpServer = http.createServer(app);
 const gameServer = new Server({
   greet: false,
   // 3s pings x2 retries: dead sockets are detected in ~6-9s (then the seat is held RECONNECT_SECONDS)
-  transport: new WebSocketTransport({ server: httpServer, pingInterval: 3000, pingMaxRetries: 2 }),
+  // Save payloads have independently bounded quest/prog/ext fields that can
+  // exceed ws-transport's 4 KiB default when combined. Keep a firm frame cap
+  // while allowing the full sanitized save shape through to validateSave().
+  transport: new WebSocketTransport({ server: httpServer, maxPayload: 128 * 1024, pingInterval: 3000, pingMaxRetries: 2 }),
 });
 
 gameServer.define('party', WayfarerRoom, { kind: 'party' });

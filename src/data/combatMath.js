@@ -31,8 +31,12 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 export function heroDmgMul(playerLv, mobLv) { return clamp(1 - 0.06 * (mobLv - playerLv), 0.55, 1.3); }
 // Incoming mob damage vs the hero.
 export function mobDmgMul(playerLv, mobLv) { return clamp(1 + 0.08 * (mobLv - playerLv), 0.6, 1.6); }
-// Chance for the hero's hit to miss a higher-level mob.
-export function heroMissChance(playerLv, mobLv) { return clamp(0.03 + 0.045 * (mobLv - playerLv), 0, 0.4); }
+// Chance for the hero's hit to miss a higher-level mob.  Even-level fights
+// should feel reliable; the meaningful accuracy pressure starts once a foe
+// outlevels the hero, then caps before a red enemy becomes untouchable.
+export function heroMissChance(playerLv, mobLv) {
+  return clamp(0.01 + 0.04 * Math.max(0, mobLv - playerLv), 0, 0.35);
+}
 // XP multiplier (grey mobs give a token 10%).
 export function xpMul(playerLv, mobLv) {
   if (conOf(playerLv, mobLv) === CON.grey) return 0.1;

@@ -8,6 +8,7 @@ import { audio } from './audio.js';
 import { matById } from '../data/materials.js';
 import { gearById } from '../data/gear.js';
 import { addMat, takeMat, matCount } from './pack.js';
+import EXTRA_RECIPES from '../data/craftingRecipes.js';
 
 export const STATIONS = {
   campfire: { id: 'campfire', name: 'Campfire', verb: 'Cook', color: '#ffb04a' },
@@ -43,6 +44,7 @@ export const RECIPES = [
   R('temper_armor', 'Temper Armour', 'anvil', { upgrade: 'body', time: 6, desc: 'Permanently +1 DEF on your equipped body armour (max +5).' }),
   R('temper_helm', 'Temper Helm', 'anvil', { upgrade: 'head', time: 6, desc: 'Permanently +1 DEF on your equipped headgear (max +5).' }),
 ];
+RECIPES.push(...EXTRA_RECIPES); // rune brews / transmutations / legendary feasts (data/craftingRecipes.js)
 export const RECIPE_BY_ID = Object.fromEntries(RECIPES.map((r) => [r.id, r]));
 export const START_RECIPES = RECIPES.filter((r) => r.start).map((r) => r.id);
 

@@ -278,7 +278,8 @@ export class Enemy extends Phaser.GameObjects.Container {
       if (t < 0.7) this.lungeAngle = Math.atan2(p.y - this.y, p.x - this.x);
       if (Math.floor(now / 70) % 2) this.sprite.setTintFill(pat.shoot ? 0xfff2a0 : 0xff6655); else this.restoreTint();
       this.sprite.x = -Math.cos(this.lungeAngle) * 2 * t;
-      if (this.ai === 'charger') env.drawLane(this, this.lungeAngle, pat.speed * pat.ms / 1000 + 10, t);
+      env.drawWindup?.(this, this.lungeAngle, t, pat);
+      if (this.ai === 'charger') env.drawLane?.(this, this.lungeAngle, pat.speed * pat.ms / 1000 + 10, t);
       if (now >= this.stateUntil) {
         this.sprite.x = 0; this.showBang(false); this.restoreTint();
         if (pat.shoot) {

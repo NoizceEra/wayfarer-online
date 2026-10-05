@@ -175,7 +175,11 @@ export class TokenBridgePanel {
     const configured = !!st.configured;
     this.wBtn.disabled = this._busy || !online || !configured || !addr;
     this.wBtn.title = !configured ? 'The bridge is not configured on this server.' : !addr ? 'Link a wallet first.' : '';
-    this.dBtn.disabled = this._busy || !online || st.depositConfigured === false;
+    this.dBtn.disabled = this._busy || !online || st.depositConfigured === false || !addr;
+    this.dBtn.title = !addr ? 'Link the wallet that sent the deposit first.' : '';
+    this.dHint.textContent = addr
+      ? 'Only transfers from your linked wallet to the treasury can be credited.'
+      : 'Link the wallet that will send the deposit before claiming it.';
 
     this.renderPreview();
     this.renderRows('withdrawals', this.wdList, 'no withdrawals yet');

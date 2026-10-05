@@ -23,6 +23,16 @@ export function castFx(scene, ab, lv, setCd) {
     return true;
   });
   const slow = (e, secs) => scene.combat.applyEnemyStatus(e, 'slow', secs);
+  // AoE and dash skills can declare knockback and a status in jobs.js.  Keep
+  // the shape identical to normal combat hits so proc chance, duration and
+  // status refresh rules stay in one place.
+  const hitOpts = () => ({
+    knock: fx.knock,
+    status: fx.status && {
+      ...fx.status,
+      secs: fx.status.secs == null ? undefined : fx.status.secs * (0.85 + 0.15 * dm),
+    },
+  });
 
   if (fx.type === 'aoe') {
     audio.play('explosion', 0.8);
@@ -30,7 +40,7 @@ export function castFx(scene, ab, lv, setCd) {
     if (!hasVfx(ab.id) || MELEE_AOE.has(ab.id)) p.attackPose();
     let n = 0;
     const hit = () => near(fx.radius, (e) => {
-      scene.damageEnemy(e, p.rollCrit(p.effAtk() * fx.mul * dm));
+      scene.damageEnemy(e, p.rollCrit(p.effAtk() * fx.mul * dm), false, hitOpts());
       if (fx.slow) slow(e, fx.slow * (0.85 + 0.15 * dm));
       impactAt(scene, e, ELEMENT_OF[ab.id]);
       n += 1;
@@ -74,7 +84,7 @@ export function castFx(scene, ab, lv, setCd) {
           if (!e.getData('struck' + ab.id)) {
             e.setData('struck' + ab.id, true);
             scene.time.delayedCall(400, () => e.active && e.setData('struck' + ab.id, false));
-            scene.damageEnemy(e, p.rollCrit(p.effAtk() * fx.mul * dm));
+            scene.damageEnemy(e, p.rollCrit(p.effAtk() * fx.mul * dm), false, hitOpts());
             impactAt(scene, e, 'shadow');
             scene.spawnFx(e.x, e.y - 8, 'fx.cutX', 1.1);
           }

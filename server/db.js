@@ -24,6 +24,8 @@ export function initDb() {
       name_lower TEXT NOT NULL,
       hero TEXT NOT NULL DEFAULT '{}',
       progress TEXT NOT NULL DEFAULT '{}',
+      rev INTEGER NOT NULL DEFAULT 0,
+      econ_out TEXT NOT NULL DEFAULT '[]',
       saved_at INTEGER DEFAULT (unixepoch()),
       UNIQUE(player_id, name_lower)
     );
@@ -143,6 +145,11 @@ export function initDb() {
     );
     CREATE INDEX IF NOT EXISTS idx_bridge_dep_ck ON bridge_deposits(ck);
   `);
+  // Older SQLite installs predate the economy revision fields. Migrate them
+  // in place so enabling this store never resets revisions or dupe history.
+  const characterColumns = new Set(db.pragma('table_info(characters)').map((column) => column.name));
+  if (!characterColumns.has('rev')) db.exec('ALTER TABLE characters ADD COLUMN rev INTEGER NOT NULL DEFAULT 0');
+  if (!characterColumns.has('econ_out')) db.exec("ALTER TABLE characters ADD COLUMN econ_out TEXT NOT NULL DEFAULT '[]'");
   log.info('db ready', { path: DB_PATH });
 }
 
@@ -163,14 +170,17 @@ export function loadCharDb(token, name) {
   if (!token || !name) return null;
   const dkey = deviceKey(token);
   const row = db.prepare(`
-    SELECT c.hero, c.progress, c.saved_at, e.gold, e.inventory, e.equipped
+    SELECT c.hero, c.progress, c.rev, c.econ_out, c.saved_at, e.gold, e.inventory, e.equipped
     FROM characters c
     LEFT JOIN economy e ON e.char_id = c.id
     JOIN players p ON p.id = c.player_id
     WHERE p.device_key = ? AND c.name_lower = ?
   `).get(dkey, String(name).toLowerCase());
   if (!row) return null;
-  const rec = { name, hero: JSON.parse(row.hero), progress: JSON.parse(row.progress), savedAt: row.saved_at };
+  const rec = {
+    name, hero: JSON.parse(row.hero), progress: JSON.parse(row.progress), savedAt: row.saved_at,
+    rev: row.rev || 0, econOut: JSON.parse(row.econ_out || '[]'),
+  };
   if (row.gold !== null) {
     rec.progress = rec.progress || {};
     rec.progress.gold = row.gold;
@@ -189,12 +199,13 @@ export function saveCharDb(token, name, rec) {
   const progress = JSON.stringify(rec.progress || {});
   const savedAt = rec.savedAt || Date.now();
   const upsert = db.prepare(`
-    INSERT INTO characters (player_id, name, name_lower, hero, progress, saved_at)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO characters (player_id, name, name_lower, hero, progress, rev, econ_out, saved_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(player_id, name_lower) DO UPDATE SET
-      hero=excluded.hero, progress=excluded.progress, saved_at=excluded.saved_at
+      hero=excluded.hero, progress=excluded.progress, rev=excluded.rev,
+      econ_out=excluded.econ_out, saved_at=excluded.saved_at
   `);
-  const info = upsert.run(playerId, name, lower, hero, progress, savedAt);
+  upsert.run(playerId, name, lower, hero, progress, rec.rev || 0, JSON.stringify(rec.econOut || []), savedAt);
   // lastInsertRowid is stale when the upsert took the DO UPDATE path (it keeps
   // the rowid of the last plain INSERT on the connection): always resolve the
   // char id from the unique key instead.
@@ -223,6 +234,24 @@ export function listCharsDb(token) {
     WHERE p.device_key = ?
     ORDER BY c.saved_at DESC
   `).all(dkey);
+}
+
+export function listAllCharsDb() {
+  return db.prepare(`
+    SELECT c.name, c.hero, c.progress, c.rev, c.econ_out, c.saved_at,
+      e.gold, e.inventory, e.equipped
+    FROM characters c
+    LEFT JOIN economy e ON e.char_id = c.id
+    ORDER BY c.saved_at DESC
+  `).all().map((row) => {
+    const progress = JSON.parse(row.progress);
+    if (row.gold !== null) {
+      progress.gold = row.gold;
+      progress.inventory = JSON.parse(row.inventory || '[]');
+      progress.equipped = JSON.parse(row.equipped || '{}');
+    }
+    return { name: row.name, hero: JSON.parse(row.hero), progress, rev: row.rev || 0, econOut: JSON.parse(row.econ_out || '[]'), savedAt: row.saved_at };
+  });
 }
 
 export function dbStats() {

@@ -28,15 +28,16 @@ function injectCss() {
   style.textContent = `
 #wf-social{position:fixed;inset:0;pointer-events:none;z-index:20;font-family:'Silkscreen',monospace;font-size:10px;color:#f4f0dc;-webkit-user-select:none;user-select:none}
 #wf-social *{box-sizing:border-box}
-#wf-social .wf-panel{pointer-events:auto;position:absolute;background:rgba(26,16,8,.9);border:2px solid #8a5a2b;box-shadow:inset 0 0 0 1px #3a2410,0 0 0 1px #1a1024;image-rendering:pixelated}
-#wf-social button{pointer-events:auto;font-family:inherit;font-size:9px;color:#3a1f00;background:#9bbc0f;border:1px solid #1a1024;box-shadow:inset -1px -1px 0 #6a8a00,inset 1px 1px 0 #c8e040;padding:2px 6px;cursor:pointer;line-height:1.2}
+#wf-social .wf-panel{pointer-events:auto;position:absolute;background:rgba(26,16,8,.9);border:2px solid #8a5a2b;box-shadow:inset 0 0 0 1px #3a2410,0 0 0 1px #1a1024,0 8px 24px rgba(0,0,0,.28);image-rendering:pixelated;animation:wf-panel-in .14s cubic-bezier(.2,.8,.2,1) both}
+#wf-social button{pointer-events:auto;font-family:inherit;font-size:9px;color:#3a1f00;background:#9bbc0f;border:1px solid #1a1024;box-shadow:inset -1px -1px 0 #6a8a00,inset 1px 1px 0 #c8e040;padding:2px 6px;cursor:pointer;line-height:1.2;transition:filter .1s ease,transform .1s ease}
 #wf-social button:hover{background:#b8d820}
-#wf-social button:active{background:#7a9a0a}
+#wf-social button:active{background:#7a9a0a;transform:translateY(1px)}
 #wf-social button.wf-ghost{background:transparent;color:#c8b890;box-shadow:none;border-color:transparent}
 #wf-social button.wf-ghost:hover{color:#fff;background:rgba(255,255,255,.08)}
 #wf-social button.wf-danger{background:#e8564a;color:#fff;box-shadow:inset -1px -1px 0 #8a2a20,inset 1px 1px 0 #ff9a90}
 #wf-social input{font-family:inherit;font-size:11px;color:#fff6e0;background:#120c06;border:1px solid #8a5a2b;padding:3px 5px;outline:none;pointer-events:auto;-webkit-user-select:text;user-select:text}
 #wf-social input:focus{border-color:#ffd84a}
+#wf-social button:focus-visible,#wf-social input:focus-visible,#wf-social select:focus-visible,#wf-social textarea:focus-visible{outline:2px solid #ffe66d;outline-offset:2px}
 #wf-social .wf-title{color:#ffe8a0;font-size:11px;font-weight:bold;padding:4px 8px;border-bottom:1px solid #3a2410;display:flex;align-items:center;gap:6px}
 #wf-social .wf-title .wf-x{margin-left:auto}
 #wf-social .wf-scroll{overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#8a5a2b #1a1024}
@@ -90,6 +91,8 @@ function injectCss() {
 #wf-social .wf-wheel .wf-em .k{position:absolute;left:2px;top:1px;color:#ffd84a;font-size:8px}
 #wf-social .wf-wheel .wf-center{position:absolute;left:-40px;top:-10px;width:80px;text-align:center;color:#ffe8a0;font-size:9px;pointer-events:none}
 #wf-social .wf-shade{pointer-events:auto;position:absolute;inset:0;background:rgba(0,0,0,.25)}
+@keyframes wf-panel-in{from{opacity:0;filter:brightness(.75);margin-top:5px}to{opacity:1;filter:brightness(1);margin-top:0}}
+@media (prefers-reduced-motion:reduce){#wf-social .wf-panel{animation:none}#wf-social button{transition:none}}
 @media (max-width:560px){#wf-social .wf-chat{width:min(340px,calc(100vw - 16px));bottom:190px}#wf-social .wf-log{height:90px;font-size:11px;min-height:90px}#wf-social .wf-tabs button{font-size:10px;padding:6px 8px;min-width:44px;min-height:44px}#wf-social .wf-inrow input{font-size:12px;padding:4px 6px}#wf-social .wf-list{width:min(340px,calc(100vw - 16px))}#wf-social .wf-row{min-height:44px}#wf-social button{min-height:44px;min-width:44px}}
 `;
   document.head.appendChild(style);

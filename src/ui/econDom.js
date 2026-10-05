@@ -8,6 +8,7 @@ import { iconKey } from '../systems/gearArt.js';
 export { el, escapeHtml };
 
 let sceneRef = null;
+let nextPanelId = 1;
 const iconCache = new Map();
 export function setIconScene(scene) { sceneRef = scene; }
 export function iconUrl(id) {
@@ -39,8 +40,10 @@ export function chip(id, onClick, { small = false, badge = '' } = {}) {
 export function panel(cls, title, onClose) {
   const root = socialRoot(); injectCss();
   const p = el('div', `wf-panel ec-panel ${cls}`); p.style.display = 'none';
-  const t = el('div', 'wf-title', `<span>${title}</span>`);
-  const x = el('button', 'wf-ghost wf-x', '✕'); x.addEventListener('click', onClose);
+  const titleId = `wf-panel-title-${nextPanelId++}`;
+  p.setAttribute('role', 'dialog'); p.setAttribute('aria-labelledby', titleId); p.setAttribute('tabindex', '-1');
+  const t = el('div', 'wf-title', `<span id="${titleId}" role="heading" aria-level="2">${title}</span>`);
+  const x = el('button', 'wf-ghost wf-x', '✕'); x.setAttribute('aria-label', `Close ${title}`); x.addEventListener('click', onClose);
   t.appendChild(x);
   p.appendChild(t);
   // keep clicks/keys inside the panel from reaching the game
@@ -103,6 +106,7 @@ function injectCss() {
 #wf-social .ec-foot{display:flex;gap:4px;padding:6px 8px;border-top:1px solid #3a2410;align-items:center;flex-wrap:wrap}
 #wf-social .ec-foot .ec-grow{flex:1}
 #wf-social textarea{font-family:inherit;font-size:10px;color:#fff6e0;background:#120c06;border:1px solid #8a5a2b;padding:3px 5px;outline:none;pointer-events:auto;resize:vertical;width:100%;min-height:40px;-webkit-user-select:text;user-select:text}
+#wf-social textarea:focus-visible{outline:2px solid #ffe66d;outline-offset:2px}
 #wf-social .ec-badge{position:fixed;left:6px;bottom:22px;z-index:51;pointer-events:auto;cursor:pointer;font:9px "Silkscreen",monospace;color:#ffe8a0;background:#1a1024e0;border:1px solid #8a5a2b;padding:2px 6px;border-radius:2px;display:none}
 #wf-social .ec-badge.new{color:#1a1024;background:#ffd84a;border-color:#1a1024}
 #wf-social .ec-toast{left:50%;top:96px;transform:translateX(-50%);padding:6px 10px;display:flex;gap:8px;align-items:center;background:rgba(26,16,8,.95)}

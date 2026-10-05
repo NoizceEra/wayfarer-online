@@ -9,6 +9,7 @@
 
 import { EXTRA_CHAINS, EXTRA_QUESTS, EXTRA_POIS, EXTRA_NPC_SPOTS, EXTRA_LORE, EXTRA_LORE_ON_ENTER } from './questsExtra.js';
 import { PET_UNLOCK_QUEST } from './quests/petUnlock.js';
+import { TUTORIAL_CHAIN, TUTORIAL_QUESTS } from './quests/tutorial2.js';
 
 export const NPC_SPOTS = {
   // wild quest givers (overworld tile coords) - WorldScene adds them as real NPCs
@@ -233,6 +234,7 @@ export const QUEST_LIST = [
 ];
 
 QUEST_LIST.push(...EXTRA_QUESTS); // desert / marsh / caverns / Hollow Depths / world-event quests (data/questsExtra.js)
+QUEST_LIST.push(...TUTORIAL_QUESTS); // onboarding chain: First Steps -> Egg Tales (data/quests/tutorial2.js)
 export const QUESTS_BY_ID = Object.fromEntries(QUEST_LIST.map((q) => [q.id, q]));
 
 // Legacy (pre-v2) quest order: questState.idx indexed these.
@@ -277,6 +279,7 @@ export const LORE = {
 export const LORE_ON_ENTER = { meadow: 'lore_meadow', woods: 'lore_woods', ruins: 'lore_ruins', crypt: 'lore_crypt', frost: 'lore_frostpass', dock: 'lore_dock' };
 
 Object.assign(CHAINS, EXTRA_CHAINS);
+Object.assign(CHAINS, { tutorial: TUTORIAL_CHAIN });
 Object.assign(POIS, EXTRA_POIS);
 Object.assign(NPC_SPOTS, EXTRA_NPC_SPOTS);
 Object.assign(LORE, EXTRA_LORE);

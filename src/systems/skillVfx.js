@@ -211,6 +211,18 @@ export function hitSpark(scene, x, y, crit = false) {
   else if (el === 'ice') burst(scene, x, y, { n: 3, key: 'vfx.star', speed: [20, 60], life: [300, 450], color: 0xdff6ff, size: [0.6, 0.9] });
   else if (el === 'thunder') streak(scene, x + 6, y - 8, -0.9, 18, { color: 0xffffff, dur: 100 });
   else if (el === 'nature') burst(scene, x, y, { n: 3, key: 'vfx.leaf', speed: [20, 60], life: [350, 550], color: 0x8fe070, size: [0.8, 1.1], g: 60, blend: 0, rot: 400 });
+  if (crit) ring(scene, x, y + 5, { r: 21, from: 0.35, color: 0xffe57a, dur: 220, a: 0.8 });
+}
+
+// Small, reusable feedback for an evasive roll. It deliberately uses the shared
+// VFX pool so dodges remain readable without creating a new object every frame.
+export function dodgeVfx(scene, p, perfect = false) {
+  if (!scene || !p?.active) return;
+  ensureTex(scene);
+  const color = perfect ? 0xffffff : 0x8fdcff;
+  ring(scene, p.x, p.y + 2, { r: perfect ? 30 : 22, from: 0.3, color, dur: perfect ? 260 : 200, a: perfect ? 0.95 : 0.7 });
+  trail(scene, p, perfect ? 180 : 130, perfect ? 0xd9f6ff : 0x86cfff, perfect ? 30 : 42);
+  if (perfect) burst(scene, p.x, p.y - 8, { n: 5, key: 'vfx.star', color: [0xffffff, 0x8fdcff], speed: [28, 68], life: [180, 320], size: [0.55, 0.9] });
 }
 
 // ── shot trails + muzzle ────────────────────────────────────────────────────
@@ -699,17 +711,38 @@ const SK = {
 export const hasVfx = (id) => !!SK[id];
 export const ELEMENT_OF = {
   flare: 'holy', bash: 'phys', sunburst: 'holy', arrowrain: 'phys', thornwall: 'nature', burst: 'nature', meteor: 'fire',
-  tidal: 'water', fangdance: 'phys', caltrops: 'steel',
+  tidal: 'water', fangdance: 'phys', caltrops: 'steel', pierce: 'phys', chain: 'thunder', shadowstep: 'shadow',
 };
+
+function genericCastVfx(scene, p, ab) {
+  const fx = ab?.fx;
+  if (!fx) return;
+  const type = fx.type;
+  const color = type === 'heal' ? 0x6ff0a4 : type === 'buff' ? 0xb99bff : type === 'strike' ? 0xa9d9ff : type === 'shot' ? 0xffdfa0 : 0xbfe9ff;
+  if (type === 'shot') {
+    muzzle(scene, p, scene.facingAngle(), color, fx.n > 1 ? 1.15 : 0.9);
+    return;
+  }
+  windup(scene, p, color, type === 'strike' ? 80 : 130);
+  if (type === 'heal' || type === 'buff') {
+    glow(scene, p.x, p.y - 8, { r: 22, color, dur: 280, a: 0.7 });
+    ring(scene, p.x, p.y + 2, { r: 30, color, dur: 360, a: 0.65 });
+  } else if (type === 'aoe') {
+    ring(scene, p.x, p.y + 2, { r: Math.min(fx.radius || 40, 64), color, dur: 280, a: 0.55 });
+  } else if (type === 'strike') {
+    afterimage(scene, p, 0x9fdcff, 0.6, 220);
+  }
+}
 
 // Entry point: called from WorldScene.cast on a successful cast (via the setCd hook).
 export function castVfx(scene, ab, lv) {
   const fn = SK[ab.id];
   const p = scene.player;
-  if (!fn || !p) return;
+  if (!p) return;
   try {
     ensureTex(scene);
-    fn(scene, p, scene.facingAngle(), { lv, radius: ab.fx?.radius, secs: ab.fx?.secs });
+    if (fn) fn(scene, p, scene.facingAngle(), { lv, radius: ab.fx?.radius, secs: ab.fx?.secs });
+    else genericCastVfx(scene, p, ab);
   } catch (e) { console.error('skillVfx', ab.id, e); }
 }
 // Used by skillFx.js for per-enemy impact sparks during AoE/strike skills.

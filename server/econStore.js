@@ -97,20 +97,27 @@ export function flushEcon() {
 
 // Durably write economy docs + character device files (store keys) together.
 export async function commit({ docs = [], deviceKeys = [] }) {
-  await storeIdle(); // never race an in-flight write-behind flush of the same file
   const id = `${process.pid}-${Date.now().toString(36)}-${txSeq++}`;
   const pairs = [];
+  let committed = false;
   try {
-    for (const name of new Set(docs)) { dirty.delete(name); pairs.push([writeTmp(fileOf(name), JSON.stringify(db[name]), id), fileOf(name)]); }
+    await storeIdle(); // never race an in-flight write-behind flush of the same file
+    for (const name of new Set(docs)) pairs.push([writeTmp(fileOf(name), JSON.stringify(db[name]), id), fileOf(name)]);
     for (const key of new Set(deviceKeys)) pairs.push([writeTmp(charFile(key), charDocJson(key), id), charFile(key)]);
     writeAtomicSync(TXN, JSON.stringify({ id, at: Date.now(), files: pairs }));
+    // txn.json is the transaction's commit point. If a later rename fails,
+    // boot recovery will finish these renames, so retain the journal.
+    committed = true;
     for (const [tmp, final] of pairs) fs.renameSync(tmp, final);
     fs.unlinkSync(TXN);
+    for (const name of new Set(docs)) dirty.delete(name);
   } catch (e) {
-    // memory stays authoritative; the docs are re-marked dirty and the store's
-    // own write-behind still holds the device files
+    // Before the commit point, remove staged files. After it, preserve txn.json
+    // so startup can roll the transaction forward. Keep docs dirty for retry.
+    if (!committed) for (const [tmp] of pairs) { try { fs.unlinkSync(tmp); } catch { /* ignore */ } }
     for (const name of docs) dirty.add(name);
     log.error('econ commit failed', { id, err: e.message });
+    throw e;
   }
 }
 

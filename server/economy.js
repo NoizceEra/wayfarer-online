@@ -75,6 +75,14 @@ const clientOf = (room, sid) => room.clients.find((c) => c.sessionId === sid) ||
 const send = (room, sid, type, msg) => { try { clientOf(room, sid)?.send(type, msg); } catch { /* closing */ } };
 const err = (client, msg, code) => { try { client.send('econ-error', code ? { msg, code } : { msg }); } catch { /* closing */ } };
 const note = (client, text) => { try { client.send('econ-msg', { text }); } catch { /* closing */ } };
+async function commitFor(client, files) {
+  try { await commit(files); return true; }
+  catch (e) {
+    log.error('econ operation not durably committed', { err: e.message });
+    err(client, 'The save could not be confirmed. Reconnect and check your state before trying again.', 'storage');
+    return false;
+  }
+}
 const gname = (id) => GEAR_META[id]?.name || id;
 const now = () => Date.now();
 
@@ -246,7 +254,7 @@ async function sendMintWithdraw(address, net) {
 
 // Confirm an on-chain transfer of $WAYFARER into the treasury ATA and return
 // the credited whole-token amount.
-async function verifyDeposit(signature) {
+async function verifyDeposit(signature, ownerAddress) {
   const w = await solanaWeb3();
   if (!w) return { ok: false, reason: 'server is missing @solana/web3.js' };
   try {
@@ -254,6 +262,8 @@ async function verifyDeposit(signature) {
     const conn = new Connection(CFG.SOLANA_RPC, 'confirmed');
     const tx = await conn.getParsedTransaction(signature, { maxSupportedTransactionVersion: 0, commitment: 'confirmed' });
     if (!tx || !tx.meta) return { ok: false, reason: 'transaction not found or not yet confirmed' };
+    if (tx.meta.err) return { ok: false, reason: 'transaction failed on chain' };
+    if (!ownerAddress) return { ok: false, reason: 'link a wallet before claiming a deposit' };
     let treasury = CFG.TREASURY_ADDRESS || '';
     if (!treasury && CFG.PROGRAM_ID) {
       const programId = new PublicKey(CFG.PROGRAM_ID);
@@ -264,17 +274,35 @@ async function verifyDeposit(signature) {
       treasury = ata.toString();
     }
     if (!treasury) return { ok: false, reason: 'treasury address unknown (set TREASURY_ADDRESS or PROGRAM_ID)' };
+    const tokenProgram = new PublicKey(TOKEN_PROGRAM_ID);
+    const ataProgram = new PublicKey(ATA_PROGRAM_ID);
+    const [sourceAta] = PublicKey.findProgramAddressSync([
+      new PublicKey(ownerAddress).toBuffer(), tokenProgram.toBuffer(), new PublicKey(CFG.MINT_ADDRESS).toBuffer(),
+    ], ataProgram);
+    const source = sourceAta.toString();
     const keys = (tx.transaction.message.accountKeys || []).map((k) => (k && k.pubkey ? k.pubkey.toString() : String(k)));
-    const pre = new Map((tx.meta.preTokenBalances || []).map((b) => [`${b.accountIndex}:${b.mint}`, b]));
-    let raw = 0n; let decimals = CFG.TOKEN_DECIMALS;
-    for (const b of tx.meta.postTokenBalances || []) {
-      if (b.mint !== CFG.MINT_ADDRESS) continue;
-      if (keys[b.accountIndex] !== treasury) continue;
-      const p = pre.get(`${b.accountIndex}:${b.mint}`);
-      raw += BigInt(b.uiTokenAmount.amount) - (p ? BigInt(p.uiTokenAmount.amount) : 0n);
-      decimals = b.uiTokenAmount.decimals;
+    const tokenBalance = (rows, account) => {
+      let amount = 0n; let decimals = CFG.TOKEN_DECIMALS;
+      for (const b of rows || []) {
+        if (b.mint !== CFG.MINT_ADDRESS || keys[b.accountIndex] !== account) continue;
+        amount += BigInt(b.uiTokenAmount.amount);
+        decimals = b.uiTokenAmount.decimals;
+      }
+      return { amount, decimals };
+    };
+    const preSource = tokenBalance(tx.meta.preTokenBalances, source).amount;
+    const postSource = tokenBalance(tx.meta.postTokenBalances, source).amount;
+    const preTreasury = tokenBalance(tx.meta.preTokenBalances, treasury).amount;
+    const postTreasury = tokenBalance(tx.meta.postTokenBalances, treasury);
+    const sourceDelta = postSource - preSource;
+    const treasuryDelta = postTreasury.amount - preTreasury;
+    if (sourceDelta >= 0n || treasuryDelta <= 0n || -sourceDelta !== treasuryDelta) {
+      return { ok: false, reason: 'transaction must transfer $WAYFARER from your linked wallet to the treasury' };
     }
-    if (raw <= 0n) return { ok: false, reason: 'no $WAYFARER transfer into the treasury found in this transaction' };
+    const raw = treasuryDelta;
+    const decimals = postTreasury.decimals;
+    const unit = 10n ** BigInt(decimals);
+    if (raw % unit !== 0n) return { ok: false, reason: 'transfer must contain a whole number of tokens' };
     const amount = Number(raw / (10n ** BigInt(decimals)));
     if (!Number.isFinite(amount) || amount <= 0) return { ok: false, reason: 'transfer is below one whole token' };
     return { ok: true, amount, decimals };
@@ -288,9 +316,9 @@ async function verifyDeposit(signature) {
 let timers = [];
 export function init() {
   initEconStore();
-  sweepMarket();
+  sweepMarket().catch((e) => log.error('econ market sweep failed', { err: e.message }));
   timers = [
-    setInterval(sweepMarket, Math.max(250, Math.min(15_000, 15_000 * SCALE))),
+    setInterval(() => sweepMarket().catch((e) => log.error('econ market sweep failed', { err: e.message })), Math.max(250, Math.min(15_000, 15_000 * SCALE))),
     setInterval(sweepTrades, 5_000),
   ];
   timers.forEach((t) => t.unref?.());
@@ -607,11 +635,18 @@ export function install(room) {
     ESCROWS.delete(s.id);
     const da = mutate(pa, ra, { gold: netA - s.a.gold, add: s.b.items, remove: s.a.items });
     const dbb = mutate(pb, rb, { gold: netB - s.b.gold, add: s.a.items, remove: s.b.items });
+    try { await commit({ deviceKeys: [dkOf(pa), dkOf(pb)] }); }
+    catch (e) {
+      log.error('econ escrow not durably committed', { id: s.id, err: e.message });
+      send(room, s.a.sid, 'econ-error', { msg: 'Escrow could not be saved. Please reconnect before trading again.', code: 'storage' });
+      send(room, s.b.sid, 'econ-error', { msg: 'Escrow could not be saved. Please reconnect before trading again.', code: 'storage' });
+      failEscrow(s, 'The escrow could not be saved.');
+      return;
+    }
     send(room, s.a.sid, 'escrow-result', { ok: 1, id: s.id, ...stateOf(ra), delta: da, partner: s.b.name, fee });
     send(room, s.b.sid, 'escrow-result', { ok: 1, id: s.id, ...stateOf(rb), delta: dbb, partner: s.a.name, fee });
     ledger({ op: 'escrow', id: s.id, fee, a: { ck: s.a.ck, name: s.a.name, gave: s.a.items, gold: s.a.gold, rev: ra.rev }, b: { ck: s.b.ck, name: s.b.name, gave: s.b.items, gold: s.b.gold, rev: rb.rev } });
     log.info('econ escrow done', { id: s.id, a: s.a.name, b: s.b.name, aGave: s.a.items.length, aGold: s.a.gold, bGave: s.b.items.length, bGold: s.b.gold, fee });
-    await commit({ deviceKeys: [dkOf(pa), dkOf(pb)] });
   }
   function sweepEscrows() {
     const t = now();
@@ -676,11 +711,11 @@ export function install(room) {
     const l = { id: `L${++db.market.seq}`, seller: ck, sellerName: p.name, item: m.item, price, tax, hours, createdAt: t, expiresAt: t + Math.round(hours * 3_600_000 * SCALE) };
     db.market.listings[l.id] = l; markDirty('market');
     const delta = mutate(p, rec, { gold: -tax, remove: [m.item] });
-    sync(c, rec, 'market-post', delta);
-    note(c, `Listed ${gname(m.item)} for ${price}g (fee ${tax}g).`);
     ledger({ op: 'market-post', id: l.id, seller: ck, name: p.name, item: m.item, price, tax, rev: rec.rev });
     log.info('econ market post', { id: l.id, name: p.name, item: m.item, price });
-    await commit({ docs: ['market'], deviceKeys: [dkOf(p)] });
+    if (!await commitFor(c, { docs: ['market'], deviceKeys: [dkOf(p)] })) return;
+    sync(c, rec, 'market-post', delta);
+    note(c, `Listed ${gname(m.item)} for ${price}g (fee ${tax}g).`);
   });
 
   on('market-buy', async (c, p, m) => {
@@ -694,12 +729,13 @@ export function install(room) {
     if (rec.progress.inventory.length >= ECON.BAG_SIZE) { err(c, 'Your bag is full.', 'bag'); return; }
     delete db.market.listings[l.id]; markDirty('market');
     const delta = mutate(p, rec, { gold: -l.price, add: [l.item] });
-    deliverMail(l.seller, { sys: 1, from: 'Market Board', subject: `Sold: ${gname(l.item)}`, body: `${p.name} bought your ${gname(l.item)} for ${l.price} gold.`, gold: l.price, items: [] });
-    sync(c, rec, 'market-buy', delta);
-    note(c, `Bought ${gname(l.item)} for ${l.price}g.`);
+    const sellerMail = deliverMail(l.seller, { sys: 1, from: 'Market Board', subject: `Sold: ${gname(l.item)}`, body: `${p.name} bought your ${gname(l.item)} for ${l.price} gold.`, gold: l.price, items: [] });
     ledger({ op: 'market-buy', id: l.id, buyer: ck, name: p.name, seller: l.seller, item: l.item, price: l.price, rev: rec.rev });
     log.info('econ market buy', { id: l.id, buyer: p.name, seller: l.sellerName, item: l.item, price: l.price });
-    await commit({ docs: ['market', 'mail'], deviceKeys: [dkOf(p)] });
+    if (!await commitFor(c, { docs: ['market', 'mail'], deviceKeys: [dkOf(p)] })) return;
+    notifyMail(l.seller, sellerMail);
+    sync(c, rec, 'market-buy', delta);
+    note(c, `Bought ${gname(l.item)} for ${l.price}g.`);
   });
 
   on('market-cancel', async (c, p, m) => {
@@ -710,30 +746,29 @@ export function install(room) {
     if (!l || l.seller !== ck) { err(c, 'That is not your listing.', 'gone'); return; }
     delete db.market.listings[l.id]; markDirty('market');
     let delta = null;
+    let mailNotice = null;
     if (rec.progress.inventory.length < ECON.BAG_SIZE) {
       delta = mutate(p, rec, { add: [l.item] });
-      sync(c, rec, 'market-cancel', delta);
-      note(c, `Listing cancelled: ${gname(l.item)} is back in your bag.`);
-    } else {
-      deliverMail(ck, { sys: 1, from: 'Market Board', subject: `Returned: ${gname(l.item)}`, body: 'Your bag was full, so your cancelled listing was sent here.', gold: 0, items: [l.item] });
-      note(c, `Listing cancelled: your bag is full, ${gname(l.item)} was mailed to you.`);
-    }
+    } else { mailNotice = deliverMail(ck, { sys: 1, from: 'Market Board', subject: `Returned: ${gname(l.item)}`, body: 'Your bag was full, so your cancelled listing was sent here.', gold: 0, items: [l.item] }); }
     ledger({ op: 'market-cancel', id: l.id, seller: ck, item: l.item, toMail: !delta });
-    await commit({ docs: ['market', 'mail'], deviceKeys: delta ? [dkOf(p)] : [] });
+    if (!await commitFor(c, { docs: ['market', 'mail'], deviceKeys: delta ? [dkOf(p)] : [] })) return;
+    if (delta) { sync(c, rec, 'market-cancel', delta); note(c, `Listing cancelled: ${gname(l.item)} is back in your bag.`); }
+    else { notifyMail(ck, mailNotice); note(c, `Listing cancelled: your bag is full, ${gname(l.item)} was mailed to you.`); }
   });
 
   // ── mail ──
   on('mail-list', (c, p) => sendBox(c, ckOf(p)), 'browse');
-  on('mail-read', (c, p, m) => {
+  on('mail-read', async (c, p, m) => {
     const ck = ckOf(p); const mail = findMail(ck, m.id);
-    if (mail && !mail.read) { mail.read = 1; markDirty('mail'); }
+    if (mail && !mail.read) { mail.read = 1; markDirty('mail'); if (!await commitFor(c, { docs: ['mail'] })) return; }
     sendBox(c, ck);
   }, 'browse');
-  on('mail-delete', (c, p, m) => {
+  on('mail-delete', async (c, p, m) => {
     const ck = ckOf(p); const mail = findMail(ck, m.id);
     if (!mail) return;
     if (mail.gold || mail.items?.length) { err(c, 'Take the attachments first.'); return; }
     db.mail.boxes[ck] = db.mail.boxes[ck].filter((x) => x !== mail); markDirty('mail');
+    if (!await commitFor(c, { docs: ['mail'] })) return;
     sendBox(c, ck);
   });
   on('mail-claim', async (c, p, m) => {
@@ -746,10 +781,10 @@ export function install(room) {
     const gold = mail.gold | 0;
     mail.gold = 0; mail.items = []; mail.read = 1; markDirty('mail');
     const delta = mutate(p, rec, { gold, add: items });
+    ledger({ op: 'mail-claim', id: mail.id, to: ck, gold, items, rev: rec.rev });
+    if (!await commitFor(c, { docs: ['mail'], deviceKeys: [dkOf(p)] })) return;
     sync(c, rec, 'mail-claim', delta);
     sendBox(c, ck);
-    ledger({ op: 'mail-claim', id: mail.id, to: ck, gold, items, rev: rec.rev });
-    await commit({ docs: ['mail'], deviceKeys: [dkOf(p)] });
   });
   on('mail-send', async (c, p, m) => {
     const rec = requireRec(c, p, m); if (!rec) return;
@@ -770,16 +805,17 @@ export function install(room) {
     const subject = cleanLine(m.subject, ECON.SUBJECT_MAX) || '(no subject)';
     const body = cleanLine(m.body, ECON.TEXT_MAX);
     const delta = mutate(p, rec, { gold: -cost, remove: items });
-    deliverMail(to, { sys: 0, from: p.name, subject, body, gold, items });
+    const recipientMail = deliverMail(to, { sys: 0, from: p.name, subject, body, gold, items });
+    ledger({ op: 'mail-send', from: ck, to, gold, items, rev: rec.rev });
+    if (!await commitFor(c, { docs: ['mail'], deviceKeys: [dkOf(p)] })) return;
+    notifyMail(to, recipientMail);
     sync(c, rec, 'mail-send', delta);
     note(c, `Mail sent to ${toName}${gold || items.length ? ' with attachments' : ''} (${ECON.MAIL_POSTAGE}g postage).`);
-    ledger({ op: 'mail-send', from: ck, to, gold, items, rev: rec.rev });
-    await commit({ docs: ['mail'], deviceKeys: [dkOf(p)] });
   });
 
   // ── guilds (persisted; overrides the in-memory social.js stub handlers) ──
   on('guild-info', (c, p) => sendGuild(room, c.sessionId, ckOf(p)), 'browse');
-  on('guild-create', (c, p, m) => {
+  on('guild-create', async (c, p, m) => {
     const ck = ckOf(p); if (!ck) { err(c, 'Guilds need a saved online character.'); return; }
     if (db.guilds.memberOf[ck]) { err(c, 'Leave your guild first (/gleave).'); return; }
     const tag = String(m.tag || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 4).toUpperCase();
@@ -791,16 +827,17 @@ export function install(room) {
     glog(tag, `${p.name} founded the guild.`);
     markDirty('guilds');
     ledger({ op: 'guild-create', tag, by: ck });
+    if (!await commitFor(c, { docs: ['guilds'] })) return;
     refreshGuild(tag, true);
   });
-  on('guild-join', (c, p, m) => {
+  on('guild-join', async (c, p, m) => {
     const ck = ckOf(p);
     const inv = ck && INVITES.get(ck);
     const tag = String(m.tag || '').toUpperCase();
-    if (inv && inv.until > now() && (!tag || tag === inv.tag)) { acceptInvite(room, c, p); return; }
+    if (inv && inv.until > now() && (!tag || tag === inv.tag)) { await acceptInvite(room, c, p); return; }
     err(c, 'Guilds are invite-only: ask an officer to /ginvite you.');
   });
-  on('guild-accept', (c, p) => acceptInvite(room, c, p));
+  on('guild-accept', async (c, p) => acceptInvite(room, c, p));
   on('guild-decline', (c, p) => {
     const ck = ckOf(p); const inv = ck && INVITES.get(ck);
     if (!inv) return;
@@ -822,13 +859,12 @@ export function install(room) {
     send(where.room, where.sid, 'guild-invite', { tag: g.tag, name: g.name, from: p.name });
     note(c, `Guild invite sent to ${where.room.players.get(where.sid)?.name}.`);
   });
-  on('guild-leave', (c, p) => {
+  on('guild-leave', async (c, p) => {
     const ck = ckOf(p); const g = guildOf(ck);
     if (!g) { err(c, 'You are not in a guild.'); return; }
-    removeMember(g, ck, `${p.name} left the guild.`);
-    note(c, `You left <${g.tag}>.`);
+    if (await removeMember(g, ck, `${p.name} left the guild.`, c)) note(c, `You left <${g.tag}>.`);
   });
-  on('guild-kick', (c, p, m) => {
+  on('guild-kick', async (c, p, m) => {
     const ck = ckOf(p); const g = guildOf(ck);
     if (!g) { err(c, 'You are not in a guild.'); return; }
     const t = memberByName(g, m.name);
@@ -836,10 +872,10 @@ export function install(room) {
     const mine = g.members[ck].rank; const theirs = g.members[t].rank;
     if (!(mine === 'leader' || (mine === 'officer' && theirs === 'member'))) { err(c, 'You cannot kick that member.'); return; }
     const name = g.members[t].name;
-    removeMember(g, t, `${name} was removed by ${p.name}.`);
+    if (!await removeMember(g, t, `${name} was removed by ${p.name}.`, c)) return;
     const on2 = ONLINE.get(t); if (on2) send(on2.room, on2.sid, 'econ-msg', { text: `You were removed from <${g.tag}>.` });
   });
-  on('guild-rank', (c, p, m) => {
+  on('guild-rank', async (c, p, m) => {
     const ck = ckOf(p); const g = guildOf(ck);
     if (!g || g.members[ck].rank !== 'leader') { err(c, 'Only the guild leader can change ranks.'); return; }
     const t = memberByName(g, m.name);
@@ -850,14 +886,16 @@ export function install(room) {
     g.members[t].rank = rank;
     glog(g.tag, `${p.name} made ${g.members[t].name} ${rank}.`);
     markDirty('guilds');
+    if (!await commitFor(c, { docs: ['guilds'] })) return;
     refreshGuild(g.tag);
   });
-  on('guild-motd', (c, p, m) => {
+  on('guild-motd', async (c, p, m) => {
     const ck = ckOf(p); const g = guildOf(ck);
     if (!g || !['leader', 'officer'].includes(g.members[ck].rank)) { err(c, 'Only the leader and officers can set the MOTD.'); return; }
     g.motd = cleanLine(m.text, ECON.MOTD_MAX);
     glog(g.tag, `${p.name} set the message of the day.`);
     markDirty('guilds');
+    if (!await commitFor(c, { docs: ['guilds'] })) return;
     refreshGuild(g.tag);
   });
   on('guild-deposit', async (c, p, m) => {
@@ -870,10 +908,10 @@ export function install(room) {
     if (g.bank + gold > ECON.GOLD_MAX * 10) { err(c, 'The guild bank is full.'); return; }
     g.bank += gold; glog(g.tag, `${p.name} deposited ${gold}g.`); markDirty('guilds');
     const delta = mutate(p, rec, { gold: -gold });
-    sync(c, rec, 'guild-deposit', delta);
     ledger({ op: 'guild-deposit', tag: g.tag, by: ck, gold, bank: g.bank, rev: rec.rev });
+    if (!await commitFor(c, { docs: ['guilds'], deviceKeys: [dkOf(p)] })) return;
+    sync(c, rec, 'guild-deposit', delta);
     refreshGuild(g.tag);
-    await commit({ docs: ['guilds'], deviceKeys: [dkOf(p)] });
   });
   on('guild-withdraw', async (c, p, m) => {
     const ck = ckOf(p); const g = guildOf(ck);
@@ -884,10 +922,10 @@ export function install(room) {
     if ((rec.progress.gold | 0) + gold > ECON.GOLD_MAX) { err(c, 'You cannot carry that much gold.', 'gold'); return; }
     g.bank -= gold; glog(g.tag, `${p.name} withdrew ${gold}g.`); markDirty('guilds');
     const delta = mutate(p, rec, { gold });
-    sync(c, rec, 'guild-withdraw', delta);
     ledger({ op: 'guild-withdraw', tag: g.tag, by: ck, gold, bank: g.bank, rev: rec.rev });
+    if (!await commitFor(c, { docs: ['guilds'], deviceKeys: [dkOf(p)] })) return;
+    sync(c, rec, 'guild-withdraw', delta);
     refreshGuild(g.tag);
-    await commit({ docs: ['guilds'], deviceKeys: [dkOf(p)] });
   });
 
   // ── token-claim (Wayfarer Tokens) ──
@@ -922,18 +960,19 @@ export function install(room) {
     rec.savedAt = now(); rec.progress.savedAt = rec.savedAt;
     saveChar(p.token, p.name, rec);
     const delta = { gold: -fee, tokenPoints: -amount, wayfarerTokens: net };
-    sync(c, rec, 'token-claim', delta);
-    note(c, `Claimed ${net} Wayfarer Token${net !== 1 ? 's' : ''} (fee ${fee}g).`);
     ledger({ op: 'token-claim', ck: ckOf(p), name: p.name, amount, fee, net, rev: rec.rev });
+    if (!await commitFor(c, { deviceKeys: [dkOf(p)] })) return;
     const treasuryFee = Math.floor(fee / 2);
     const referralBonus = fee - treasuryFee; // the remainder so fee = treasuryFee + referralBonus
+    let bonus = 0;
     try {
       const refs = await import('./referrals.js');
       refs.recordFee(treasuryFee);
-      const bonus = refs.payReferralTokenBonus(ckOf(p), referralBonus, amount);
-      if (bonus > 0) note(c, `Your referrer earned ${bonus} Wayfarer Token bonus.`);
+      bonus = refs.payReferralTokenBonus(ckOf(p), referralBonus, amount);
     } catch { /* referrals not loaded */ }
-    await commit({ deviceKeys: [dkOf(p)] });
+    sync(c, rec, 'token-claim', delta);
+    note(c, `Claimed ${net} Wayfarer Token${net !== 1 ? 's' : ''} (fee ${fee}g).`);
+    if (bonus > 0) note(c, `Your referrer earned ${bonus} Wayfarer Token bonus.`);
   });
 
   // ── token-spend (Wayfarer Token sinks) ──
@@ -986,6 +1025,7 @@ export function install(room) {
     rec.rev = (rec.rev || 0) + 1;
     rec.savedAt = now(); rec.progress.savedAt = rec.savedAt;
     saveChar(p.token, p.name, rec);
+    if (!await commitFor(c, { deviceKeys: [dkOf(p)] })) return;
     ledger({ op: 'token-spend', ck: ckOf(p), name: p.name, type, amount, rev: rec.rev });
     c.send('token-spend-ok', {
       type, amount,
@@ -995,7 +1035,6 @@ export function install(room) {
       name: type === 'pet-rename' ? cleanPetName(m.name) : undefined,
     });
     note(c, note);
-    await commit({ deviceKeys: [dkOf(p)] });
   });
 
   // ── token-stake (mock/devnet holder preview) ──
@@ -1019,10 +1058,10 @@ export function install(room) {
     rec.savedAt = now(); rec.progress.savedAt = rec.savedAt;
     saveChar(p.token, p.name, rec);
     const delta = { wayfarerTokens: -amount, stake: { ...ext.stake } };
+    ledger({ op: 'token-stake', ck: ckOf(p), name: p.name, tier, amount, lockedUntil: ext.stake.lockedUntil, rev: rec.rev });
+    if (!await commitFor(c, { deviceKeys: [dkOf(p)] })) return;
     sync(c, rec, 'token-stake', delta);
     note(c, `${tier.charAt(0).toUpperCase() + tier.slice(1)} stake locked: ${amount} tokens for ${meta.days} days (+${Math.round(meta.dropRate * 100)}% drop rate).`);
-    ledger({ op: 'token-stake', ck: ckOf(p), name: p.name, tier, amount, lockedUntil: ext.stake.lockedUntil, rev: rec.rev });
-    await commit({ deviceKeys: [dkOf(p)] });
   });
 
   // ── wallet binding (prove ownership of a Solana address) ──
@@ -1101,8 +1140,11 @@ export function install(room) {
     rec.savedAt = now(); rec.progress.savedAt = rec.savedAt;
     saveChar(p.token, p.name, rec);
     const delta = { wayfarerTokens: -amount };
-    sync(c, rec, 'token-withdraw', delta);
     ledger({ op: 'token-withdraw', ck: ckOf(p), name: p.name, address, amount, fee, net, rev: rec.rev });
+
+    // Persist the debit before attempting the irreversible on-chain mint.
+    if (!await commitFor(c, { deviceKeys: [dkOf(p)] })) return;
+    sync(c, rec, 'token-withdraw', delta);
 
     const mint = await sendMintWithdraw(address, net);
     const status = mint.signature ? 'sent' : 'pending';
@@ -1117,7 +1159,6 @@ export function install(room) {
     // fee split: half burned, half into the referral/fee treasury pool
     const treasuryFee = Math.floor(fee / 2);
     try { const refs = await import('./referrals.js'); refs.recordFee(treasuryFee); } catch { /* referrals not loaded */ }
-    await commit({ deviceKeys: [dkOf(p)] });
   });
 
   // ── token-deposit (on-chain $WAYFARER -> in-game Wayfarer Tokens) ──
@@ -1125,21 +1166,23 @@ export function install(room) {
     const rec = requireRec(c, p, m, { needRev: false }); if (!rec) return;
     const signature = String(m.signature || '').trim();
     if (!/^[1-9A-HJ-NP-Za-km-z]{40,100}$/.test(signature)) { err(c, 'Paste a valid Solana transaction signature.', 'invalid'); return; }
+    const dbm = await bridgeDb();
+    const address = boundWalletAddressFor(dbm, p);
+    if (!address) { err(c, 'Link the wallet that sent this deposit before claiming it.', 'wallet'); return; }
     if (!depositConfigured()) {
       c.send('token-deposit-result', { ok: 0, amount: 0, credited: 0, reason: 'unconfigured' });
       return;
     }
-    const dbm = await bridgeDb();
     let prior = null; try { prior = dbm?.getBridgeDeposit?.(signature) || null; } catch { prior = null; }
     if (prior) {
       c.send('token-deposit-result', { ok: 0, amount: prior.amount | 0, credited: 0, reason: 'That transaction was already credited.' });
       return;
     }
-    const v = await verifyDeposit(signature);
+    const v = await verifyDeposit(signature, address);
     if (!v.ok) { c.send('token-deposit-result', { ok: 0, amount: 0, credited: 0, reason: v.reason }); return; }
     const amount = Math.min(v.amount, 1e9); // bound the credit to the validator's int range
     const inserted = dbm?.insertBridgeDeposit
-      ? (() => { try { return dbm.insertBridgeDeposit({ signature, ck: ckOf(p), address: boundWalletAddressFor(dbm, p), amount }); } catch { return false; } })()
+      ? (() => { try { return dbm.insertBridgeDeposit({ signature, ck: ckOf(p), address, amount }); } catch { return false; } })()
       : false;
     if (dbm?.insertBridgeDeposit && !inserted) {
       // lost the race against a concurrent credit of the same signature
@@ -1151,12 +1194,12 @@ export function install(room) {
     rec.savedAt = now(); rec.progress.savedAt = rec.savedAt;
     saveChar(p.token, p.name, rec);
     const delta = { wayfarerTokens: amount };
+    ledger({ op: 'token-deposit', ck: ckOf(p), signature, amount, rev: rec.rev });
+    log.info('token deposit', { ck: ckOf(p), signature, amount });
+    if (!await commitFor(c, { deviceKeys: [dkOf(p)] })) return;
     sync(c, rec, 'token-deposit', delta);
     c.send('token-deposit-result', { ok: 1, amount, credited: amount });
     note(c, `Deposit credited: ${amount} Wayfarer Token${amount !== 1 ? 's' : ''}.`);
-    ledger({ op: 'token-deposit', ck: ckOf(p), signature, amount, rev: rec.rev });
-    log.info('token deposit', { ck: ckOf(p), signature, amount });
-    await commit({ deviceKeys: [dkOf(p)] });
   });
 
   // ── token-bridge-state ──
@@ -1254,28 +1297,39 @@ async function executeTrade(s) {
   TRADES.delete(s.id);
   const da = mutate(pa, ra, { gold: s.b.gold - s.a.gold, add: s.b.items, remove: s.a.items });
   const dbb = mutate(pb, rb, { gold: s.a.gold - s.b.gold, add: s.a.items, remove: s.b.items });
+  try { await commit({ deviceKeys: [dkOf(pa), dkOf(pb)] }); }
+  catch (e) {
+    log.error('econ trade not durably committed', { id: s.id, err: e.message });
+    send(room, s.a.sid, 'econ-error', { msg: 'Trade could not be saved. Please reconnect before trading again.', code: 'storage' });
+    send(room, s.b.sid, 'econ-error', { msg: 'Trade could not be saved. Please reconnect before trading again.', code: 'storage' });
+    failTrade(s, 'The trade could not be saved.');
+    return;
+  }
   send(room, s.a.sid, 'trade-result', { ok: 1, id: s.id, ...stateOf(ra), delta: da, partner: s.b.name });
   send(room, s.b.sid, 'trade-result', { ok: 1, id: s.id, ...stateOf(rb), delta: dbb, partner: s.a.name });
   ledger({ op: 'trade', id: s.id, a: { ck: s.a.ck, name: s.a.name, gave: s.a.items, gold: s.a.gold, rev: ra.rev }, b: { ck: s.b.ck, name: s.b.name, gave: s.b.items, gold: s.b.gold, rev: rb.rev } });
   log.info('econ trade done', { id: s.id, a: s.a.name, b: s.b.name, aGave: s.a.items.length, aGold: s.a.gold, bGave: s.b.items.length, bGold: s.b.gold });
-  await commit({ deviceKeys: [dkOf(pa), dkOf(pb)] });
 }
 
 // ─── market sweep / mail internals ────────────────────────────────────
-function sweepMarket() {
+async function sweepMarket() {
   const t = now();
   let n = 0;
+  const notices = [];
   for (const l of Object.values(db.market.listings)) {
     if (l.expiresAt > t) continue;
     delete db.market.listings[l.id];
-    deliverMail(l.seller, { sys: 1, from: 'Market Board', subject: `Expired: ${gname(l.item)}`, body: `Nobody bought your ${gname(l.item)} (${l.price}g). The item is attached.`, gold: 0, items: [l.item] });
+    notices.push([l.seller, deliverMail(l.seller, { sys: 1, from: 'Market Board', subject: `Expired: ${gname(l.item)}`, body: `Nobody bought your ${gname(l.item)} (${l.price}g). The item is attached.`, gold: 0, items: [l.item] })]);
     ledger({ op: 'market-expire', id: l.id, seller: l.seller, item: l.item });
     n++;
   }
   if (n) {
     markDirty('market');
     log.info('econ market expired', { n });
-    commit({ docs: ['market', 'mail'] }).catch(() => {});
+    try {
+      await commit({ docs: ['market', 'mail'] });
+      for (const [ck, mail] of notices) notifyMail(ck, mail);
+    } catch (e) { log.error('econ market expiry commit failed', { err: e.message, expired: n }); }
   }
 }
 function deliverMail(ck, mail) {
@@ -1287,9 +1341,11 @@ function deliverMail(ck, mail) {
     db.mail.boxes[ck] = box.filter((x) => !drop.includes(x));
   }
   markDirty('mail');
-  const on = ONLINE.get(ck);
-  if (on) send(on.room, on.sid, 'mail-unread', { n: (db.mail.boxes[ck] || []).filter((x) => !x.read).length, subject: m.subject, from: m.from });
   return m;
+}
+function notifyMail(ck, mail) {
+  const on = ONLINE.get(ck);
+  if (on && mail) send(on.room, on.sid, 'mail-unread', { n: (db.mail.boxes[ck] || []).filter((x) => !x.read).length, subject: mail.subject, from: mail.from });
 }
 const findMail = (ck, id) => (ck ? (db.mail.boxes[ck] || []).find((x) => x.id === id) : null);
 function sendBox(client, ck) {
@@ -1307,7 +1363,7 @@ function glog(tag, text) {
   const g = db.guilds.guilds[tag]; if (!g) return;
   g.log.push({ t: now(), text }); if (g.log.length > 30) g.log.splice(0, g.log.length - 30);
 }
-function acceptInvite(room, c, p) {
+async function acceptInvite(room, c, p) {
   const ck = ckOf(p); const inv = ck && INVITES.get(ck);
   INVITES.delete(ck);
   if (!inv || inv.until < now()) { err(c, 'No pending guild invite.'); return; }
@@ -1319,18 +1375,14 @@ function acceptInvite(room, c, p) {
   glog(g.tag, `${p.name} joined the guild.`);
   markDirty('guilds');
   ledger({ op: 'guild-join', tag: g.tag, who: ck });
+  if (!await commitFor(c, { docs: ['guilds'] })) return;
   refreshGuild(g.tag, true);
 }
-function removeMember(g, ck, why) {
+async function removeMember(g, ck, why, client) {
   const on = ONLINE.get(ck);
   delete g.members[ck];
   delete db.guilds.memberOf[ck];
   glog(g.tag, why);
-  if (on) {
-    linkSocial(on.room, on.sid, '');
-    send(on.room, on.sid, 'guild-info', { tag: '' });
-    send(on.room, on.sid, 'guild-update', { tag: '', name: '', members: [] });
-  }
   const left = Object.keys(g.members);
   if (!left.length) {
     delete db.guilds.guilds[g.tag];
@@ -1342,7 +1394,14 @@ function removeMember(g, ck, why) {
     glog(g.tag, `${g.members[next].name} is now the guild leader.`);
   }
   markDirty('guilds');
+  if (!await commitFor(client, { docs: ['guilds'] })) return false;
+  if (on) {
+    linkSocial(on.room, on.sid, '');
+    send(on.room, on.sid, 'guild-info', { tag: '' });
+    send(on.room, on.sid, 'guild-update', { tag: '', name: '', members: [] });
+  }
   if (left.length) refreshGuild(g.tag, true);
+  return true;
 }
 function guildPayload(g, ck) {
   return {

@@ -8,6 +8,7 @@ import { installLazyScenes } from './scenes/lazy.js';
 import { installMobile } from './core/mobile.js';
 import { installPwa } from './core/pwa.js';
 import { installPerf } from './core/perf.js';
+import { injectPolishCss } from './ui/hudPolish.js';
 
 // Mobile hardening: no pinch-zoom gestures, no long-press menu, no dblclick zoom.
 document.addEventListener('gesturestart', (e) => e.preventDefault());
@@ -53,3 +54,4 @@ input.install(game);
 installMobile();
 installPwa();
 installPerf(game);
+injectPolishCss(); // additive HUD readability/mobile floors (ui/hudPolish.js; id-guarded, safe to call once)

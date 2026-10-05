@@ -1,10 +1,7 @@
-import fs from 'fs';
-import path from 'path';
-import { CFG } from './config.js';
 import { log } from './log.js';
-import { storeDir } from './store.js';
+import { listAllChars } from './store.js';
 
-// Leaderboard: server-computed top players from the file-backed character store.
+// Leaderboard: server-computed top players from the configured character store.
 // Categories: level, gold, season, pets, arena. Results are cached for 60s.
 //
 // GET /leaderboard?type=<type>&limit=<n>
@@ -16,28 +13,15 @@ const CACHE_TTL_MS = 60_000;
 const VALID_TYPES = new Set(['level', 'gold', 'season', 'pets', 'arena']);
 const DEFAULT_LIMIT = 20;
 
-let cache = new Map(); // type -> { t, entries }
+let cache = new Map(); // `${type}:${limit}` -> { t, data }
 
 function readPlayers() {
-  const dir = storeDir();
-  const chars = [];
   try {
-    for (const f of fs.readdirSync(dir)) {
-      if (!f.endsWith('.json')) continue;
-      let doc;
-      try { doc = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); }
-      catch { continue; }
-      if (!doc || typeof doc.chars !== 'object') continue;
-      for (const lower of Object.keys(doc.chars)) {
-        const c = doc.chars[lower];
-        if (!c?.progress) continue;
-        chars.push({ name: c.name || lower, progress: c.progress, hero: c.hero || {} });
-      }
-    }
+    return listAllChars();
   } catch (e) {
     log.warn('leaderboard read failed', { err: e.message });
+    return [];
   }
-  return chars;
 }
 
 function compute(type, limit) {
@@ -80,11 +64,12 @@ export function routes(app) {
       res.status(400).json({ ok: false, error: 'invalid_type', valid: [...VALID_TYPES] });
       return;
     }
-    let limit = Math.max(1, Math.min(100, Number(req.query.limit) || DEFAULT_LIMIT));
+    let limit = Math.floor(Math.max(1, Math.min(100, Number(req.query.limit) || DEFAULT_LIMIT)));
     if (!Number.isFinite(limit)) limit = DEFAULT_LIMIT;
 
     const now = Date.now();
-    const cached = cache.get(type);
+    const cacheKey = `${type}:${limit}`;
+    const cached = cache.get(cacheKey);
     if (cached && now - cached.t < CACHE_TTL_MS) {
       res.json({ ok: true, ...cached.data, cached: true });
       return;
@@ -92,7 +77,7 @@ export function routes(app) {
 
     try {
       const data = compute(type, limit);
-      cache.set(type, { t: now, data });
+      cache.set(cacheKey, { t: now, data });
       res.json({ ok: true, ...data, cached: false });
     } catch (e) {
       log.error('leaderboard compute failed', { err: e.message });

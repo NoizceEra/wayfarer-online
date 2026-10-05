@@ -9,6 +9,7 @@ const NEEDS_WORLD_ASSETS = new Set(['creator', ...LAZY_KEYS]); // scenes that dr
 let promise = null;
 let ready = false;
 let gameRef = null;
+let syncTitleVideo = () => {};
 
 export function gameplayReady() { return ready; }
 
@@ -17,7 +18,17 @@ export function prefetchGameplay() {
   promise = import('./gameplay.js').then((m) => {
     const sm = gameRef?.scene;
     if (sm) {
-      const add = (key, cls) => { if (!sm.getScene(key)) sm.add(key, cls, false); };
+      const add = (key, cls) => {
+        if (sm.getScene(key)) return;
+        sm.add(key, cls, false);
+        if (key === 'world') {
+          const world = sm.getScene(key);
+          world.events.on('start', syncTitleVideo);
+          // Defer until Phaser has applied the shutdown/start queue so a world
+          // restart keeps the title video paused without a one-frame flash.
+          world.events.on('shutdown', () => requestAnimationFrame(syncTitleVideo));
+        }
+      };
       add('world', m.WorldScene); add('ui', m.UIScene); add('character', m.CharacterScene); add('overlay', m.OverlayScene);
     }
     ready = true;
@@ -30,6 +41,13 @@ export function installLazyScenes(game) {
   gameRef = game;
   const sm = game.scene;
   const orig = sm.queueOp.bind(sm);
+  syncTitleVideo = () => {
+    const video = document.getElementById('bg-video');
+    if (!video) return;
+    if (document.hidden || sm.isActive('world')) video.pause();
+    else video.play().catch(() => {});
+  };
+  document.addEventListener('visibilitychange', syncTitleVideo);
   sm.queueOp = (op, src, data) => {
     const key = typeof src === 'string' ? src : src?.sys?.settings?.key;
     const starting = op === 'start' || op === 'launch' || op === 'run';

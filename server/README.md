@@ -106,7 +106,7 @@ online characters.
 | Route | Purpose |
 | --- | --- |
 | `GET /health` | `{ok, uptime}`. Returns 503 while shutting down. Use it as the Railway healthcheck. |
-| `GET /stats` | Players, rooms and shards, area authorities, message and violation counters, store stats, RSS. |
+| `GET /stats` | Player and private-room counts, public world shard details, area authorities, message and violation counters, store stats, RSS. Private room IDs and codes are omitted. |
 | `GET /rooms/:code` | Turns a 5-character co-op code into a roomId. |
 
 ## Environment
@@ -123,9 +123,17 @@ online characters.
 | `RECONNECT_SECONDS` | `30` | How long a dropped seat is held |
 | `SAVE_FLUSH_MS` | `5000` | Store write-behind interval |
 | `MAX_SPEED` | `260` | Movement validation ceiling (px/s) |
+| WebSocket frame limit | `128 KiB` | Maximum inbound frame; save fields have smaller per-field limits in `validate.js`, and economy/generic messages have tighter handler limits. |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error` |
 | `CORS_ORIGIN` | `*` | Comma-separated allowed origins for the HTTP routes |
+| `TRUST_PROXY_HOPS` | `0` | Number of trusted reverse proxies in front of Express. Set to the platform's exact hop count (commonly `1`) so public API limits use each visitor's address. |
 | `MARKET_DURATION_SCALE` | `1` | Multiplies listing durations. It exists for tests: `0.001` turns 2 h into about 7 s. |
+
+Public read-only HTTP routes have in-process rate limits. Room-code lookups share
+one per-client budget across codes to slow enumeration; directory and status
+routes have separate, more generous budgets. Set `TRUST_PROXY_HOPS` only when
+the service is reachable through that known proxy chain. The limiter falls
+back to the socket address when no trusted proxy count is configured.
 
 ## Deploy (Railway)
 

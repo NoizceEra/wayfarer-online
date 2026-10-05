@@ -64,6 +64,28 @@ export function saveChar(token, name, rec) {
   return true;
 }
 
+// Shared character enumeration for server-owned views such as leaderboards.
+// Keep the storage backend choice inside the store so SQLite mode does not
+// silently look empty to callers that previously scanned JSON files.
+export function listAllChars() {
+  if (_db) return _dbMod.listAllCharsDb();
+  const chars = [];
+  for (const file of fs.readdirSync(DIR)) {
+    if (!file.endsWith('.json')) continue;
+    try {
+      const doc = JSON.parse(fs.readFileSync(path.join(DIR, file), 'utf8'));
+      if (!doc || !doc.chars || typeof doc.chars !== 'object') continue;
+      for (const [lower, rec] of Object.entries(doc.chars)) {
+        if (!rec?.progress) continue;
+        chars.push({ name: rec.name || lower, progress: rec.progress, hero: rec.hero || {} });
+      }
+    } catch (e) {
+      log.warn('store enumeration skipped unreadable document', { file, err: e.message });
+    }
+  }
+  return chars;
+}
+
 async function writeAtomic(file, data) {
   const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
   const fh = await fsp.open(tmp, 'w');

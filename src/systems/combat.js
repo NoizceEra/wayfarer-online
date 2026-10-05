@@ -11,7 +11,7 @@ import { rollDefDrop, rollItemDrops } from '../data/worldEnemies.js';
 import { WAYSTONES } from '../data/zones.js';
 import { iconKey } from './gearArt.js';
 import { CombatHudScene } from '../scenes/CombatHudScene.js';
-import { hitSpark } from './skillVfx.js';
+import { dodgeVfx, hitSpark } from './skillVfx.js';
 
 const FONT = '"Silkscreen", monospace';
 const POOL = 48;           // pooled floating combat texts
@@ -174,6 +174,7 @@ export class Combat {
   applyEnemyStatus(ed, id, secs) {
     if (!ed?.alive) return;
     const def = STATUS[id];
+    if (!def) return;
     if (ed.isBoss && id === 'stun') { this.floatText(ed.x, ed.y - 26, 'Immune', '#c8c8c8', 'small'); return; }
     const now = this.s.time.now;
     const fresh = ed.statuses.apply(id, now, { secs: ed.isBoss && id === 'slow' ? (secs ?? def.secs) * 0.5 : secs, dmg: def.dot ? this.p.effAtk() * def.dot : 0 });
@@ -263,7 +264,14 @@ export class Combat {
   enemyHitPlayer(ed) {
     const s = this.s, p = this.p;
     if (p.dead || s.zoneHere(p.x, p.y).safe) return;
-    if (s.time.now < p.invulnUntil) { if (this.rolling) this.floatText(p.x, p.y - 26, 'Dodge', '#9bd0ff', 'small'); return; }
+    if (s.time.now < p.invulnUntil) {
+      if (this.rolling && !this.rollEvadeShown) {
+        this.rollEvadeShown = true;
+        this.floatText(p.x, p.y - 26, 'Dodge!', '#d9f6ff', 'small');
+        dodgeVfx(s, p, true);
+      }
+      return;
+    }
     if (p.tryDodge()) return; // FLEE-based dodge (shows Miss)
     const raw = ed.hitDmg * mobDmgMul(p.level, ed.level);
     const n = Math.max(1, Math.round(raw - p.effDef() * 0.5));
@@ -334,8 +342,10 @@ export class Combat {
     const spd = ROLL_SPEED * (this.statuses.has('slow', now) ? 0.75 : 1);
     this.rollV = { x: (vx / len) * spd, y: (vy / len) * spd };
     this.rollUntil = now + ROLL_MS;
+    this.rollEvadeShown = false;
     p.invulnUntil = Math.max(p.invulnUntil, now + IFRAME_MS);
     audio.play('dash', 0.7);
+    dodgeVfx(s, p);
     s.spawnFx(p.x, p.y - 2, 'fx.dust', 1.1);
     s.tweens.add({ targets: p, scaleY: 0.78, scaleX: 1.12, duration: ROLL_MS / 2, yoyo: true, onComplete: () => p.setScale(1) });
     for (let i = 1; i <= 3; i++) {
@@ -698,6 +708,17 @@ export class Combat {
         const ex = e.x + Math.cos(a) * len, ey = e.y + Math.sin(a) * len;
         tg.lineStyle(7 * e.vscale, 0xff3030, 0.12 + 0.18 * t).lineBetween(e.x, e.y, ex, ey);
         tg.lineStyle(1, 0xff5040, 0.8).lineBetween(e.x, e.y, e.x + Math.cos(a) * len * t, e.y + Math.sin(a) * len * t);
+      },
+      drawWindup: (e, a, t, pat) => {
+        const shoot = !!pat.shoot;
+        const color = shoot ? 0xffd35a : 0xff5d52;
+        const r = (10 + 4 * e.vscale) * (0.8 + 0.2 * t);
+        tg.lineStyle(1.5, color, 0.55 + 0.35 * t).beginPath()
+          .arc(e.x, e.y + 2, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * t, false, 0.08).strokePath();
+        const len = shoot ? 20 + 10 * t : 14 + 8 * t;
+        const ex = e.x + Math.cos(a) * len, ey = e.y + Math.sin(a) * len;
+        tg.lineStyle(1, color, 0.5 + 0.4 * t).lineBetween(e.x, e.y, ex, ey);
+        tg.fillStyle(color, 0.45 + 0.4 * t).fillCircle(ex, ey, 1.5 + t);
       },
     });
     env.p = p; env.nightBoost = s.daynight?.isNight ? 1.25 : 1;

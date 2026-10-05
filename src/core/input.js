@@ -468,7 +468,7 @@ class InputManager {
       const c = game.canvas;
       if (!c) return;
       if (!c.hasAttribute('tabindex')) c.setAttribute('tabindex', '0');
-      c.style.outline = 'none';
+      if (!c.hasAttribute('aria-label')) c.setAttribute('aria-label', 'Wayfarer Online game area');
       // Phaser preventDefault()s mousedown/touchstart, which also stops the
       // browser from moving focus (and, inside an iframe like itch.io, from
       // ever focusing the game frame) -> keys went nowhere. Focus explicitly.
