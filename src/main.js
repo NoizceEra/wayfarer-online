@@ -4,6 +4,7 @@ import { TitleScene } from './scenes/TitleScene.js';
 import { CreatorScene } from './scenes/CreatorScene.js';
 import GuildHallScene from './scenes/GuildHallScene.js';
 import HomeIslandScene from './scenes/HomeIslandScene.js';
+import { SKILL_TREES, ADV_TREE_GATES } from './data/skillTrees.js';
 import { input } from './core/input.js';
 import { installLazyScenes } from './scenes/lazy.js';
 import { installMobile } from './core/mobile.js';
@@ -56,3 +57,7 @@ installMobile();
 installPwa();
 installPerf(game);
 injectPolishCss(); // additive HUD readability/mobile floors (ui/hudPolish.js; id-guarded, safe to call once)
+// Specialization catalogue (skill trees + adv gates) for the spec runtime.
+// Global (not import) so game code and UI panels share one catalogue object,
+// including remote-player puppets sanitized on older shapes.
+globalThis.__WAYFARER_SKILL_TREES__ = { ...SKILL_TREES, advGates: ADV_TREE_GATES };

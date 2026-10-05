@@ -4,6 +4,8 @@ import { JOBS, ADVANCED } from '../data/jobs.js';
 import {
   STAT_IDS, MAX_LEVEL, MAX_STAT, CLASS_CHANGE_LEVEL, SKILL_MAX, SKILL_POINTS_PER_LEVEL,
   xpToNext, statPointsForLevel, statCost, skillCdMul, newProg, computeDerived,
+  SPEC_NODES_MAX, ensureSpecState, normalizeSpecNode, findSpecNode,
+  specStatBonus, specSkillBoosts, specDerivedBonus, meetsClassGate,
 } from '../data/stats.js';
 import { sanitizeProgression } from '../core/save.js';
 import { bus, Events } from '../core/events.js';
@@ -96,7 +98,8 @@ export class ModularPlayer extends Phaser.GameObjects.Container {
     this.maxMp = job.mp; this.mp = job.mp;
     this.atk = job.atk;
     this.level = 1; this.xp = 0; this.xpNext = xpToNext(1);
-    this.prog = newProg();   // RPG progression (stats/skills/advanced class), see data/stats.js
+    this.prog = ensureSpecState(newProg());   // RPG progression (stats/skills/advanced class/spec), see data/stats.js
+    this._specData = null; // injected spec catalogue (data/skillTrees.js); see setSpecData + docs/SPEC_ENGINE.md
     this.buff = null;        // temporary skill buff {until, atkMul, spdMul}
     this.gold = 20; this.potions = 3;
     this.tokenPoints = 0;
@@ -139,25 +142,62 @@ export class ModularPlayer extends Phaser.GameObjects.Container {
   // — RPG progression —
   advClass() { return this.prog.adv ? ADVANCED[this.prog.adv] : null; }
   // Recompute derived stats (maxHp/maxMp/atk/speed) from level + stats + class.
+  // Spec flat bonuses (STAT_IDS-only) ride in the computeDerived `bonus`, the
+  // same channel adv.bonus uses via totalStats — gear atk/def/hp/mp/spd untouched.
+  specBonus() { try { return specStatBonus(this.prog.nodes, (id) => this.resolveSpecNode(id)); } catch { return {}; } }
+  combinedBonuses() { return { ...this.equipBonuses(), ...this.specBonus() }; }
   recalc(fill = false) {
-    this.derived = computeDerived({ job: this.job, adv: this.advClass(), level: this.level, alloc: this.prog.alloc, weaponKind: this.weaponKind(), bonus: this.equipBonuses() });
+    // Spec derived-slot deltas (hpMul/mpMul/crit/aspd/move) ride an adv-like
+    // overlay so they use the exact slots computeDerived already reads.
+    let adv = this.advClass();
+    try {
+      const s = specDerivedBonus(this.prog.nodes, (id) => this.resolveSpecNode(id));
+      if (s && (s.hpMul !== 1 || s.mpMul !== 1 || s.crit || s.aspd || s.move)) {
+        adv = {
+          ...(adv || {}),
+          hpMul: (adv?.hpMul || 1) * s.hpMul, mpMul: (adv?.mpMul || 1) * s.mpMul,
+          crit: (adv?.crit || 0) + s.crit, aspd: (adv?.aspd || 0) + s.aspd, move: (adv?.move || 0) + s.move,
+        };
+      }
+    } catch { adv = this.advClass(); }
+    this.derived = computeDerived({ job: this.job, adv, level: this.level, alloc: this.prog.alloc, weaponKind: this.weaponKind(), bonus: this.combinedBonuses() });
     this.maxHp = this.derived.maxHp; this.maxMp = this.derived.maxMp;
     this.atk = this.derived.atk; this.speed = this.derived.moveSpeed;
     if (fill) { this.hp = this.effMaxHp(); this.mp = this.effMaxMp(); }
     else { this.hp = Math.min(this.hp, this.effMaxHp()); this.mp = Math.min(this.mp, this.effMaxMp()); }
   }
   applyProgression(raw) {
-    this.prog = sanitizeProgression(raw, this.level, this.job.id);
+    this.prog = ensureSpecState(sanitizeProgression(raw, this.level, this.job.id));
     this.xpNext = xpToNext(this.level);
     this.recalc(true);
+  }
+  // — Specialization (spec catalogue injected; never statically imported) —
+  // Wiring (see docs/SPEC_ENGINE.md): scene calls player.setSpecData(trees) once
+  // data/skillTrees.js lands, or sets globalThis.__WAYFARER_SKILL_TREES__. Until
+  // then every spec op safely no-ops (unknown ids → null → buy returns false).
+  setSpecData(data) { this._specData = data || null; return this; }
+  specData() { return this._specData || (typeof globalThis !== 'undefined' && globalThis.__WAYFARER_SKILL_TREES__) || null; }
+  resolveSpecNode(id) {
+    try {
+      const data = this.specData();
+      if (!data) return null;
+      if (typeof data === 'function') return normalizeSpecNode(data(id));
+      return normalizeSpecNode(findSpecNode(data, id));
+    } catch { return null; }
   }
   // Base abilities (keys 1-4) + advanced-class abilities (keys 5-6).
   skillList() { return [...this.job.abilities, ...(this.advClass()?.abilities || [])]; }
   abilityForKey(k) { return this.skillList().find((a) => a.key === String(k)) || null; }
   // Base skills start at Lv1; advanced skills at Lv0 until learned with a skill point.
+  // Spec path skill-level boosts stack on top, capped at SKILL_MAX (unknown ids ignored).
   skillLv(id) {
     const base = this.job.abilities.some((a) => a.id === id) ? 1 : 0;
-    return Math.max(base, this.prog.skills[id] || 0);
+    let boost = 0;
+    try {
+      const boosts = specSkillBoosts(this.prog.nodes, (nid) => this.resolveSpecNode(nid));
+      boost = boosts[id] || 0;
+    } catch { boost = 0; }
+    return Math.min(SKILL_MAX, Math.max(base, this.prog.skills[id] || 0) + boost);
   }
   skillCd(ab) { return ab.cd * skillCdMul(this.skillLv(ab.id)); }
   buffMul(k) { return this.buff && this.scene.time.now < this.buff.until ? (this.buff[k] || 1) : 1; }
@@ -175,15 +215,50 @@ export class ModularPlayer extends Phaser.GameObjects.Container {
     this.scene.damageNumber?.(this.x, this.y - 6, 'Miss', '#9bd0ff');
     return true;
   }
-  _emitProgress() { bus.emit(Events.PROGRESS, { level: this.level, statPoints: this.prog.statPoints, skillPoints: this.prog.skillPoints, adv: this.prog.adv }); }
+  _emitProgress() { bus.emit(Events.PROGRESS, { level: this.level, statPoints: this.prog.statPoints, skillPoints: this.prog.skillPoints, adv: this.prog.adv, paths: { ...this.prog.paths }, nodes: (this.prog.nodes || []).length }); }
   canChooseClass() { return this.level >= CLASS_CHANGE_LEVEL && !this.prog.adv; }
+  // Path-investment gate for an advanced class (data contract, tolerant):
+  // adv.specGate first, then a catalogue-level gate map. No gate data → true.
+  classGateStatus(id) {
+    try {
+      const adv = ADVANCED[id];
+      if (!adv) return { ok: false, reason: 'unknown' };
+      const data = this.specData();
+      const gate = adv.specGate ?? adv.gate ?? adv.reqSpec ?? adv.pathGate ?? data?.advGates?.[id] ?? data?.classGates?.[id] ?? null;
+      const ok = meetsClassGate(adv, this.prog, gate);
+      return ok ? { ok: true } : { ok: false, reason: 'path', gate };
+    } catch { return { ok: true }; }
+  }
   chooseClass(id) {
     const adv = ADVANCED[id];
     if (!adv || adv.base !== this.job.id || !this.canChooseClass()) return false;
+    try { if (!this.classGateStatus(id).ok) return false; } catch { /* gate never blocks on error */ }
     this.prog.adv = id;
     this.recalc(true);
     this._emitProgress();
     return true;
+  }
+  // Buy a specialization node: validates level, skill points, prereq order and
+  // base-job match; deducts, records, recalcs, emits. Returns true/false, never throws.
+  buySpecNode(nodeId) {
+    try {
+      if (typeof nodeId !== 'string' || !nodeId) return false;
+      ensureSpecState(this.prog);
+      if ((this.prog.nodes || []).includes(nodeId)) return false;
+      if ((this.prog.nodes || []).length >= SPEC_NODES_MAX) return false;
+      const def = this.resolveSpecNode(nodeId);
+      if (!def) return false;
+      if (def.base && !def.base.includes(this.job.id)) return false;
+      if (this.level < def.reqLv) return false;
+      if ((this.prog.skillPoints || 0) < def.cost) return false;
+      for (const pre of def.prereq) if (!(this.prog.nodes || []).includes(pre)) return false;
+      this.prog.skillPoints -= def.cost;
+      this.prog.nodes.push(def.id);
+      if (def.path) this.prog.paths[def.path] = (this.prog.paths[def.path] || 0) + 1;
+      this.recalc();
+      this._emitProgress();
+      return true;
+    } catch { return false; }
   }
   // Commit staged stat increments ({str:+n,...}); validates cost against points.
   applyStats(delta) {

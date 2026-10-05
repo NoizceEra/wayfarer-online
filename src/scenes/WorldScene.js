@@ -158,7 +158,7 @@ export class WorldScene extends Phaser.Scene {
       const ed = e instanceof Enemy ? e : null;
       if (!ed || s.getData('dead')) return;
       s.setData('dead', true); s.destroy();
-      this.damageEnemy(ed, s.getData('dmg') || 10, s.getData('owner') === 'remote', { crit: s.getData('crit'), status: s.getData('status'), knock: 110 });
+      this.damageEnemy(ed, s.getData('dmg') || 10, s.getData('owner') === 'remote', { crit: s.getData('crit'), status: s.getData('status'), knock: 110, shot: s });
     });
 
     // Hotkeys: central input manager (core/input.js) — rebindable, layout-safe,
@@ -333,6 +333,9 @@ export class WorldScene extends Phaser.Scene {
 
   // opts: { status: {id, chance}, scale }
   fireShot(x, y, angle, dmg, kind, opts = {}) {
+    const spawnDist = 18;
+    const spawnX = x + Math.cos(angle) * spawnDist;
+    const spawnY = y - 6 + Math.sin(angle) * spawnDist;
     let s;
     const kindMap = {
       ice: 'proj.iceShard',
@@ -343,24 +346,45 @@ export class WorldScene extends Phaser.Scene {
       fire: 'proj.fireball',
       energy: 'proj.energyBall',
       shuriken: 'proj.shuriken',
+      arrow: 'proj.arrow',
+      kunai: 'proj.kunai',
     };
     if ((kind === 'arrow' || kind === 'kunai') && this.textures.exists(`proj.${kind}`)) {
-      s = this.add.image(x, y, `proj.${kind}`).setDepth(2600).setRotation(angle);
+      s = this.add.image(spawnX, spawnY, `proj.${kind}`).setDepth(2600).setRotation(angle);
     } else {
       const key = kindMap[kind] || 'proj.energyBall';
-      s = this.add.sprite(x, y, key, 0).setDepth(2600).setRotation(angle);
+      s = this.add.sprite(spawnX, spawnY, key, 0).setDepth(2600).setRotation(angle);
       if (this.anims.exists(key)) s.play(key);
     }
     this.physics.add.existing(s);
+    if (s.body) {
+      const r = Math.max(4, Math.min(s.width || 16, s.height || 16) * 0.35);
+      s.body.setCircle(r, (s.width - r * 2) / 2, (s.height - r * 2) / 2);
+    }
+    s.setData('kind', kind);
     s.setData('dmg', dmg);
     s.setData('crit', this.combat ? this.combat.isCrit(dmg) : false);
     s.setData('status', opts.status || (kind === 'fire' ? { id: 'burn', chance: 0.35 } : null));
     if (opts.scale) s.setScale(opts.scale);
     this.shots.add(s);
     attachShotFx(this, s, kind);
-    s.body.setVelocity(Math.cos(angle) * 280, Math.sin(angle) * 280);
+
+    const speedMap = {
+      lightning: 440,
+      arrow: 400,
+      void: 400,
+      holy: 390,
+      ice: 350,
+      shuriken: 350,
+      fire: 330,
+      energy: 330,
+      nature: 310,
+      kunai: 310,
+    };
+    const speed = opts.speed || speedMap[kind] || 330;
+    s.body.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
     if (kind === 'shuriken') this.tweens.add({ targets: s, angle: 360, duration: 400, repeat: -1 });
-    this.time.delayedCall(900, () => s.destroy?.());
+    this.time.delayedCall(1200, () => s.destroy?.());
     return s;
   }
 

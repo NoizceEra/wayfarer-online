@@ -11,7 +11,7 @@ import { rollDefDrop, rollItemDrops } from '../data/worldEnemies.js';
 import { WAYSTONES } from '../data/zones.js';
 import { iconKey } from './gearArt.js';
 import { CombatHudScene } from '../scenes/CombatHudScene.js';
-import { dodgeVfx, hitSpark, renderStatusVfx, clearStatusVfx } from './skillVfx.js';
+import { dodgeVfx, hitSpark, renderStatusVfx, clearStatusVfx, projectileImpactVfx } from './skillVfx.js';
 
 const FONT = '"Silkscreen", monospace';
 const POOL = 48;           // pooled floating combat texts
@@ -161,6 +161,9 @@ export class Combat {
       audio.play('hit', crit ? 1 : 0.8);
       s.spawnFx(ed.x, ed.y - 8, 'fx.cut', crit ? 1.4 : 1);
       hitSpark(s, ed.x, ed.y - 8, crit);
+      if (opts.shot) {
+        projectileImpactVfx(s, ed.x, ed.y - 8, opts.shot.getData('kind'));
+      }
       if (crit) this.floatText(ed.x, ed.y - 22, `${n}!`, '#ffd24a', 'crit');
       else this.floatText(ed.x, ed.y - 20, n, '#ffffff');
       if (!fromRemote) this.bumpCombo();

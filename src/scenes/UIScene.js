@@ -27,6 +27,7 @@ import SeasonPanel from '../ui/SeasonPanel.js';
 import GuildPanel from '../ui/GuildPanel.js';
 import { WorldBossAlert } from '../ui/WorldBossAlert.js';
 import { ArenaPanel } from '../ui/ArenaPanel.js';
+import { SkillTreePanel } from '../ui/SkillTreePanel.js';
 import { ArenaChallengeModal } from '../ui/ArenaChallengeModal.js';
 import { arenaNet } from '../net/arenaNet.js';
 import DungeonSystem from '../systems/dungeonSystem.js';
@@ -337,6 +338,7 @@ export class UIScene extends Phaser.Scene {
       input.addCloser({ id: 'season', priority: 930, isOpen: () => !!this.seasonPanel?.visible, close: () => this.seasonPanel?.close() }),
       input.addCloser({ id: 'guild', priority: 920, isOpen: () => !!this.guildPanel?.visible, close: () => this.guildPanel?.close() }),
       input.addCloser({ id: 'arena', priority: 935, isOpen: () => !!this.arenaPanel?.container, close: () => this.arenaPanel?.hide() }),
+      input.addCloser({ id: 'spec', priority: 936, isOpen: () => !!this.skillTreePanel?.container, close: () => this.skillTreePanel?.hide() }),
       input.addCloser({ id: 'pause-sub', priority: 850, isOpen: () => this.menu.isOpen && this.menu.page !== 'main', close: () => this.menu.goto('main') }),
       input.addCloser({ id: 'shop', priority: 450, isOpen: () => !!this.shop?.isOpen, close: () => this.shop.close() }),
       input.addCloser({ id: 'equip', priority: 400, isOpen: () => !!this.equip?.isOpen, close: () => this.equip.toggle(false) }),
@@ -381,8 +383,8 @@ export class UIScene extends Phaser.Scene {
       this.resizeTimer?.remove(false);
       this.equip?.destroy(); this.shop?.destroy(); this.journal?.destroy(); this.craftPanel?.destroy(); this.fishing?.destroy(); this.toast?.destroy(); this.walletPanel?.destroy();
       this.dailyPanel?.destroy(); this.dailyRewards?.destroy();
-      this.partyFinderBtn?.destroy(); this.lfgBtn?.destroy(); this.seasonBtn?.destroy(); this.guildBtn?.destroy(); this.arenaBtn?.destroy(); this.worldBossBtn?.destroy();
-      this.lfgPanel?.destroy(); this.seasonPanel?.destroy(); this.guildPanel?.destroy(); this.arenaPanel?.destroy(); this.arenaChallenge?.destroy(); this.worldBossAlert?.destroy();
+      this.partyFinderBtn?.destroy(); this.lfgBtn?.destroy(); this.seasonBtn?.destroy(); this.guildBtn?.destroy(); this.arenaBtn?.destroy(); this.specBtn?.destroy(); this.worldBossBtn?.destroy();
+      this.lfgPanel?.destroy(); this.seasonPanel?.destroy(); this.guildPanel?.destroy(); this.arenaPanel?.destroy(); this.skillTreePanel?.destroy(); this.arenaChallenge?.destroy(); this.worldBossAlert?.destroy();
       this.dungeonSystem?.destroy(); this.seasonSystem?.destroy(); this.guildSystem?.destroy();
     });
     // Mail unread indicator for the touch HUD
@@ -445,6 +447,7 @@ export class UIScene extends Phaser.Scene {
     this.seasonPanel = new SeasonPanel(this, cx, cy, { seasonSystem: this.seasonSystem, onClaim: (tier, track) => this.seasonSystem.claim(tier, track), onUpgrade: () => this.seasonSystem.upgradePremium() });
     this.guildPanel = new GuildPanel(this, cx, cy, this.guildSystem);
     this.arenaPanel = new ArenaPanel(this);
+    this.skillTreePanel = new SkillTreePanel(this);
     this.arenaChallenge = new ArenaChallengeModal(this);
     // Arena wires: incoming challenge -> modal; result -> toast + system
     // message, rating refresh, auto-leave-queue state; errors -> system msg.
@@ -639,6 +642,14 @@ export class UIScene extends Phaser.Scene {
     this.arenaBtn.on('pointerover', () => this.arenaBtn.setBackgroundColor('#3a2d20ee'));
     this.arenaBtn.on('pointerout', () => this.arenaBtn.setBackgroundColor('#2a1d10dd'));
     this.arenaBtn.on('pointerdown', () => { audio.play('ui', 0.6); if (this.arenaPanel?.container) this.arenaPanel.hide(); else this.arenaPanel?.show(); });
+    // Skill-tree icon (✦ unused by ⚔ 🏆 👥 ⚜ ⚡ 🎁)
+    this.specBtn = this.add.text(baseX - (iconSize + gap) * 7, startY, '✦', {
+      fontFamily: '"Silkscreen", monospace', fontSize: '16px', color: '#14f195',
+      backgroundColor: '#2a1d10dd', padding: { x: 4, y: 2 },
+    }).setOrigin(1, 0).setDepth(110).setInteractive({ useHandCursor: true });
+    this.specBtn.on('pointerover', () => this.specBtn.setBackgroundColor('#3a2d20ee'));
+    this.specBtn.on('pointerout', () => this.specBtn.setBackgroundColor('#2a1d10dd'));
+    this.specBtn.on('pointerdown', () => { audio.play('ui', 0.6); this.skillTreePanel?.toggle(); });
     this.walletPanel = new WalletPanel(this);
   }
 
@@ -795,9 +806,11 @@ export class UIScene extends Phaser.Scene {
     const blocked = () => this.fishing?.isOpen || this.paused;
     input.registerAction({ id: 'journal', label: 'Quest journal', group: 'Panels', keys: ['KeyL'], gameplay: true });
     input.registerAction({ id: 'craft', label: 'Crafting', group: 'Panels', keys: ['KeyU'], gameplay: true });
+    input.registerAction({ id: 'spec', label: 'Skill tree', group: 'Panels', keys: ['KeyT'], gameplay: true });
     this.offs.push(
       input.on('journal', () => { if (!blocked()) { this.craftPanel.close(); bus.emit(Events.JOURNAL, { open: 'toggle' }); } return true; }),
       input.on('craft', () => { if (!blocked()) { this.journal.close(); bus.emit(Events.CRAFT, { open: 'toggle' }); } return true; }),
+      input.on('spec', () => { if (!blocked()) this.skillTreePanel?.toggle(); return true; }),
     );
     this.scale.on('resize', () => { this.equip.resize(); this.shop.refresh(); this.journal.resize(); this.craftPanel.resize(); });
     this.buildContentButtons();

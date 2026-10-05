@@ -26,7 +26,7 @@ export const JOBS = {
     advanced: ['hunter', 'wildwarden'],
     abilities: [
       { id: 'shot', name: 'Thorn Shot', key: '1', cd: 0.5, desc: 'Fire an arrow.' },
-      { id: 'volley', name: 'Leaf Volley', key: '2', cd: 7, desc: 'Fan of 5 arrows.' },
+      { id: 'volley', name: 'Leaf Volley', key: '2', cd: 7, desc: 'Wide fan of 5 nature seeds.', fx: { type: 'shot', n: 5, spread: 0.32, mul: 0.85, kind: 'nature', mp: 14 } },
       { id: 'dash', name: 'Dust Dash', key: '3', cd: 4, desc: 'Short dash, brief iframes.' },
       { id: 'snare', name: 'Snare Trap', key: '4', cd: 14, desc: 'Root enemies in a circle.' },
     ],
@@ -40,7 +40,7 @@ export const JOBS = {
     growth: { int: 0.3, dex: 0.1, vit: 0.1 },
     advanced: ['elementalist', 'tidecaller'],
     abilities: [
-      { id: 'bolt', name: 'Ember Bolt', key: '1', cd: 0.65, desc: 'Fire a magic bolt.' },
+      { id: 'bolt', name: 'Ember Bolt', key: '1', cd: 0.65, desc: 'Fire a blazing flame bolt.', fx: { type: 'shot', n: 1, spread: 0, mul: 1.35, kind: 'fire', mp: 8, status: { id: 'burn', chance: 0.4, secs: 2.5 } } },
       { id: 'burst', name: 'Moss Burst', key: '2', cd: 9, desc: 'Nature AoE around caster.' },
       { id: 'blink', name: 'Wisp Blink', key: '3', cd: 5, desc: 'Short teleport.' },
       { id: 'ward', name: 'Tide Ward', key: '4', cd: 16, desc: 'Shield that absorbs damage.' },
@@ -56,7 +56,7 @@ export const JOBS = {
     advanced: ['shadowblade', 'trickster'],
     abilities: [
       { id: 'stab', name: 'Fang Stab', key: '1', cd: 0.4, desc: 'Very fast stab.' },
-      { id: 'fan', name: 'Crow Fan', key: '2', cd: 7, desc: 'Throw 3 kunai in a fan.' },
+      { id: 'fan', name: 'Crow Fan', key: '2', cd: 7, desc: 'Swift shadow fan of 4 void arrows.', fx: { type: 'shot', n: 4, spread: 0.28, mul: 0.75, kind: 'void', stagger: true, mp: 12 } },
       { id: 'dash', name: 'Dust Dash', key: '3', cd: 3.5, desc: 'Short dash, brief iframes.' },
       { id: 'smoke', name: 'Smoke Pouch', key: '4', cd: 15, desc: 'Blind nearby enemies.' },
     ],
@@ -93,7 +93,7 @@ export const ADVANCED = {
     desc: 'Deadly marksman. Big single shots and arrow rain.',
     bonus: { dex: 8, agi: 3, luk: 2 }, crit: 4,
     abilities: [
-      { id: 'pierce', name: 'Piercing Shot', key: '5', cd: 6, icon: 'icon.shot', desc: 'One heavy arrow (x2.4).', fx: { type: 'shot', n: 1, spread: 0, mul: 2.4, kind: 'arrow', mp: 14 } },
+      { id: 'pierce', name: 'Piercing Shot', key: '5', cd: 6, icon: 'icon.shot', desc: 'Heavy holy lance piercing through foes.', fx: { type: 'shot', n: 1, spread: 0, mul: 2.8, kind: 'holy', speed: 450, mp: 16 } },
       { id: 'arrowrain', name: 'Arrow Rain', key: '6', cd: 12, icon: 'icon.volley', desc: 'Arrows fall around you, slowing caught foes.', fx: { type: 'aoe', radius: 84, mul: 1.1, mp: 26, vfx: 'fx.explosion', knock: 150, status: { id: 'slow', chance: 0.8, secs: 2 } } },
     ],
   },
@@ -112,7 +112,7 @@ export const ADVANCED = {
     bonus: { int: 9, dex: 3 }, mpMul: 1.1,
     abilities: [
       { id: 'meteor', name: 'Meteor', key: '5', cd: 12, icon: 'icon.burst', desc: 'Crushing fire blast that leaves a burn.', fx: { type: 'aoe', radius: 72, mul: 2.2, mp: 35, shake: 0.005, vfx: 'fx.explosion', knock: 320, status: { id: 'burn', chance: 1, secs: 4 } } },
-      { id: 'chain', name: 'Spark Chain', key: '6', cd: 8, icon: 'icon.bolt', desc: 'Fan of 5 fire bolts.', fx: { type: 'shot', n: 5, spread: 0.28, mul: 0.9, kind: 'fire', mp: 22 } },
+      { id: 'chain', name: 'Spark Chain', key: '6', cd: 8, icon: 'icon.bolt', desc: 'Fan of 5 high-speed lightning spears.', fx: { type: 'shot', n: 5, spread: 0.35, mul: 0.95, kind: 'lightning', speed: 380, mp: 22 } },
     ],
   },
   tidecaller: {

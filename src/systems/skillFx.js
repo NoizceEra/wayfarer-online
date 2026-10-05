@@ -49,12 +49,38 @@ export function castFx(scene, ab, lv, setCd) {
     if (delay) scene.time.delayedCall(delay, () => { if (!p.dead) { hit(); bus.emit(Events.SYSTEM, `${ab.name}: ${n} hit`); } });
     else { hit(); bus.emit(Events.SYSTEM, `${ab.name}: ${n} hit`); }
   } else if (fx.type === 'shot') {
-    audio.play(fx.kind === 'arrow' ? 'arrow' : 'fireball');
+    const rawKind = fx.kind || 'energy';
+    const kind = Array.isArray(rawKind) ? rawKind[Math.floor(Math.random() * rawKind.length)] : rawKind;
+    const isArrow = kind === 'arrow' || kind === 'void' || kind === 'nature' || kind === 'kunai' || kind === 'shuriken';
+    audio.play(fx.sound || (isArrow ? 'arrow' : 'fireball'));
     p.attackPose();
     const base = scene.facingAngle();
-    const half = (fx.n - 1) / 2;
-    for (let i = 0; i < fx.n; i++) {
-      scene.fireShot(p.x, p.y - 8, base + (i - half) * fx.spread, p.rollCrit(p.effAtk() * fx.mul * dm), fx.kind);
+    const count = fx.n || 1;
+    const isRadial = Boolean(fx.radial || (fx.spread != null && fx.spread >= Math.PI * 1.5));
+    const step = isRadial ? (Math.PI * 2) / count : (fx.spread || 0);
+    const half = (count - 1) / 2;
+    const shotOpts = {
+      speed: fx.speed,
+      scale: fx.scale,
+      status: fx.status && {
+        ...fx.status,
+        secs: fx.status.secs == null ? undefined : fx.status.secs * (0.85 + 0.15 * dm),
+      },
+    };
+    const spawnY = p.y - 6;
+    const staggerMs = fx.stagger ? (typeof fx.stagger === 'number' ? fx.stagger : 15) : 0;
+
+    for (let i = 0; i < count; i++) {
+      const angle = isRadial ? (base + i * step) : (base + (i - half) * step);
+      const fire = () => {
+        if (!p.active) return;
+        scene.fireShot(p.x, spawnY, angle, p.rollCrit(p.effAtk() * fx.mul * dm), kind, shotOpts);
+      };
+      if (staggerMs > 0 && i > 0) {
+        scene.time.delayedCall(i * staggerMs, fire);
+      } else {
+        fire();
+      }
     }
   } else if (fx.type === 'heal') {
     audio.play('heal');

@@ -235,6 +235,11 @@ const TRAIL = {
   shuriken: { c: [0xdfe8f0, 0x8fb0d0], len: 8, key: 'spark' },
   fire: { c: [0xff7a20, 0xffd040], len: 0, key: 'ember' },
   energy: { c: [0x8fd0ff, 0xffffff], len: 0, key: 'ember' },
+  ice: { c: [0x9fe0ff, 0xffffff], key: 'ice_trail' },
+  lightning: { c: [0xffee55, 0x4bd2f5], len: 16, key: 'streak' },
+  void: { c: [0xb27aff, 0x6eeeff], key: 'void_trail' },
+  nature: { c: [0x7fe06a, 0xffd237], key: 'nature_trail' },
+  holy: { c: [0xffd741, 0xffffff], key: 'holy_trail' },
 };
 export function attachShotFx(scene, s, kind) {
   const T = TRAIL[kind] || TRAIL.energy;
@@ -246,11 +251,38 @@ export function attachShotFx(scene, s, kind) {
       const ang = s.rotation || 0, col = T.c[(Math.random() * T.c.length) | 0];
       if (T.key === 'streak') streak(scene, s.x, s.y, ang, T.len * (s.scale || 1), { color: col, dur: 170, w: 0.9 });
       else if (T.key === 'ember') fly(scene, s.x + rnd(-2, 2), s.y + rnd(-2, 2), { vx: rnd(-14, 14), vy: rnd(-22, 4), life: rnd(220, 380), s0: rnd(0.45, 0.8), color: col, g: kind === 'fire' ? -30 : 0 });
+      else if (T.key === 'ice_trail') fly(scene, s.x + rnd(-3, 3), s.y + rnd(-3, 3), { key: Math.random() > 0.5 ? 'vfx.chip' : 'vfx.dot', vx: rnd(-10, 10), vy: rnd(-10, 10), life: 300, s0: rnd(0.4, 0.7), color: col });
+      else if (T.key === 'void_trail') fly(scene, s.x + rnd(-4, 4), s.y + rnd(-4, 4), { key: 'vfx.dot', vx: rnd(-15, 15), vy: rnd(-15, 15), life: 350, s0: rnd(0.5, 0.9), color: col });
+      else if (T.key === 'nature_trail') fly(scene, s.x + rnd(-4, 4), s.y + rnd(-4, 4), { key: col === 0xffd237 ? 'vfx.dot' : 'vfx.leaf', vx: rnd(-12, 12), vy: rnd(-12, 12), life: 350, s0: rnd(0.5, 0.8), color: col, rot: col === 0xffd237 ? 0 : rnd(200, 400) });
+      else if (T.key === 'holy_trail') fly(scene, s.x + rnd(-3, 3), s.y + rnd(-3, 3), { key: 'vfx.star', vx: rnd(-10, 10), vy: rnd(-10, 10), life: 250, s0: rnd(0.5, 0.8), color: col });
       else fly(scene, s.x, s.y, { life: 200, s0: 0.5, color: col });
     },
   });
   s.once('destroy', () => ev.remove(false));
 }
+
+export function projectileImpactVfx(scene, x, y, kind) {
+  if (kind === 'ice') {
+    burst(scene, x, y, { n: 8, key: 'vfx.chip', speed: [30, 80], life: [200, 400], color: [0x9fe0ff, 0xffffff], size: [0.6, 1] });
+    ring(scene, x, y + 2, { r: 16, color: 0x9fe0ff, dur: 200, a: 0.6 });
+  } else if (kind === 'lightning') {
+    burst(scene, x, y, { n: 6, key: 'vfx.streak', speed: [40, 100], life: [150, 250], color: [0x4bd2f5, 0xffee41], len: 0.8, size: [0.7, 1.1] });
+    ring(scene, x, y, { r: 20, color: 0xffee41, dur: 150, a: 0.8 });
+  } else if (kind === 'void') {
+    burst(scene, x, y, { n: 6, key: 'vfx.dot', speed: [20, 60], life: [300, 500], color: [0xb27aff, 0x6eeeff], size: [0.7, 1.2] });
+    decal(scene, x, y + 2, { r: 24, color: 0x3a1054, a: 0.5, ms: 800 });
+  } else if (kind === 'nature') {
+    burst(scene, x, y, { n: 8, key: 'vfx.leaf', speed: [20, 70], life: [300, 500], color: 0x7fe06a, size: [0.6, 1], rot: 400, blend: 0 });
+    burst(scene, x, y, { n: 4, key: 'vfx.dot', speed: [10, 30], life: [200, 400], color: 0xffd237, size: [0.4, 0.7] });
+  } else if (kind === 'holy') {
+    burst(scene, x, y, { n: 6, key: 'vfx.star', speed: [30, 70], life: [250, 450], color: [0xffd741, 0xffffff], size: [0.7, 1.1] });
+    ring(scene, x, y, { r: 22, color: 0xffd741, dur: 250, a: 0.7 });
+  } else if (kind === 'fire') {
+    burst(scene, x, y, { n: 8, speed: [20, 60], life: [250, 450], color: [0xff7a20, 0xffd040], size: [0.5, 0.9], g: -20 });
+    decal(scene, x, y + 2, { r: 18, color: 0x2a0a00, a: 0.5, ms: 1000 });
+  }
+}
+
 function muzzle(scene, p, a, color, big = 1) {
   const x = p.x + Math.cos(a) * 10, y = p.y - 8 + Math.sin(a) * 10;
   glow(scene, x, y, { r: 14 * big, color, dur: 150 });
@@ -1259,4 +1291,5 @@ export function renderStatusVfx(scene, entity, statusId) {
     }
   }
 }
+
 

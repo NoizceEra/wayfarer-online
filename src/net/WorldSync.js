@@ -297,8 +297,8 @@ export class WorldSync {
     }
     if (typeof s.fireShot === 'function') {
       const orig = s.fireShot;
-      s.fireShot = (x, y, ang, dmg, kind) => {
-        const r = orig.call(s, x, y, ang, dmg, kind);
+      s.fireShot = (x, y, ang, dmg, kind, opts) => {
+        const r = orig.call(s, x, y, ang, dmg, kind, opts);
         this.sendAct({ k: 'shot', x: Math.round(x), y: Math.round(y), an: ang, kind });
         return r;
       };
@@ -325,15 +325,28 @@ export class WorldSync {
   visualShot(x, y, ang, kind) {
     const s = this.scene;
     let o;
+    const kindMap = {
+      ice: 'proj.iceShard',
+      lightning: 'proj.lightningSpear',
+      void: 'proj.voidArrow',
+      nature: 'proj.natureSeed',
+      holy: 'proj.holyLance',
+      fire: 'proj.fireball',
+      shuriken: 'proj.shuriken',
+      energy: 'proj.energyBall',
+      arrow: 'proj.arrow',
+      kunai: 'proj.kunai',
+    };
     if ((kind === 'arrow' || kind === 'kunai') && s.textures.exists(`proj.${kind}`)) o = s.add.image(x, y, `proj.${kind}`);
     else {
-      const key = kind === 'fire' ? 'proj.fireball' : kind === 'shuriken' ? 'proj.shuriken' : 'proj.energyBall';
+      const key = kindMap[kind] || 'proj.energyBall';
       if (!s.textures.exists(key)) return;
       o = s.add.sprite(x, y, key, 0);
       if (s.anims.exists(key)) o.play(key);
     }
     o.setDepth(2600).setRotation(ang);
-    s.tweens.add({ targets: o, x: x + Math.cos(ang) * 250, y: y + Math.sin(ang) * 250, duration: 900, onComplete: () => o.destroy() });
+    if (kind === 'shuriken') s.tweens.add({ targets: o, angle: 360, duration: 400, repeat: -1 });
+    s.tweens.add({ targets: o, x: x + Math.cos(ang) * 400, y: y + Math.sin(ang) * 400, duration: 1100, onComplete: () => o.destroy() });
   }
 
   // ─── per frame ─────────────────────────────────────────────────────

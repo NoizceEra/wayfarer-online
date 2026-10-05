@@ -1,5 +1,5 @@
 import { ADVANCED } from '../data/jobs.js';
-import { STAT_IDS, MAX_STAT, SKILL_MAX, CLASS_CHANGE_LEVEL, emptyAlloc, retroProg } from '../data/stats.js';
+import { STAT_IDS, MAX_STAT, SKILL_MAX, CLASS_CHANGE_LEVEL, emptyAlloc, retroProg, sanitizePaths, sanitizeSpecNodes } from '../data/stats.js';
 import { gearById, SLOTS } from '../data/gear.js';
 import { matById } from '../data/materials.js';
 import { normalizeHousing } from '../data/housing.js';
@@ -79,6 +79,9 @@ export function sanitizeProgression(raw, level, jobId) {
   }
   const adv = typeof raw.adv === 'string' ? ADVANCED[raw.adv] : null;
   if (adv && adv.base === jobId && level >= CLASS_CHANGE_LEVEL) out.adv = adv.id;
+  // Specialization state (skill trees): sanitized but preserved across saves.
+  out.paths = sanitizePaths(raw.paths);
+  out.nodes = sanitizeSpecNodes(raw.nodes);
   return out;
 }
 
