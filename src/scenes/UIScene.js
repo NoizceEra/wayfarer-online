@@ -328,6 +328,7 @@ export class UIScene extends Phaser.Scene {
       },
       resume: () => this.menu.close(),
       help: () => this.help.open(),
+      stuck: () => { this.menu.close(); this.world()?.stuck?.(); },
       leaveLabel: () => (net.connected ? 'Leave Party (solo)' : 'Leave to Title'),
       leave: () => {
         const w = this.world();

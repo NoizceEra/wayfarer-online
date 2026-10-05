@@ -20,9 +20,9 @@ export class OnboardingHint {
     this.container = scene.add.container(0, 0).setDepth(4000).setScrollFactor(0);
     this.bg = scene.add.rectangle(0, 0, 1, 1, DARK, 0.95).setStrokeStyle(2, PURPLE);
     this.title = scene.add.text(0, 0, '', { fontFamily: FONT, fontSize: '11px', color: '#E1E8F0' }).setOrigin(0.5);
-    this.sub = scene.add.text(0, 0, '', { fontFamily: FONT, fontSize: '9px', color: '#6B7A99' }).setOrigin(0.5);
+    this.sub = scene.add.text(0, 0, '', { fontFamily: FONT, fontSize: '9px', color: '#9FB0D0', align: 'center', wordWrap: { width: 280 } }).setOrigin(0.5, 0);
     this.dots = [];
-    this.skipBtn = scene.add.text(0, 0, 'SKIP', { fontFamily: FONT, fontSize: '9px', color: '#6B7A99' })
+    this.skipBtn = scene.add.text(0, 0, 'SKIP X', { fontFamily: FONT, fontSize: '9px', color: '#6B7A99' })
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
     this.skipBtn.on('pointerdown', () => { if (this.onSkip) this.onSkip(); });
@@ -44,25 +44,33 @@ export class OnboardingHint {
 
     this.render(step);
     scene.scale.on('resize', this.layout, this);
-    this._offResize = () => scene.scale.off('resize', this.layout, this);
+    scene.registry?.events?.on('changedata-worldZoom', this.layout, this); // - / = keys, auto-fit
+    this._offResize = () => { scene.scale.off('resize', this.layout, this); scene.registry?.events?.off('changedata-worldZoom', this.layout, this); };
     this.scene.events.once('shutdown', () => this.destroy());
   }
 
+  // The hint lives in WorldScene, whose camera is zoomed (integer zoom 1-4).
+  // A scrollFactor-0 object is still scaled about the camera centre, so lay the
+  // card out in SCREEN pixels and counter-scale the container: screen = (o - c)*Z + c
+  // with o = c*(1 - 1/Z) puts container-local (0,0) on screen (0,0) at 1:1.
   layout() {
+    if (!this.active) return;
     const cam = this.scene.cameras.main;
-    const zoom = cam.zoom || 1;
-    const W = 220;
-    const H = 66;
-    const cx = (cam.width / zoom) / 2;
-    const cy = (cam.height / zoom) - 54;
+    const Z = cam.zoom || 1;
+    const sw = cam.width, sh = cam.height;
+    this.container.setScale(1 / Z).setPosition((sw / 2) * (1 - 1 / Z), (sh / 2) * (1 - 1 / Z));
+    const W = Math.min(320, sw - 24);
+    const H = 70;
+    const cx = sw / 2;
+    const cy = sh - 124; // above the skill bar, clear of the chat (left) and minimap (right)
 
     this.bg.setPosition(cx, cy).setSize(W, H);
-    this.title.setPosition(cx, cy - 18);
-    this.sub.setPosition(cx, cy - 4);
-    this.skipBtn.setPosition(cx + 84, cy - 18);
+    this.title.setPosition(cx, cy - 22);
+    this.sub.setPosition(cx, cy - 4).setWordWrapWidth(W - 20);
+    this.skipBtn.setPosition(cx + W / 2 - 34, cy - 22);
     this.flash.setPosition(cx, cy).setSize(W, H);
 
-    const dotY = cy + 16;
+    const dotY = cy + 24;
     const startX = cx - ((this.total - 1) * 14) / 2;
     for (let i = 0; i < this.total; i++) {
       const dot = this.dots[i];
@@ -101,7 +109,7 @@ export class OnboardingHint {
 
   showDone() {
     this.title.setText('Ready!');
-    this.sub.setText('Quests await at the notice board.');
+    this.sub.setText('Q potion  |  C stats  |  L journal  |  H all controls');
     this.skipBtn.setVisible(false);
     for (const d of this.dots) d.setFillStyle(GREEN, 1);
     this.layout();

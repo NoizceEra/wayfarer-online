@@ -5,11 +5,15 @@ import { loadProgress } from '../core/save.js';
 import { OnboardingHint } from '../ui/OnboardingHint.js';
 
 const ONBOARD_KEY = 'wayfarer.onboarding.v1';
+// Non-blocking tips: every step advances by doing the thing, SKIP X dismisses the
+// whole card for good (localStorage), and it never returns for a saved hero.
 const STEPS = [
   { id: 'move', title: 'Move', hint: 'WASD or arrow keys to walk.' },
-  { id: 'attack', title: 'Strike', hint: 'Left-click or J to attack.' },
-  { id: 'kill', title: 'Slay', hint: 'Defeat a Dew Slime in the meadow.' },
-  { id: 'board', title: 'Notice Board', hint: 'Walk to the town notice board.' },
+  { id: 'attack', title: 'Strike', hint: 'Left-click or J to attack. Tab locks the nearest foe.' },
+  { id: 'kill', title: 'Slay', hint: 'Defeat a Dew Slime in the meadow, west of the plaza.' },
+  { id: 'talk', title: 'Talk', hint: "Find Pip (a gold '!' above his head) and press E. Quests show in the top-right tracker." },
+  { id: 'skills', title: 'Skills', hint: 'Press 1-4 to use your skills. K spends skill points as you level.' },
+  { id: 'board', title: 'Notice Board', hint: 'Walk to the town notice board for daily bounties.' },
 ];
 
 export class OnboardingSystem {
@@ -35,6 +39,8 @@ export class OnboardingSystem {
 
     this.unsubs.push(
       bus.on(Events.KILL, (p) => this.onKill(p)),
+      bus.on(Events.QUEST_CHANGED, () => this.onQuest()),
+      bus.on(Events.SKILL_CAST, () => this.onSkill()),
       scene.events.on('shutdown', () => this.destroy())
     );
   }
@@ -48,16 +54,24 @@ export class OnboardingSystem {
     try { window.localStorage.setItem(ONBOARD_KEY, 'done'); } catch { /* quota */ }
   }
 
-  onKill(payload) {
+  onKill() {
     if (this.done) return;
-    // The KILL event fires for any local-player kill; we use it to satisfy both
-    // the ATTACK and KILL steps because the game has no reliable "swing landed"
-    // event. A new player must attack to get a kill.
-    if (this.step <= 1) {
-      this.advance(2); // jump to kill-complete (skips abstract attack step)
-    } else if (this.step === 2) {
-      this.advance(3);
-    }
+    // The KILL event fires for any local-player kill; it satisfies the ATTACK and
+    // KILL steps because a kill proves the player found the attack key.
+    if (this.step <= 2) this.advance(3);
+  }
+
+  // Talk step: any accepted quest proves the player found an NPC.
+  onQuest() {
+    if (this.done || this.step !== 3) return;
+    if (this.scene.quests?.activeCount?.() > 0) this.advance(4);
+  }
+
+  // Skills step: a genuine cast (SKILL_CAST fires after the learn/cooldown guards).
+  onSkill() {
+    if (this.done) return;
+    this.skillSeen = true;
+    if (this.step === 4) this.advance(5);
   }
 
   update() {
@@ -70,13 +84,21 @@ export class OnboardingSystem {
       if (d > 40) this.advance(1);
     }
 
+    // ATTACK: the combo chain timer is armed by every swing.
+    if (this.step === 1 && (this.scene.combat?.chain?.until || 0) > this.scene.time.now) this.advance(2);
+
+    // A hero who already has quests running skips the talk tip.
+    if (this.step === 3 && this.scene.quests?.activeCount?.() > 0) this.advance(4);
+
+    if (this.step === 4 && this.skillSeen) this.advance(5);
+
     // NOTICE BOARD: within ~60 px of the town board (uses the board placed in
     // WorldScene near spawn.x - 118, spawn.y - 22). If the board is ever moved,
-    // update boardPos accordingly.
-    if (this.step >= 3) {
+    // update boardPos accordingly. Only offered once the player knows the basics.
+    if (this.step >= 4) {
       const boardPos = this.boardPos();
       const d = Phaser.Math.Distance.Between(p.x, p.y, boardPos.x, boardPos.y);
-      if (d < 60) this.advance(4);
+      if (d < 60) this.advance(STEPS.length);
     }
   }
 

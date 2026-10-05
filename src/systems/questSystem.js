@@ -8,7 +8,7 @@ import { CONFIG } from '../config.js';
 import { bus, Events } from '../core/events.js';
 import { audio } from './audio.js';
 import { ENEMY_TABLE } from '../data/jobs.js';
-import { AREAS, ZONES } from '../data/zones.js';
+import { AREAS, ZONES, PORTALS } from '../data/zones.js';
 import { gearById, RARITY } from '../data/gear.js';
 import { matById } from '../data/materials.js';
 import { QUEST_LIST, QUESTS_BY_ID, LEGACY_MAIN, LEGACY_SIDE, BOUNTY_TEMPLATES, POIS, LORE, LORE_ON_ENTER, CHAINS } from '../data/quests.js';
@@ -19,7 +19,15 @@ const FONT = '"Silkscreen", monospace';
 export const MAX_ACTIVE = 8;
 export const MAX_TRACKED = 3;
 const INTERACT_NAMES = { garrick_net: "Garrick's net" };
+// Quest givers that live inside an enterable building: the guide arrow points at its door until the player is inside.
+const NPC_AREA = { 'Granny Elda': 'cottage_b', Brom: 'cottage_a', Hester: 'inn' };
+const COMPASS = ['E', 'SE', 'S', 'SW', 'W', 'NW', 'N', 'NE'];
+export const bearingText = (dx, dy) => `${COMPASS[((Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) % 8) + 8) % 8]} ${Math.round(Math.hypot(dx, dy) / T)} tiles`;
 const BOARD = 'Notice Board';
+// reward.gear:'starter_weapon' grants (and auto-equips into an empty slot) the hero's class weapon,
+// so a brand-new hero is never stuck swinging bare-handed while a 60-90g shop weapon is out of reach.
+export const STARTER_WEAPON = { wayfarer: 'honed_edge', ranger: 'yew_bow', arcanist: 'oak_staff', bandit: 'bone_dagger' };
+const gearIdFor = (id, jobId) => (id === 'starter_weapon' ? (STARTER_WEAPON[jobId] || 'honed_edge') : id);
 
 const dayKey = () => new Date().toISOString().slice(0, 10);
 const hash = (s) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; };
@@ -48,7 +56,8 @@ export function rewardLines(r = {}) {
   const L = [];
   if (r.xp) L.push(`${r.xp} XP`);
   if (r.gold) L.push(`${r.gold} gold`);
-  if (r.gear) { const g = gearById(r.gear); if (g) L.push(g.name); }
+  if (r.gear === 'starter_weapon') L.push('Starter weapon (your class)');
+  else if (r.gear) { const g = gearById(r.gear); if (g) L.push(g.name); }
   for (const [id, n] of Object.entries(r.mats || {})) L.push(`${matById(id)?.name || id}${n > 1 ? ` x${n}` : ''}`);
   for (const id of r.recipes || []) L.push(`Recipe: ${id.replace(/_/g, ' ')}`);
   if (r.statPoints) L.push(`+${r.statPoints} stat points`);
@@ -98,7 +107,7 @@ export class QuestSystem {
     for (const id of Object.keys(done)) for (const pre of QUESTS_BY_ID[id]?.pre || []) if (!done[pre]) done[pre] = 1;
   }
 
-  destroy() { this.offs?.forEach((o) => o()); }
+  destroy() { this.offs?.forEach((o) => o()); this.guide?.destroy(); this.guide = null; }
 
   get p() { return this.scene.player; }
   get areaId() { return this.scene.areas?.current?.id || null; }
@@ -188,7 +197,12 @@ export class QuestSystem {
       if (p.level > before) { audio.play('level'); bus.emit(Events.SYSTEM, `${sc.pname} reached Lv ${p.level}!`); }
     }
     if (r.gold) p.gold += r.gold;
-    if (r.gear) sc.grantGear(r.gear, 'Quest reward');
+    if (r.gear) {
+      const gid = gearIdFor(r.gear, p.job?.id);
+      const given = sc.grantGear(gid, 'Quest reward');
+      // first weapon: wear it right away when the slot is empty (and the class/level gate allows it)
+      if (given && r.gear === 'starter_weapon' && !p.equipped?.weapon && !p.equipBlockReason?.(gid)) { try { if (p.equip(gid)) { bus.emit(Events.GEAR, { changed: true }); bus.emit(Events.SYSTEM, 'Equipped your starter weapon.'); } } catch { /* leave in bag */ } }
+    }
     for (const [id, n] of Object.entries(r.mats || {})) addMat(sc, id, n, { quiet: true, noQuest: true });
     for (const id of r.recipes || []) sc.craft?.learn(id);
     if (r.statPoints) { p.prog.statPoints = (p.prog.statPoints || 0) + r.statPoints; bus.emit(Events.PROGRESS, {}); bus.emit(Events.SYSTEM, `+${r.statPoints} stat points! Press C to spend them.`); }
@@ -464,31 +478,98 @@ export class QuestSystem {
   update(dt) {
     this.acc += dt; this.markAcc += dt;
     if (this.acc > 0.4) { this.acc = 0; this.checkLoreAndExplore(); this.updateBeacons(); }
-    if (this.markAcc > 2.5) { this.markAcc = 0; this.refreshMarkers(); }
+    if (this.markAcc > 2.5) { this.markAcc = 0; this.refreshMarkers(); bus.emit(Events.QUEST, this.scene.questText()); } // bearing text follows the hero
+    this.updateGuide();
     // resume escorts after load / re-accept
     for (const id of this.activeIds()) if (this.escortObj(id) && !this.escorts[id]) this.spawnEscort(id);
     this.updateEscorts(dt);
   }
 
+  // ——— next-objective guidance ———
+  // Where the player should go next: the first unfinished tracked objective, or (nothing tracked)
+  // the giver of the best available quest. Returns {x, y, area, label} or null.
+  npcTarget(name, label) {
+    const n = this.npcs.get(name);
+    const doorOf = (a) => { const r = this.scene.areas?.returnPos?.[a]; return r ? { x: r.x, y: r.y - 24, area: null, label: `${label} (enter the door)` } : null; };
+    if (n && (!n.area || n.area === this.areaId)) return { x: n.c.x, y: n.c.y, area: n.area || null, label };
+    if (n?.area && n.area !== this.areaId) return doorOf(n.area);
+    if (NPC_AREA[name]) return doorOf(NPC_AREA[name]);
+    return null;
+  }
+  zoneTarget(key, label) {
+    const z = ZONES.find((q) => q.id === key);
+    if (z) return { x: (z.rect.x + z.rect.w / 2) * T, y: (z.rect.y + z.rect.h / 2) * T, area: null, label };
+    const pt = PORTALS.find((q) => q.area === key);
+    if (pt) return { x: pt.tile.x * T + 8, y: pt.tile.y * T + 8, area: null, label: `${label} (gate)` };
+    return null;
+  }
+  leadQuest() {
+    const list = this.available().filter((q) => !q.repeat);
+    list.sort((a, b) => this.leadRank(a) - this.leadRank(b));
+    return list[0] || null;
+  }
+  nextTarget() {
+    const ids = this.s.tracked.filter((id) => this.s.active[id]);
+    for (const id of ids) {
+      const q = this.def(id);
+      if (this.isReady(id)) { const t = this.npcTarget(this.turnNpc(q), `Turn in: ${this.turnNpc(q)}`); if (t) return t; continue; }
+      for (let i = 0; i < q.obj.length; i++) {
+        if (this.prog(id, i).done) continue;
+        const o = q.obj[i];
+        let t = null;
+        if (o.t === 'explore') t = o.poi ? (() => { const p = this.poiPos(o.poi); return p ? { x: p.x, y: p.y, area: p.area, label: POIS[o.poi].name } : null; })() : this.zoneTarget(o.zone || o.area, zoneName(o.zone || o.area));
+        else if (o.t === 'talk' || o.t === 'deliver') t = this.npcTarget(o.npc, `Talk to ${o.npc}`);
+        else if (o.t === 'escort') { const p = this.poiPos(this.escorts[id]?.following ? o.to : o.from); t = p ? { x: p.x, y: p.y, area: p.area, label: POIS[o.to].name } : null; }
+        else if (q.zone && q.zone !== 'town') t = this.zoneTarget(q.zone, zoneName(q.zone));
+        if (t) return t;
+      }
+    }
+    if (ids.length) return null;
+    const lead = this.leadQuest();
+    return lead ? this.npcTarget(lead.giver, `${lead.giver}: ${lead.name}`) : null;
+  }
+  // 'NE 35 tiles' from the hero to the next target (same space only), or ''.
+  guideText() {
+    const t = this.nextTarget();
+    if (!t || (t.area || null) !== this.areaId) return '';
+    return bearingText(t.x - this.p.x, t.y - this.p.y);
+  }
+  // A small gold arrow orbiting the hero toward the next target (hidden when close, in another space or toggled off).
+  updateGuide() {
+    const sc = this.scene, p = this.p;
+    let a = this.guide;
+    const t = this.guideOn === false ? null : this.nextTarget();
+    const ok = t && (t.area || null) === this.areaId && !p.dead && Phaser.Math.Distance.Between(p.x, p.y, t.x, t.y) > 90;
+    if (!ok) { a?.setVisible(false); return; }
+    if (!a) { a = this.guide = sc.add.triangle(0, 0, 0, 0, 12, 5, 0, 10, 0xffd84a).setStrokeStyle(2, 0x3a2400).setDepth(2950).setOrigin(0.5); }
+    const ang = Math.atan2(t.y - p.y, t.x - p.x);
+    a.setVisible(true).setPosition(p.x + Math.cos(ang) * 30, p.y - 6 + Math.sin(ang) * 22).setRotation(ang).setAlpha(0.65 + 0.3 * Math.sin(sc.time.now / 260));
+  }
+
   // ——— HUD tracker text ———
   trackerText() {
     const ids = this.s.tracked.filter((id) => this.s.active[id]);
+    const g = this.guideText();
     if (!ids.length) {
-      if (!this.activeCount()) return "No active quests.\nLook for '!' over townsfolk. Journal: L";
+      if (!this.activeCount()) {
+        const lead = this.leadQuest();
+        if (lead) return `Next: ${lead.name}\n  Talk to ${lead.giver}${g ? ` (${g})` : ''}.\nLook for '!' over townsfolk. Journal: L`;
+        return "No active quests.\nLook for '!' over townsfolk. Journal: L";
+      }
       return 'Nothing tracked. Open the Journal (L) and press Track.';
     }
     const out = [];
-    for (const id of ids) {
+    ids.forEach((id, k) => {
       const q = this.def(id);
       const ready = this.isReady(id);
-      out.push(`> ${q.name}`);
+      out.push(`> ${q.name}${k === 0 && g ? `  [${g}]` : ''}`);
       if (ready) out.push(`  Turn in: ${this.turnNpc(q)}`);
       else q.obj.forEach((o, i) => {
         const p = this.prog(id, i);
         if (p.done && q.obj.length > 1) return;
         out.push(`  ${objText(o).replace(/^(Defeat|Gather|Craft|Use) /, '')} ${p.need > 1 ? `${p.cur}/${p.need}` : p.done ? '(done)' : ''}`.trimEnd());
       });
-    }
+    });
     return out.join('\n');
   }
 
@@ -511,7 +592,7 @@ export class QuestSystem {
     const id = q.id;
     const choose = (choice) => {
       if (this.complete(id, choice)) {
-        const follow = QUEST_LIST.find((x) => x.giver === this.turnNpc(q) && this.status(x.id) === 'available');
+        const follow = this.followUp(q);
         if (follow) this.say(this.turnNpc(q), `${q.done}\n\nI have more work for you, if you want it.`, [{ label: `! ${follow.name}`, cb: () => this.offerDialog(follow) }, { label: 'Later', cb: () => {} }]);
         else this.say(this.turnNpc(q), q.done, [{ label: 'Thanks', cb: () => {} }]);
       }
@@ -521,6 +602,19 @@ export class QuestSystem {
       : [{ label: `Complete quest  (${rewardLines(q.reward).slice(0, 3).join(', ')})`, cb: () => choose(null) }];
     opts.push({ label: 'Not yet', cb: () => back?.() });
     this.say(this.turnNpc(q), `${q.name}: you have everything I asked for.`, opts);
+  }
+
+  // Ordering for 'what should a new player do next': the onboarding chain first, then the
+  // quest's own chain, then the lowest level gate (so Lv1 heroes see 'First Blood' before 'Field Notes').
+  leadRank(q, from = null) {
+    if (q.chain === 'tutorial') return 0;
+    if (from?.chain && q.chain === from.chain) return 1;
+    return 2 + (q.lv || 1) / 100;
+  }
+  // The offer Pip & co. make right after a turn-in: same-giver quests, tutorial/same-chain first.
+  followUp(q) {
+    const who = this.turnNpc(q);
+    return QUEST_LIST.filter((x) => x.giver === who && this.status(x.id) === 'available').sort((a, b) => this.leadRank(a, q) - this.leadRank(b, q))[0] || null;
   }
 
   // Returns true if a quest dialogue was shown (caller then skips its default).
@@ -538,7 +632,7 @@ export class QuestSystem {
     }
     if (marked) this.changed();
     const ready = this.activeIds().map((id) => this.def(id)).filter((q) => this.turnNpc(q) === name && this.isReady(q.id));
-    const avail = QUEST_LIST.filter((q) => q.giver === name && this.status(q.id) === 'available');
+    const avail = QUEST_LIST.filter((q) => q.giver === name && this.status(q.id) === 'available').sort((a, b) => this.leadRank(a) - this.leadRank(b));
     const ongoing = this.activeIds().map((id) => this.def(id)).filter((q) => q.giver === name && !this.isReady(q.id) && !ready.includes(q));
     if (!ready.length && !avail.length && !ongoing.length) return marked ? (fallback?.(), true) : false;
     const again = () => this.talk(name, fallback, fallbackLabel, who);

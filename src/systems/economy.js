@@ -7,6 +7,11 @@ export const RESTOCK_MS = 10 * 60 * 1000;
 export const BUYBACK_MAX = 10;
 export const INN_COST = 10;
 
+// Healing Potion (Q): heals at least 45 HP, or 20% of max HP so it stays relevant as HP grows
+// (45 HP is 31% of a Lv1 hero but 8% at Lv20). Price creeps up 1g per 4 levels: 3g at Lv1-3 .. 8g at Lv20.
+export const potionHeal = (maxHp) => Math.max(45, Math.round((maxHp || 0) * 0.2));
+export const potionPrice = (level) => 3 + Math.floor(Math.max(1, level || 1) / 4);
+
 // Materials vendors sell (price = buy cost)
 export const MAT_STOCK = {
   maren: [{ id: 'empty_vial', price: 2 }, { id: 'oak_log', price: 6 }, { id: 'herbal_tonic', price: 22 }],
@@ -26,9 +31,11 @@ export function shopStock(shopId, now = Date.now()) {
 }
 
 export const matSellValue = (id) => matById(id)?.price || 0;
-export const buybackCost = (entry) => Math.max(1, Math.ceil(entry.price * 1.25));
+export const buybackCost = (entry, now = Date.now()) => (entry.at && now - entry.at < UNDO_SELL_MS ? entry.price : Math.max(1, Math.ceil(entry.price * 1.25)));
 
+export const UNDO_SELL_MS = 60 * 1000; // an accidental sale can be undone at the sell price for a minute
 export function pushBuyback(meta, entry) {
+  entry.at = Date.now();
   const list = meta.buyback;
   const same = list.find((b) => b.kind === entry.kind && b.id === entry.id && b.price === entry.price);
   if (same) same.n += entry.n; else list.unshift(entry);

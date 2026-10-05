@@ -14,7 +14,7 @@ const OLIVE = 0x9bbc0f, OLIVE_HI = 0xb8d820, OLIVE_DN = 0x7a9a0a;
 const FOCUS = 0xffe07a;
 
 export class PauseMenu {
-  // hooks: { onOpenChange(open), resume(), leave(), leaveLabel(), cyclePalette(), modeText(), help(), zoom: {get,step,set}, applyUiScale() }
+  // hooks: { onOpenChange(open), resume(), stuck?(), leave(), leaveLabel(), cyclePalette(), modeText(), help(), zoom: {get,step,set}, applyUiScale() }
   constructor(scene, hooks) {
     this.scene = scene; this.hooks = hooks;
     this.isOpen = false; this.page = 'main';
@@ -103,6 +103,7 @@ export class PauseMenu {
       ['Settings', () => this.goto('settings')],
       ['Controls / rebind keys', () => this.goto('controls')],
       [`Controls & commands [${input.labelFor('help')}]`, () => h.help()],
+      ...(h.stuck ? [['Stuck? Return to town', () => h.stuck()]] : []),
       [h.leaveLabel(), () => h.leave()],
     ];
     rows.forEach(([label, cb], i) => this.button(0, -ph / 2 + 58 + i * 34, 220, 26, label, cb, { size: 10 }));

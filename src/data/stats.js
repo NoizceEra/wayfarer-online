@@ -21,8 +21,17 @@ export const CLASS_CHANGE_LEVEL = 10;
 export const SKILL_MAX = 5;
 export const START_STAT_POINTS = 6;
 
-// XP needed to go from `lv` to `lv + 1` (Lv1 -> 2 = 100 XP, Lv49 -> 50 ~ 5000).
-export function xpToNext(lv) { return Math.round(30 + 70 * Math.pow(Math.max(1, lv), 1.1)); }
+// XP needed to go from `lv` to `lv + 1`. Lv1 -> 2 = 100 XP (first level-up in ~8 kills);
+// Lv1-20 follow 40 + 60 * Lv^1.6 (Lv5 826, Lv10 2428, Lv19 ~6.7k), then a gentle tail so the
+// (content-light) Lv20-50 band stays reachable. Retuned from 30 + 70 * Lv^1.1 (docs/PROGRESSION.md,
+// tools/progression_sim.mjs): the old curve gave Lv10 in ~11 min and Lv20 in ~26 min with quests.
+export const XP_CURVE = { base: 40, mul: 60, exp: 1.6, softCap: 20, tailExp: 1.2 };
+export function xpToNext(lv) {
+  const L = Math.max(1, lv);
+  const c = XP_CURVE;
+  if (L <= c.softCap) return Math.round(c.base + c.mul * Math.pow(L, c.exp));
+  return Math.round((c.base + c.mul * Math.pow(c.softCap, c.exp)) * Math.pow(L / c.softCap, c.tailExp));
+}
 
 // Stat points granted on reaching level `lv` (3-5, rising). 1 skill point/level.
 export function statPointsForLevel(lv) { return lv < 15 ? 3 : lv < 30 ? 4 : 5; }
@@ -35,6 +44,59 @@ export function statCost(v) { return Math.floor((Math.max(1, v) - 1) / 10) + 2; 
 // Skill level scaling (1..5): +15% damage/effect per level, -6% cooldown per level.
 export function skillDmgMul(lv) { return 1 + 0.15 * (Math.max(1, lv) - 1); }
 export function skillCdMul(lv) { return 1 - 0.06 * (Math.max(1, lv) - 1); }
+
+// ── Recommended build (the "RECOMMENDED" buttons in the Character panel) ─────────────
+// Share of points each class should pour into each stat. Advanced classes override their base job
+// once chosen. Weights are intentionally simple: put points where the class's damage / survival comes from.
+export const RECOMMENDED_WEIGHTS = {
+  wayfarer: { str: 0.45, vit: 0.4, dex: 0.1, agi: 0.05 },
+  ranger: { dex: 0.5, agi: 0.25, vit: 0.15, luk: 0.1 },
+  arcanist: { int: 0.6, vit: 0.25, dex: 0.15 },
+  bandit: { agi: 0.35, str: 0.3, luk: 0.2, vit: 0.15 },
+  knight: { str: 0.4, vit: 0.5, dex: 0.1 },
+  lanternwarden: { vit: 0.35, str: 0.3, int: 0.2, luk: 0.15 },
+  hunter: { dex: 0.55, agi: 0.25, luk: 0.2 },
+  wildwarden: { dex: 0.4, vit: 0.3, agi: 0.3 },
+  elementalist: { int: 0.75, dex: 0.25 },
+  tidecaller: { int: 0.55, vit: 0.35, luk: 0.1 },
+  shadowblade: { agi: 0.4, str: 0.4, luk: 0.2 },
+  trickster: { luk: 0.45, agi: 0.35, dex: 0.2 },
+};
+export const RECOMMENDED_SKILLS = {
+  wayfarer: ['slash', 'flare', 'camp', 'dash'], ranger: ['shot', 'volley', 'snare', 'dash'],
+  arcanist: ['bolt', 'burst', 'ward', 'blink'], bandit: ['stab', 'fan', 'smoke', 'dash'],
+};
+// Spend `points` greedily by the weights, respecting the rising per-stat cost.
+// `base`: class base stats, `alloc`: already allocated. Returns a stage object {str..luk: +n}.
+export function recommendStage(jobId, advId, base, alloc, points) {
+  const w = RECOMMENDED_WEIGHTS[advId] || RECOMMENDED_WEIGHTS[jobId] || RECOMMENDED_WEIGHTS.wayfarer;
+  const stage = { str: 0, agi: 0, vit: 0, int: 0, dex: 0, luk: 0 };
+  const spent = { str: 0, agi: 0, vit: 0, int: 0, dex: 0, luk: 0 };
+  let left = Math.max(0, points | 0), guard = 500;
+  while (left > 0 && guard--) {
+    let best = null, bd = -1e9;
+    const tot = Object.values(spent).reduce((a, b) => a + b, 0) + 1;
+    for (const [st, share] of Object.entries(w)) {
+      const v = (base?.[st] ?? 5) + (alloc?.[st] || 0) + stage[st];
+      if (v >= MAX_STAT) continue;
+      const cost = statCost(v);
+      if (cost > left) continue;
+      const d = share - spent[st] / tot;
+      if (d > bd) { bd = d; best = { st, cost }; }
+    }
+    if (!best) break;
+    stage[best.st] += 1; spent[best.st] += best.cost; left -= best.cost;
+  }
+  return stage;
+}
+// Next skill to learn: the lowest-level skill among the class priority list (ties: list order), then any other.
+export function recommendSkill(skillIds, levelOf, jobId) {
+  const pri = RECOMMENDED_SKILLS[jobId] || [];
+  const order = [...pri.filter((id) => skillIds.includes(id)), ...skillIds.filter((id) => !pri.includes(id))];
+  let best = null;
+  for (const id of order) { const lv = levelOf(id); if (lv >= SKILL_MAX) continue; if (best === null || lv < levelOf(best)) best = id; }
+  return best;
+}
 
 export function emptyAlloc() { return { str: 0, agi: 0, vit: 0, int: 0, dex: 0, luk: 0 }; }
 
