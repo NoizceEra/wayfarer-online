@@ -1,4 +1,3 @@
-import { Connection, PublicKey, clusterApiUrl } from '@solana/web3.js';
 import { input } from '../core/input.js';
 import { net } from '../net/NetworkManager.js';
 import { bus, Events } from '../core/events.js';
@@ -8,9 +7,13 @@ import { loadProfile, saveProfile } from '../core/save.js';
 const FONT = '"Silkscreen", monospace';
 const STORAGE_KEY = 'wayfarer.wallet.v1';
 
+// @solana/web3.js is ~300 KB: it is imported on demand (first balance fetch while the panel is open), never at startup.
+let web3Promise = null;
+const loadWeb3 = () => (web3Promise ||= import('@solana/web3.js').catch((e) => { web3Promise = null; throw e; }));
+
 const NETWORKS = {
   mainnet: { name: 'Mainnet', url: 'https://api.mainnet-beta.solana.com' },
-  devnet:  { name: 'Devnet',  url: clusterApiUrl('devnet') },
+  devnet:  { name: 'Devnet',  url: 'https://api.devnet.solana.com' }, // == clusterApiUrl('devnet')
 };
 
 function loadWallet() { try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || null; } catch { return null; } }
@@ -31,7 +34,7 @@ export class WalletPanel {
     this.wallet = loadWallet();
     this.balance = null;
     this.network = this.wallet?.network || 'devnet';
-    this.connection = new Connection(NETWORKS[this.network].url, 'confirmed');
+    this.connection = null; // built lazily by fetchBalance (needs web3.js)
     this.c = null;
     this.build();
     this.checkAutoConnect();
@@ -121,7 +124,7 @@ export class WalletPanel {
       if (provider.isPhantom && provider.connect) {
         const resp = await provider.connect({ onlyIfTrusted: true });
         if (resp?.publicKey?.toString() !== this.wallet.addr) this.disconnect();
-        else this.fetchBalance();
+        // balance is fetched when the panel opens (open() -> fetchBalance), so startup never pulls web3.js
       }
     } catch { }
   }
@@ -163,7 +166,7 @@ export class WalletPanel {
 
   toggleNetwork() {
     this.network = this.network === 'devnet' ? 'mainnet' : 'devnet';
-    this.connection = new Connection(NETWORKS[this.network].url, 'confirmed');
+    this.connection = null;
     if (this.wallet) { this.wallet.network = this.network; saveWallet(this.wallet); }
     this.refresh();
     if (this.wallet) this.fetchBalance();
@@ -172,6 +175,9 @@ export class WalletPanel {
   async fetchBalance() {
     if (!this.wallet?.addr) return;
     try {
+      const { Connection, PublicKey } = await loadWeb3();
+      const net0 = this.network;
+      if (!this.connection || this.connection.__net !== net0) { this.connection = new Connection(NETWORKS[net0].url, 'confirmed'); this.connection.__net = net0; }
       const pk = new PublicKey(this.wallet.addr);
       const lamports = await this.connection.getBalance(pk);
       this.balance = lamports;

@@ -23,17 +23,9 @@ import { PauseMenu } from '../ui/PauseMenu.js';
 import { HelpOverlay } from '../ui/HelpOverlay.js';
 import { WalletPanel } from '../ui/WalletPanel.js';
 import { DailyRewardPanel } from '../ui/DailyRewardPanel.js';
-import LFGPanel from '../ui/LFGPanel.js';
-import SeasonPanel from '../ui/SeasonPanel.js';
-import GuildPanel from '../ui/GuildPanel.js';
 import { WorldBossAlert } from '../ui/WorldBossAlert.js';
-import { ArenaPanel } from '../ui/ArenaPanel.js';
-import { SkillTreePanel } from '../ui/SkillTreePanel.js';
-import { ArenaChallengeModal } from '../ui/ArenaChallengeModal.js';
 import { arenaNet } from '../net/arenaNet.js';
-import DungeonSystem from '../systems/dungeonSystem.js';
-import SeasonSystem from '../systems/seasonSystem.js';
-import GuildSystem from '../systems/guildSystem.js';
+import { lazyPanel } from '../ui/lazyPanel.js';
 import { DailyRewards } from '../systems/dailyRewards.js';
 import { econ } from '../net/economyNet.js';
 import { fullscreenSupported, isFullscreen, toggleFullscreen } from '../core/mobile.js';
@@ -408,8 +400,8 @@ export class UIScene extends Phaser.Scene {
       this.equip?.destroy(); this.shop?.destroy(); this.journal?.destroy(); this.craftPanel?.destroy(); this.fishing?.destroy(); this.toast?.destroy(); this.walletPanel?.destroy();
       this.dailyPanel?.destroy(); this.dailyRewards?.destroy();
       this.partyFinderBtn?.destroy(); this.lfgBtn?.destroy(); this.seasonBtn?.destroy(); this.guildBtn?.destroy(); this.arenaBtn?.destroy(); this.specBtn?.destroy(); this.worldBossBtn?.destroy();
-      this.lfgPanel?.destroy(); this.seasonPanel?.destroy(); this.guildPanel?.destroy(); this.arenaPanel?.destroy(); this.skillTreePanel?.destroy(); this.arenaChallenge?.destroy(); this.worldBossAlert?.destroy();
-      this.dungeonSystem?.destroy(); this.seasonSystem?.destroy(); this.guildSystem?.destroy();
+      this.arenaPanel?.destroy(); this.skillTreePanel?.destroy(); this.arenaChallenge?.destroy(); this.worldBossAlert?.destroy();
+      // dungeon/season/guild systems + their panels are owned (and destroyed) by the economy UI
     });
     // Mail unread indicator for the touch HUD
     this.offs.push(
@@ -447,32 +439,19 @@ export class UIScene extends Phaser.Scene {
     this.economy = installEconomyUI(this); // trade / market board / mail / guild tab (src/ui/economyUI.js)
 
     // ── Feature panels: LFG, season pass, guild, world boss alert ─────────────
-    this.dungeonSystem = new DungeonSystem(this.world(), net);
-    const onceAttach = (handler) => {
-      let off = null;
-      let attached = false;
-      const hook = (room) => {
-        if (attached) return;
-        attached = true;
-        const h = (type, payload) => handler(type, payload);
-        room.onMessage('*', (type, payload) => h(type, payload));
-        off = () => room.onMessage('*', () => {});
-      };
-      const detach = net.onAttach(hook);
-      return () => { detach(); off?.(); };
-    };
-    this.seasonSystem = new SeasonSystem(this, { send: (t, p) => net.send(t, p), onBroadcast: onceAttach });
+    // Systems + LFG/season/guild panels are built once by installEconomyUI (src/ui/economyUI.js) and shared here.
+    const eco = this.economy;
+    this.dungeonSystem = eco.dungeonSystem;
+    this.seasonSystem = eco.seasonSystem;
     this.seasonSystem.attachGameSources?.({ dungeons: this.dungeonSystem, arena: arenaNet, playerName: this.pname });
-    this.guildSystem = new GuildSystem(this, { send: (t, p) => net.send(t, p), onBroadcast: onceAttach });
-    const cx = W / 2, cy = H / 2;
-    this.lfgPanel = new LFGPanel(this, cx, cy);
-    this.lfgPanel.onQueue = (req) => this.dungeonSystem.queue(req.dungeonId, req.role, req.groupMode);
-    this.lfgPanel.onAccept = () => this.dungeonSystem.acceptMatch();
-    this.seasonPanel = new SeasonPanel(this, cx, cy, { seasonSystem: this.seasonSystem, onClaim: (tier, track) => this.seasonSystem.claim(tier, track), onUpgrade: () => this.seasonSystem.upgradePremium() });
-    this.guildPanel = new GuildPanel(this, cx, cy, this.guildSystem);
-    this.arenaPanel = new ArenaPanel(this);
-    this.skillTreePanel = new SkillTreePanel(this);
-    this.arenaChallenge = new ArenaChallengeModal(this);
+    this.guildSystem = eco.guildSystem;
+    this.lfgPanel = eco.lfgPanel;
+    this.seasonPanel = eco.seasonPanel;
+    this.guildPanel = eco.guildPanel;
+    // Arena / specialization panels are lazy: their modules load on first use (ui/lazyPanel.js).
+    this.arenaPanel = lazyPanel(() => import('../ui/ArenaPanel.js'), (m) => new m.ArenaPanel(this), null, this);
+    this.skillTreePanel = lazyPanel(() => import('../ui/SkillTreePanel.js'), (m) => new m.SkillTreePanel(this), null, this);
+    this.arenaChallenge = lazyPanel(() => import('../ui/ArenaChallengeModal.js'), (m) => new m.ArenaChallengeModal(this), null, this);
     // Arena wires: incoming challenge -> modal; result -> toast + system
     // message, rating refresh, auto-leave-queue state; errors -> system msg.
     this.offs.push(

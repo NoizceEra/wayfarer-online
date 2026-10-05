@@ -11,16 +11,11 @@ import { MailPanel } from './MailPanel.js';
 import { renderGuildTab, answerInvite } from './GuildTab.js';
 import { ClaimPanel } from './ClaimPanel.js';
 import { ReferralPanel, mountReferralCta } from './ReferralPanel.js';
-import { PartyFinderPanel } from './PartyFinderPanel.js';
-import LFGPanel from './LFGPanel.js';
-import SeasonPanel from './SeasonPanel.js';
+import { lazyPanel } from './lazyPanel.js';
 import GuildPanel from './GuildPanel.js';
 import DungeonSystem from '../systems/dungeonSystem.js';
 import SeasonSystem from '../systems/seasonSystem.js';
 import GuildSystem from '../systems/guildSystem.js';
-import { TokenSinkPanel } from './TokenSinkPanel.js';
-import { TokenBridgePanel } from './TokenBridgePanel.js';
-import { LeaderboardPanel } from './LeaderboardPanel.js';
 import { el, setIconScene } from './econDom.js';
 import { socialRoot } from './socialDom.js';
 
@@ -75,17 +70,19 @@ export function installEconomyUI(uiScene) {
   const guildSystem = new GuildSystem(uiScene, { send: (t, p) => net.send(t, p), onBroadcast: onceAttach });
   const cx = uiScene.scale.width / 2 / (uiScene.uiZoom || 1);
   const cy = uiScene.scale.height / 2 / (uiScene.uiZoom || 1);
-  const lfgPanel = new LFGPanel(uiScene, cx, cy);
-  lfgPanel.onQueue = (req) => dungeonSystem.queue(req.dungeonId, req.role, req.groupMode);
-  lfgPanel.onAccept = () => dungeonSystem.acceptMatch();
-  const seasonPanel = new SeasonPanel(uiScene, cx, cy, { seasonSystem, onClaim: (tier, track) => seasonSystem.claim(tier, track), onUpgrade: () => seasonSystem.upgradePremium() });
+  // Rarely used panels are lazy (ui/lazyPanel.js): their modules load on first open, not with the HUD.
+  const lfgPanel = lazyPanel(() => import('./LFGPanel.js'), (m) => new m.default(uiScene, cx, cy), (p) => {
+    p.onQueue = (req) => dungeonSystem.queue(req.dungeonId, req.role, req.groupMode);
+    p.onAccept = () => dungeonSystem.acceptMatch();
+  }, uiScene);
+  const seasonPanel = lazyPanel(() => import('./SeasonPanel.js'), (m) => new m.default(uiScene, cx, cy, { seasonSystem, onClaim: (tier, track) => seasonSystem.claim(tier, track), onUpgrade: () => seasonSystem.upgradePremium() }), null, uiScene);
   const guildPanel = new GuildPanel(uiScene, cx, cy, guildSystem);
   // WorldBossAlert is constructed once in UIScene and shared through uiScene.worldBossAlert.
   const referralP = new ReferralPanel();
-  const partyFinderP = new PartyFinderPanel();
-  const sinksP = new TokenSinkPanel();
-  const bridgeP = new TokenBridgePanel();
-  const leaderboardPanel = new LeaderboardPanel();
+  const partyFinderP = lazyPanel(() => import('./PartyFinderPanel.js'), (m) => new m.PartyFinderPanel(), null, uiScene);
+  const sinksP = lazyPanel(() => import('./TokenSinkPanel.js'), (m) => new m.TokenSinkPanel(), null, uiScene);
+  const bridgeP = lazyPanel(() => import('./TokenBridgePanel.js'), (m) => new m.TokenBridgePanel(), null, uiScene);
+  const leaderboardPanel = lazyPanel(() => import('./LeaderboardPanel.js'), (m) => new m.LeaderboardPanel(), null, uiScene);
   const anyOpen = () => tradeP.isOpen || escrowP.isOpen || market.isOpen || mail.isOpen || claimP.isOpen || referralP.isOpen || partyFinderP.isOpen || sinksP.isOpen || bridgeP.isOpen || leaderboardPanel.visible || lfgPanel.visible || seasonPanel.visible || guildPanel.visible;
   const offs = [
     input.on('mail', () => { market.close(); escrowP.close(); tradeP.close(); sinksP.close(); bridgeP.close(); mail.toggle(); return true; }, { scene: uiScene }),
@@ -114,7 +111,7 @@ export function installEconomyUI(uiScene) {
 
   const api = {
     trade: tradeP, escrow: escrowP, market, mail, claim: claimP, referral: referralP, partyFinder: partyFinderP, sinks: sinksP, bridge: bridgeP, leaderboardPanel, anyOpen,
-    lfgPanel, seasonPanel, guildPanel, seasonSystem, guildSystem,
+    lfgPanel, seasonPanel, guildPanel, seasonSystem, guildSystem, dungeonSystem, onceAttach,
     destroy() { offs.forEach((o) => { try { o(); } catch { /* ignore */ } }); tradeP.destroy(); escrowP.destroy(); market.destroy(); mail.destroy(); claimP.destroy(); referralP.destroy(); partyFinderP.destroy(); sinksP.destroy(); bridgeP.destroy(); leaderboardPanel.destroy(); lfgPanel.destroy(); seasonPanel.destroy(); guildPanel.destroy(); dungeonSystem.destroy(); seasonSystem.destroy(); guildSystem.destroy(); badge.remove(); refCta.destroy(); },
   };
   uiScene.events.once('shutdown', () => api.destroy());

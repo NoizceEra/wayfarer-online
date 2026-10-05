@@ -1,4 +1,3 @@
-import { Client } from 'colyseus.js';
 import { CONFIG } from '../config.js';
 import { bus, Events } from '../core/events.js';
 import { loadProgress, saveProgress, loadHero, saveHero, onProgressSaved } from '../core/save.js';
@@ -77,14 +76,15 @@ export class NetworkManager {
     const prog = loadProgress(name);
     return { name, hero, token: this.token, x: prog?.x, y: prog?.y };
   }
-  newClient() { this.client = new Client(httpBase()); return this.client; }
+  // colyseus.js (~40 KB gz) is imported on first connect, not at startup (solo play never needs it).
+  async newClient() { const { Client } = await import('colyseus.js'); this.client = new Client(httpBase()); return this.client; }
 
   // ─── entry points ──────────────────────────────────────────────────
   async joinPublic(name, hero) {
     this.name = name; this.hero = hero;
     this.setStatus('connecting');
     try {
-      const room = await this.newClient().joinOrCreate('world', this.joinOptions(name, hero));
+      const room = await (await this.newClient()).joinOrCreate('world', this.joinOptions(name, hero));
       await this.adopt(room, 'world');
       bus.emit(Events.NET_CONNECTED, { code: room.roomId, isHost: false, public: true });
       return this.roomName;
@@ -98,7 +98,7 @@ export class NetworkManager {
       // the room stays private/code-share-only. All other opts are ignored.
       const createOpts = this.joinOptions(name, hero);
       if (opts.open) createOpts.open = true;
-      const room = await this.newClient().create('party', createOpts);
+      const room = await (await this.newClient()).create('party', createOpts);
       this.isHost = true;
       await this.adopt(room, 'party');
       bus.emit(Events.NET_CONNECTED, { code: room.roomId, isHost: true });
@@ -109,7 +109,7 @@ export class NetworkManager {
     this.name = name; this.hero = hero;
     this.setStatus('connecting');
     try {
-      this.newClient();
+      await this.newClient();
       const roomId = await this.resolveCode(code);
       const room = await this.client.joinById(roomId, this.joinOptions(name, hero));
       this.isHost = false;
@@ -288,8 +288,8 @@ export class NetworkManager {
         // 2) seat gone (server restarted / window expired): fresh join
         const opts = this.joinOptions(this.name, this.hero);
         let room;
-        if (kind === 'world') room = await this.newClient().joinOrCreate('world', opts);
-        else room = await this.newClient().joinById(roomId, opts);
+        if (kind === 'world') room = await (await this.newClient()).joinOrCreate('world', opts);
+        else room = await (await this.newClient()).joinById(roomId, opts);
         this.dropAllPeers();
         await this.adopt(room, kind);
         this.finishReconnect(false); return;

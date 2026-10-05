@@ -3,9 +3,10 @@
 //  phase 2 (this file): the ~700 sprite/face/item/FX/SFX files stream in on the persistent Boot scene's loader while
 //  the player sits on the title screen. Anything that needs the world (creator / world / ui scenes) is gated on
 //  `whenWorldReady()` (scenes/lazy.js shows the "preparing the world" veil if it is still running).
-import { preloadWorld, createAnims } from './loader.js';
-import { makeGearTextures } from '../systems/gearArt.js';
 import { GEAR } from '../data/gear.js';
+// loader.js (asset catalog, NPC/enemy tables) and gearArt.js (procedural icons) are only needed once the title has painted:
+// they are dynamic imports so they stay out of the title-critical chunk. They share a chunk with the gameplay bundle.
+const loadDeps = () => Promise.all([import('./loader.js'), import('../systems/gearArt.js')]);
 
 let resolveReady;
 const readyPromise = new Promise((r) => { resolveReady = r; }); // resolves when phase 2 completes (even if started later)
@@ -16,7 +17,7 @@ export const whenWorldReady = () => readyPromise;
 export function startWorldLoad(scene) {
   if (worldAssets.promise) return worldAssets.promise;
   worldAssets.state = 'loading';
-  worldAssets.promise = new Promise((resolve) => {
+  worldAssets.promise = loadDeps().then(([{ preloadWorld, createAnims }, { makeGearTextures }]) => new Promise((resolve) => {
     const L = scene.load;
     L.on('progress', (v) => { worldAssets.progress = v; worldAssets.listeners.forEach((f) => f(v)); });
     L.on('loaderror', (f) => console.warn('loaderror', f?.key));
@@ -32,7 +33,7 @@ export function startWorldLoad(scene) {
     });
     preloadWorld(scene);
     L.start();
-  });
+  })).catch((e) => { console.error('world asset deps failed', e); worldAssets.promise = null; worldAssets.state = 'idle'; });
   return worldAssets.promise;
 }
 

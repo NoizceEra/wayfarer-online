@@ -4,8 +4,8 @@
 //   gameplay scene waits for the chunk instead of failing (keeps `__wayfarer.scene.start('world')` working).
 import { worldReady, whenWorldReady, worldAssets } from '../assets/worldLoad.js';
 import { veil } from '../core/veil.js';
-const LAZY_KEYS = new Set(['world', 'ui', 'character', 'overlay']);
-const NEEDS_WORLD_ASSETS = new Set(['creator', ...LAZY_KEYS]); // scenes that draw sprites loaded in phase 2
+const LAZY_KEYS = new Set(['world', 'ui', 'character', 'overlay', 'creator', 'home', 'GuildHallScene']);
+const NEEDS_WORLD_ASSETS = new Set(LAZY_KEYS); // scenes that draw sprites loaded in phase 2
 let promise = null;
 let ready = false;
 let gameRef = null;
@@ -30,6 +30,7 @@ export function prefetchGameplay() {
         }
       };
       add('world', m.WorldScene); add('ui', m.UIScene); add('character', m.CharacterScene); add('overlay', m.OverlayScene);
+      add('creator', m.CreatorScene); add('home', m.HomeIslandScene); add('GuildHallScene', m.GuildHallScene);
     }
     ready = true;
     return m;
@@ -43,7 +44,7 @@ export function installLazyScenes(game) {
   const orig = sm.queueOp.bind(sm);
   syncTitleVideo = () => {
     const video = document.getElementById('bg-video');
-    if (!video) return;
+    if (!video || !video.dataset.armed) return; // trailer not attached (lazy / skipped on mobile)
     if (document.hidden || sm.isActive('world')) video.pause();
     else video.play().catch(() => {});
   };

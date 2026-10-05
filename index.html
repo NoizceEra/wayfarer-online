@@ -62,7 +62,7 @@
         -webkit-tap-highlight-color: transparent;
         font-family: 'Silkscreen', monospace;
       }
-      #bg-video, #bg-gif {
+      #bg-video {
         position: fixed; inset: 0; width: 100vw; height: 100vh; object-fit: cover; z-index: 0; opacity: 0.75;
       }
       /* canvas sits inside the safe area; transparent so HTML5 video shows through */
@@ -109,10 +109,9 @@
       <div class="pct" id="splash-pct">LOADING 0%</div>
       <div class="tip" id="splash-tip"></div>
     </div>
-    <video id="bg-video" autoplay loop muted playsinline poster="/trailer/wayfarer_login_bg.gif">
-      <source src="/trailer/wayfarer_login_bg.mp4" type="video/mp4">
-      <img id="bg-gif" src="/trailer/wayfarer_login_bg.gif" alt="Wayfarer Online" autoplay loop muted playsinline />
-    </video>
+    <!-- Trailer: the static poster paints instantly; the 1.4 MB mp4 is attached lazily by src/core/trailer.js
+         (desktop + good connection only, after the world assets finish or on first input). preload=none: no bytes until then. -->
+    <video id="bg-video" muted loop playsinline preload="none" poster="/trailer/wayfarer_login_bg_poster.webp" aria-hidden="true"></video>
     <div id="game"></div>
     <script type="module" src="/src/main.js"></script>
   </body>
