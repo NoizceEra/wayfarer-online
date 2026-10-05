@@ -16,7 +16,7 @@ export function installWorldBossNet() {
     const area = m.area || 'ruins';
     const name = m.name || 'World Boss';
     bus.emit(Events.SYSTEM, `[World Boss] ${name} has awoken in ${area.toUpperCase()}!`);
-    bus.emit('worldboss-spawn', m);
+    bus.emit(Events.WORLDBOSS_SPAWN, m);
   });
 
   net.on('worldboss-state', (m) => {
@@ -24,7 +24,7 @@ export function installWorldBossNet() {
     if (!announcedActive) {
       announcedActive = true;
       bus.emit(Events.SYSTEM, `[World Boss] ${m.name} is active in ${(m.area || 'ruins').toUpperCase()}!`);
-      bus.emit('worldboss-spawn', m);
+      bus.emit(Events.WORLDBOSS_SPAWN, m);
     }
   });
 

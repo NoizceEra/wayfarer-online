@@ -119,6 +119,7 @@ const COMMANDS = [
   { c: '/petbattle', d: 'How to catch and battle pets. Alias /pvb.' },
   { c: '/home', d: 'Travel to your home island.' },
   { c: '/roll [n]', d: 'Roll a die (default 100).' },
+  { c: '/tutorial', d: 'Restart the tutorial from the first step. Alias /tut.' },
   { c: '/filter', d: 'Toggle the profanity filter.' },
   { c: '/time', d: 'Toggle chat timestamps. Alias /timestamps.' },
   { c: '/clear', d: 'Clear your chat history.' },

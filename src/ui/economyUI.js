@@ -110,7 +110,7 @@ export function installEconomyUI(uiScene) {
   ];
   drawBadge();
   const refCta = mountReferralCta(() => referralP.open());
-  installCommands(mail);
+  installCommands(mail, uiScene);
 
   const api = {
     trade: tradeP, escrow: escrowP, market, mail, claim: claimP, referral: referralP, partyFinder: partyFinderP, sinks: sinksP, bridge: bridgeP, leaderboardPanel, anyOpen,
@@ -124,7 +124,7 @@ export function installEconomyUI(uiScene) {
 
 // Wrap social.command once so economy slash commands work from the chat box.
 let mailRef = null;
-function installCommands(mail) {
+function installCommands(mail, uiScene) {
   mailRef = mail;
   if (social._econCommands) return;
   social._econCommands = true;
@@ -135,6 +135,12 @@ function installCommands(mail) {
     const cmd = c0.toLowerCase(); const arg = rest.join(' ').trim(); const first = rest[0] || '';
     const n = Math.floor(Number(first));
     switch (cmd) {
+      case 'tutorial': case 'tut':
+        // onboarding.finish() tells the player 'You can restart with /tutorial'
+        // and this is that command; WorldScene owns the onboarding lifecycle.
+        return uiScene?.world()?.restartTutorial?.()
+          ? say('Tutorial restarted — follow the prompts in the top-left.')
+          : say('The tutorial can only be restarted while you are in the world.');
       case 'trade': case 'tr':
         if (first === 'accept' || first === 'yes') return trade.respond(true);
         if (first === 'decline' || first === 'no') return trade.respond(false);

@@ -11,9 +11,9 @@ export const JOBS = {
     advanced: ['knight', 'lanternwarden'],
     abilities: [
       { id: 'slash', name: 'Trail Slash', key: '1', cd: 0.6, desc: 'Quick sword arc.', fx: { type: 'shot', n: 1, spread: 0, mul: 1.25, kind: 'shuriken', mp: 8 } },
-      { id: 'flare', name: 'Waylight', key: '2', cd: 8, desc: 'Radiant burst that scorches and pushes nearby foes.', fx: { type: 'aoe', radius: 60, mul: 1.1, mp: 15, vfx: 'fx.circleOrange', knock: 180, status: { id: 'burn', chance: 0.65, secs: 3 } } },
+      { id: 'flare', name: 'Waylight', key: '2', cd: 8, desc: 'Radiant burst that scorches and pushes nearby foes.', fx: { type: 'aoe', radius: 60, mul: 1.1, mp: 15, knock: 180, status: { id: 'burn', chance: 0.65, secs: 3 } } },
       { id: 'dash', name: 'Dust Dash', key: '3', cd: 4, desc: 'Short dash, brief iframes.' },
-      { id: 'camp', name: 'Make Camp', key: '4', cd: 20, desc: 'Drop a campfire that heals nearby.', fx: { type: 'heal', pct: 0.32, mp: 0 } },
+      { id: 'camp', name: 'Make Camp', key: '4', cd: 20, desc: 'Drop a campfire that heals nearby.', fx: { type: 'campfire', pctPerSec: 0.032, secs: 10, mp: 0 } },
     ],
   },
   ranger: {
@@ -75,7 +75,7 @@ export const ADVANCED = {
     desc: 'Sword-and-board bruiser. Tough, hits hard up close.',
     bonus: { str: 6, vit: 6 }, hpMul: 1.15,
     abilities: [
-      { id: 'bash', name: 'Shield Bash', key: '5', cd: 7, icon: 'icon.slash', desc: 'Slam foes back; slows and may briefly stun.', fx: { type: 'aoe', radius: 44, mul: 1.6, slow: 2.5, mp: 12, shake: 0.004, knock: 260, status: { id: 'stun', chance: 0.45, secs: 0.8 } } },
+      { id: 'bash', name: 'Shield Bash', key: '5', cd: 7, icon: 'icon.slash', desc: 'Slam foes back; slows and may briefly stun.', fx: { type: 'aoe', radius: 44, mul: 1.6, slow: 2.5, mp: 12, knock: 260, status: { id: 'stun', chance: 0.45, secs: 0.8 } } },
       { id: 'bulwark', name: 'Bulwark', key: '6', cd: 18, icon: 'icon.ward', desc: 'Brief invulnerability + 25% ATK.', fx: { type: 'buff', secs: 8, atkMul: 1.25, ward: 1.5, mp: 20 } },
     ],
   },
@@ -85,7 +85,7 @@ export const ADVANCED = {
     bonus: { vit: 5, int: 4, luk: 2 }, mpMul: 1.2,
     abilities: [
       { id: 'beacon', name: 'Beacon', key: '5', cd: 14, icon: 'icon.camp', desc: 'Heal 35% of max HP.', fx: { type: 'heal', pct: 0.35, mp: 20 } },
-      { id: 'sunburst', name: 'Sunburst', key: '6', cd: 10, icon: 'icon.flare', desc: 'Wide radiant burst that leaves foes burning.', fx: { type: 'aoe', radius: 78, mul: 1.3, mp: 24, vfx: 'fx.explosion', knock: 180, status: { id: 'burn', chance: 0.8, secs: 3.5 } } },
+      { id: 'sunburst', name: 'Sunburst', key: '6', cd: 10, icon: 'icon.flare', desc: 'Wide radiant burst that leaves foes burning.', fx: { type: 'aoe', radius: 78, mul: 1.3, mp: 24, knock: 180, status: { id: 'burn', chance: 0.8, secs: 3.5 } } },
     ],
   },
   hunter: {
@@ -94,7 +94,7 @@ export const ADVANCED = {
     bonus: { dex: 8, agi: 3, luk: 2 }, crit: 4,
     abilities: [
       { id: 'pierce', name: 'Piercing Shot', key: '5', cd: 6, icon: 'icon.shot', desc: 'Heavy holy lance piercing through foes.', fx: { type: 'shot', n: 1, spread: 0, mul: 2.8, kind: 'holy', speed: 450, mp: 16 } },
-      { id: 'arrowrain', name: 'Arrow Rain', key: '6', cd: 12, icon: 'icon.volley', desc: 'Arrows fall around you, slowing caught foes.', fx: { type: 'aoe', radius: 84, mul: 1.1, mp: 26, vfx: 'fx.explosion', knock: 150, status: { id: 'slow', chance: 0.8, secs: 2 } } },
+      { id: 'arrowrain', name: 'Arrow Rain', key: '6', cd: 12, icon: 'icon.volley', desc: 'Arrows fall around you, slowing caught foes.', fx: { type: 'aoe', radius: 84, mul: 1.1, mp: 26, knock: 150, status: { id: 'slow', chance: 0.8, secs: 2 } } },
     ],
   },
   wildwarden: {
@@ -111,7 +111,7 @@ export const ADVANCED = {
     desc: 'Raw destructive magic. Glass cannon.',
     bonus: { int: 9, dex: 3 }, mpMul: 1.1,
     abilities: [
-      { id: 'meteor', name: 'Meteor', key: '5', cd: 12, icon: 'icon.burst', desc: 'Crushing fire blast that leaves a burn.', fx: { type: 'aoe', radius: 72, mul: 2.2, mp: 35, shake: 0.005, vfx: 'fx.explosion', knock: 320, status: { id: 'burn', chance: 1, secs: 4 } } },
+      { id: 'meteor', name: 'Meteor', key: '5', cd: 12, icon: 'icon.burst', desc: 'Crushing fire blast that leaves a burn.', fx: { type: 'aoe', radius: 72, mul: 2.2, mp: 35, knock: 320, status: { id: 'burn', chance: 1, secs: 4 } } },
       { id: 'chain', name: 'Spark Chain', key: '6', cd: 8, icon: 'icon.bolt', desc: 'Fan of 5 high-speed lightning spears.', fx: { type: 'shot', n: 5, spread: 0.35, mul: 0.95, kind: 'lightning', speed: 380, mp: 22 } },
     ],
   },
@@ -130,7 +130,7 @@ export const ADVANCED = {
     bonus: { agi: 7, str: 4, luk: 2 }, crit: 6, aspd: 0.08,
     abilities: [
       { id: 'shadowstep', name: 'Shadowstep', key: '5', cd: 6, icon: 'icon.dash', desc: 'Dash through foes, cutting them.', fx: { type: 'strike', dist: 72, mul: 1.8, radius: 30, mp: 12 } },
-      { id: 'fangdance', name: 'Fang Dance', key: '6', cd: 9, icon: 'icon.stab', desc: 'Spin slash that makes enemies bleed.', fx: { type: 'aoe', radius: 42, mul: 2.0, mp: 18, vfx: 'fx.slashArc', knock: 220, status: { id: 'bleed', chance: 0.85, secs: 4 } } },
+      { id: 'fangdance', name: 'Fang Dance', key: '6', cd: 9, icon: 'icon.stab', desc: 'Spin slash that makes enemies bleed.', fx: { type: 'aoe', radius: 42, mul: 2.0, mp: 18, knock: 220, status: { id: 'bleed', chance: 0.85, secs: 4 } } },
     ],
   },
   trickster: {

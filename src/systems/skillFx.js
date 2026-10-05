@@ -26,8 +26,15 @@ export function castFx(scene, ab, lv, setCd) {
   // AoE and dash skills can declare knockback and a status in jobs.js.  Keep
   // the shape identical to normal combat hits so proc chance, duration and
   // status refresh rules stay in one place.
+  // combat.js tints the floating damage number from opts.element, but only knows
+  // its own vocabulary (fire, ice/frost, thunder/lightning, shadow/void, holy,
+  // nature/poison).  ELEMENT_OF is the skill-side registry, so map the known
+  // synonyms; the rest (physical 'phys', 'steel') deliberately fall through to
+  // combat's default white number.
+  const combatElement = (el) => el === 'water' ? 'ice' : el;
   const hitOpts = () => ({
     knock: fx.knock,
+    element: combatElement(ELEMENT_OF[ab.id]),
     status: fx.status && {
       ...fx.status,
       secs: fx.status.secs == null ? undefined : fx.status.secs * (0.85 + 0.15 * dm),
@@ -91,6 +98,29 @@ export function castFx(scene, ab, lv, setCd) {
     if (fx.spdMul) p.buff = { until: scene.time.now + (fx.secs || 4) * 1000, spdMul: fx.spdMul };
     bus.emit(Events.PLAYER_HP, scene.hpPayload());
     bus.emit(Events.SYSTEM, `${ab.name}: +${n} HP`);
+  } else if (fx.type === 'campfire') {
+    // Lingering campfire: heals over `secs` in 1s ticks. This matches the 10s
+    // campfire that skillVfx's SK.camp actually draws. Before this, the skill
+    // healed once instantly while the fire burned on for ten seconds doing
+    // nothing, and the legacy regen branch in WorldScene.cast's `ab.id ===
+    // 'camp'` was unreachable dead code (castFx returns true for 'heal' first).
+    // Total healing is unchanged: pctPerSec * secs === the old one-shot pct.
+    audio.play('heal');
+    if (!hasVfx(ab.id)) scene.spawnFx(p.x, p.y - 6, 'fx.aura', 1.6);
+    const secs = Math.max(1, Math.round(fx.secs || 10));
+    const per = Math.max(1, Math.round(p.effMaxHp() * (fx.pctPerSec || 0.032) * dm));
+    let announced = false;
+    scene.time.addEvent({
+      delay: 1000,
+      repeat: secs - 1,
+      callback: () => {
+        if (!p || p.dead) return;
+        p.heal(per);
+        scene.damageNumber(p.x, p.y, `+${per}`, '#2ecc71');
+        bus.emit(Events.PLAYER_HP, scene.hpPayload());
+        if (!announced) { announced = true; bus.emit(Events.SYSTEM, `${ab.name}: campfire heals ${per} HP/s for ${secs}s`); }
+      },
+    });
   } else if (fx.type === 'buff') {
     audio.play('cast');
     if (!hasVfx(ab.id)) scene.spawnFx(p.x, p.y - 8, 'fx.boost', 1.4);

@@ -100,7 +100,7 @@ export const EXTRA_QUESTS = [
     offer: 'Past the brook, north of town, the ground split open. Go down into the Hollow Depths and come tell me what you find.',
     remind: 'Enter the Hollow Depths (Hollow Depths gate, north of the bridge).',
     done: 'You went down and came back up? Then the stories are true. The halls shift every time.',
-    obj: [{ t: 'explore', area: 'hollow' }], reward: { xp: 500, gold: 160, mats: { medipack: 2 } } }),
+    obj: [{ t: 'explore', area: 'hollow' }], reward: { xp: 500, gold: 160, mats: { greater_potion: 2 } } }),
   Q({ id: 'q_hd2', chain: 'hollow', name: "The Warden's Toll", giver: 'Delver Orrin', lv: 13, zone: 'meadow', pre: ['q_hd1'],
     story: 'Somewhere in the middle floors the Hollow Warden guards the stair.',
     offer: 'The Hollow Warden holds the stair halfway down. Break its guard and bring back proof.',

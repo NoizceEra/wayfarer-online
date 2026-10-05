@@ -7,6 +7,7 @@ import { ENEMY_TABLE } from '../data/jobs.js';
 import { ITEM_LIST } from '../data/items.js';
 import '../data/worldEnemies.js'; // registers the expanded monster roster into ENEMY_TABLE before we read it
 import '../data/deathFx.js'; // tags every monster def with its death / hit-reaction family (deathFx)
+import { PETS } from '../data/pets.js'; // pet lines reuse monster sheets by `mon.<Name>` (see PETS[*].sprite)
 const NA = 'assets/na';
 export const DIRS = ['down', 'up', 'left', 'right'];
 
@@ -22,7 +23,8 @@ export const CHARACTERS = [
 CHARACTERS.splice(0, CHARACTERS.length, ...new Set(CHARACTERS));
 const FACE_OVERRIDE = { ManGreen: 'Faceset1.png' };
 
-const MONSTER_SHEETS = {
+// Exported so tools/audits can assert the exact registered texture set (see docs/SYNC_ASSETS.md).
+export const MONSTER_SHEETS = {
   Slime: 'Slime/Slime.png',
   BlueBat: 'BlueBat/SpriteSheet.png',
   SpiderRed: 'SpiderRed/SpriteSheet.png',
@@ -37,7 +39,7 @@ const MONSTER_SHEETS = {
 };
 // Custom monster sheets from public/assets/custom/monsters
 const CUSTOM_MONSTER_DIR = 'assets/custom/monsters';
-const CUSTOM_MONSTER_SHEETS = {};
+export const CUSTOM_MONSTER_SHEETS = {};
 for (const [key, file] of Object.entries(CUSTOM_MONSTER_FILES || {})) {
   CUSTOM_MONSTER_SHEETS[key] = `${CUSTOM_MONSTER_DIR}/${file}`;
 }
@@ -46,6 +48,12 @@ for (const [key, file] of Object.entries(CUSTOM_MONSTER_FILES || {})) {
 const AMBIENT_MONSTERS = ['Butterfly', 'ButterflyBlue', 'Fish', 'FishRed', 'Owl', 'Owl2', 'BlueBat', 'YellowsBat'];
 for (const def of Object.values(ENEMY_TABLE)) if (MONSTER_FILES[def.sprite] && !MONSTER_SHEETS[def.sprite]) MONSTER_SHEETS[def.sprite] = MONSTER_FILES[def.sprite];
 for (const n of AMBIENT_MONSTERS) if (MONSTER_FILES[n] && !MONSTER_SHEETS[n]) MONSTER_SHEETS[n] = MONSTER_FILES[n];
+// Pet lines (data/pets.js) resolve their sprites via `mon.<Name>`; register those sheets too so
+// every pet (e.g. nature-line 'mossback' -> mon.BambooYellow) has a texture at runtime.
+for (const p of Object.values(PETS)) {
+  const n = String(p.sprite || '').replace(/^mon\./, '');
+  if (MONSTER_FILES[n] && !MONSTER_SHEETS[n]) MONSTER_SHEETS[n] = MONSTER_FILES[n];
+}
 
 // Side-view 2-frame animals (Actor/Animal): [key, path, frameW, frameH]. Sheets are 2 frames wide.
 export const ANIMALS = [

@@ -22,8 +22,13 @@ const OOC_MS = 5000;       // out-of-combat after 5s without hitting / being hit
 // hit-stop, combo counter, target lock (Tab / click), dodge roll with i-frames +
 // stamina, status effects, out-of-combat regen, death + respawn, loot (coins +
 // item drops that bounce out, rarity beams, pickup magnet), and the per-frame
-// enemy AI driver. Bus events: emits Events.KILL / PLAYER_DIED; consumes
-// Events.PARTY_KILL (a party system forwarding a party-mate's kill share).
+// enemy AI driver. Bus events: emits Events.KILL / PLAYER_DIED.
+// NOTE: party kill share is NOT routed through the bus. It runs end to end over
+// the server — social/index.js sends 'party-xp', server/social.js relays it, and
+// socialNet routes it to social.onPartyXp(). A second bus-driven path
+// (Events.PARTY_KILL) once lived here and had no producer; it was removed so the
+// feature keeps a single owner. Quest credit for a party-mate's kill is still
+// unimplemented — it would belong in social.onPartyXp if we want it.
 export class Combat {
   constructor(scene) {
     this.s = scene;
@@ -76,12 +81,9 @@ export class Combat {
     input.on('target', () => { this.cycleTarget(); return true; }, { scene });
     scene.input.on('pointerdown', (ptr) => { if (ptr.button === 0 && !scene.chatOpen && !scene.uiLock && !scene.uiModal) this.pickTarget(ptr.worldX, ptr.worldY); });
 
-    this.offParty = bus.on(Events.PARTY_KILL, (k) => this.onPartyKill(k));
-
     if (!scene.scene.get('combathud')) scene.scene.add('combathud', CombatHudScene, false);
     scene.scene.launch('combathud');
     scene.events.once('shutdown', () => {
-      this.offParty?.();
       scene.scene.stop('combathud');
     });
   }
@@ -273,16 +275,6 @@ export class Combat {
       bus.emit(Events.SYSTEM, `${s.pname} reached Lv ${p.level}!`);
     }
     return leveled;
-  }
-
-  // A party system forwards a party-mate's kill: { typeId, xp, by, level? }.
-  onPartyKill(k) {
-    if (!k || k.by === this.s.pname || this.p.dead) return;
-    const xp = Math.max(0, Math.round(k.xp || 0));
-    this.grantXp(xp);
-    if (k.typeId && k.questCredit !== false) this.s.creditKill?.(k.typeId, null);
-    bus.emit(Events.PLAYER_XP, this.s.xpPayload());
-    bus.emit(Events.QUEST, this.s.questText());
   }
 
   // ── enemy → hero ──────────────────────────────────────────────────────────

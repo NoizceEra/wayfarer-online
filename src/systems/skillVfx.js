@@ -753,9 +753,13 @@ const SK = {
   },
 };
 export const hasVfx = (id) => !!SK[id];
+// Read by skillFx.js hitOpts() for every AoE / strike skill, so its keys must be
+// exactly the abilities whose damage flows through that path.  Shot skills derive
+// their element from the projectile kind in combat.js instead (no entry needed).
 export const ELEMENT_OF = {
-  flare: 'holy', bash: 'phys', sunburst: 'holy', arrowrain: 'phys', thornwall: 'nature', burst: 'nature', meteor: 'fire',
-  tidal: 'water', fangdance: 'phys', caltrops: 'steel', pierce: 'phys', chain: 'thunder', shadowstep: 'shadow',
+  flare: 'holy', snare: 'nature', burst: 'nature', smoke: 'shadow', bash: 'phys', sunburst: 'holy',
+  arrowrain: 'phys', thornwall: 'nature', meteor: 'fire', tidal: 'water', fangdance: 'phys',
+  caltrops: 'steel', shadowstep: 'shadow',
 };
 
 function genericCastVfx(scene, p, ab) {

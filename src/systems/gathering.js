@@ -234,14 +234,14 @@ export class GatherSystem {
         const p = s.add.rectangle(x, y, 3, 3, c).setDepth(2700).setBlendMode(Phaser.BlendModes.ADD);
         s.tweens.add({ targets: p, x: x + Math.cos(a) * d, y: y - Math.random() * 15 + Math.sin(a) * d, alpha: 0, angle: Math.random() * 180, duration: 600 + Math.random() * 400, onComplete: () => p.destroy() });
       }
-    } else if (kind === 'herb' || kind === 'bush') {
+    } else if (kind === 'herb' || kind === 'bush' || kind === 'berry') {
       const count = Phaser.Math.Between(8, 10);
       for (let i = 0; i < count; i++) {
         const a = Math.random() * Math.PI * 2, d = 10 + Math.random() * 15;
         const p = s.add.circle(x, y, Phaser.Math.Between(2, 3), color).setDepth(2700);
         s.tweens.add({ targets: p, x: x + Math.cos(a) * d + (Math.random() * 10 - 5), y: y + Math.sin(a) * d + 15, alpha: 0, scale: 0.5, duration: 1000 + Math.random() * 500, ease: 'sine.inout', onComplete: () => p.destroy() });
       }
-    } else if (kind === 'log') {
+    } else if (kind === 'log' || kind === 'wood') {
       const count = Phaser.Math.Between(8, 10);
       for (let i = 0; i < count; i++) {
         const a = Math.random() * Math.PI * 2, d = 12 + Math.random() * 18;

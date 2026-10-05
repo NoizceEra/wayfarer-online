@@ -120,6 +120,15 @@ export function normalizeExtras(raw) {
       date: String(r.bridgeDailyClaimed.date || '').slice(0, 10),
       amount: Math.max(0, Math.floor(Number(r.bridgeDailyClaimed.amount)) || 0),
     } : { date: '', amount: 0 },
+    // Arena record. Server-authoritative (server/arena.js writes it directly
+    // into the stored record); the client mirrors it so its periodic/exit save
+    // uploads a payload that carries the rating rather than erasing it. Bounds
+    // mirror server sanitizeArena: start 1000, floor 100, cap 3000.
+    ...(isObj(r.arena) ? { arena: {
+      rating: clampInt(r.arena.rating, 100, 3000, 1000),
+      wins: Math.max(0, Math.floor(Number(r.arena.wins)) || 0),
+      losses: Math.max(0, Math.floor(Number(r.arena.losses)) || 0),
+    } } : {}),
     pets: isObj(r.pets) ? {
       unlocked: !!r.pets.unlocked,
       active: Math.max(0, Math.floor(Number(r.pets.active)) || 0),

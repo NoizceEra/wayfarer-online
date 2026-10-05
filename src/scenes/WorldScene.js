@@ -235,6 +235,17 @@ export class WorldScene extends Phaser.Scene {
   }
 
   hpPayload() { return { hp: Math.ceil(this.player.hp), maxHp: this.player.effMaxHp(), mp: Math.ceil(this.player.mp), maxMp: this.player.effMaxMp(), potions: this.player.potions, gold: this.player.gold, level: this.player.level, atk: Math.round(this.player.effAtk()), def: this.player.effDef(), tokenPoints: this.player.tokenPoints, wayfarerTokens: this.player.wayfarerTokens }; }
+
+  // WorldScene owns the onboarding lifecycle, so restarting the tutorial lives
+  // here: OnboardingSystem.finish() destroys itself (and its bus subscriptions),
+  // so calling restart() on a finished instance would leave a hint that nothing
+  // drives. Rebuild the system instead — this is what the /tutorial chat command
+  // calls (onboarding.finish() has always promised '/tutorial' in its toast).
+  restartTutorial() {
+    this.onboarding?.destroy();
+    this.onboarding = new OnboardingSystem(this);
+    return true;
+  }
   xpPayload() { return { xp: this.player.xp, xpNext: this.player.xpNext, level: this.player.level }; }
   questText() {
     return this.quests ? this.quests.trackerText() : '';
@@ -503,19 +514,9 @@ export class WorldScene extends Phaser.Scene {
     const setCd = () => { this.player.cooldowns[ab.id] = this.time.now + this.player.skillCd(ab) * 1000; bus.emit(Events.PLAYER_HP, this.hpPayload()); castVfx(this, ab, lv); };
     bus.emit(Events.SKILL_CAST, { id: ab.id });
     if (castFx(this, ab, lv, setCd)) return;
-    if (ab.id === 'camp') {
-      setCd();
-      audio.play('heal');
-      this.spawnFx(this.player.x, this.player.y - 4, 'fx.aura', 1.6);
-      const f = this.add.circle(this.player.x, this.player.y + 6, 8, 0xe67e22).setDepth(2600);
-      this.tweens.add({ targets: f, scale: 1.3, duration: 400, yoyo: true, repeat: 9, onComplete: () => f.destroy() });
-      this.time.addEvent({ delay: 1000, repeat: 9, callback: () => {
-        const h = Math.round(4 * dm); this.player.heal(h); this.damageNumber(this.player.x, this.player.y, `+${h}`, '#2ecc71');
-        bus.emit(Events.PLAYER_HP, this.hpPayload());
-      } });
-      bus.emit(Events.SYSTEM, `${ab.name}: campfire heals 4 HP/s`);
-      return;
-    }
+    // NOTE: 'camp' used to have a hand-rolled branch here, but it was dead code —
+    // camp declares an fx block, so castFx() handles it and returns true first.
+    // Its lingering heal now lives in skillFx's data-driven 'campfire' type.
     if (ab.id === 'ward') {
       if (this.player.mp < 20) { audio.play('error', 0.7); bus.emit(Events.SYSTEM, 'Not enough MP!'); return; }
       this.player.mp -= 20;

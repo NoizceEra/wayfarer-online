@@ -103,10 +103,13 @@ ENEMY_TABLE.glacierwyrm = {
   items: [{ id: 'bar_mithril', chance: 1 }, { id: 'chest_big', chance: 0.5 }, { id: 'scroll_thunder', chance: 0.6 }],
 };
 
-// ——— Custom Biome Monsters (12 new monsters across 6 biomes) ———
+// ——— Custom Biome Monsters (biome-pack sheets from public/assets/custom/monsters) ———
 // Meadowfield
 E('dewbeetle', 'Dew Beetle', 'meadow_dewbeetle', ['meadow'], 28, 6, 8, [1, 4], { items: [{ id: 'grass', chance: 0.18 }, { id: 'water_drop', chance: 0.12 }] });
 E('quillkin', 'Meadow Quillkin', 'meadow_quillkin', ['meadow'], 36, 7, 10, [2, 5], { items: [{ id: 'feather', chance: 0.15 }, { id: 'nut_bag', chance: 0.1 }] });
+// Cyan Slime — the biome-pack sheet `slime_slime_cyan` shipped without a def; it lives in the meadow
+// alongside the other gels/slimes. Explicit deathFx overrides the lowercase sheet-name inference (→ slime).
+E('cyanslime', 'Cyan Slime', 'slime_slime_cyan', ['meadow'], 38, 7, 11, [2, 5], { deathFx: 'slime', items: [{ id: 'water_drop', chance: 0.18 }, { id: 'grass', chance: 0.12 }] });
 // Mosswood
 E('brambleboar', 'Bramble Boar', 'forest_brambleboar', ['woods'], 65, 12, 22, [3, 8], { items: [{ id: 'meat', chance: 0.25 }, { id: 'branch', chance: 0.2 }] });
 E('moss_treant', 'Mosswood Treant', 'forest_treant', ['woods'], 85, 13, 26, [4, 10], { items: [{ id: 'branch', chance: 0.3 }, { id: 'herb_tea', chance: 0.15 }], drops: [{ id: 'iron_helm', chance: 0.03 }] });
@@ -129,7 +132,7 @@ E('frost_rimebat', 'Rime Bat', 'frost_rimebat', ['frost'], 105, 20, 48, [7, 16],
 // Extra overworld spawns [type, count, zone]; WorldScene.spawnEnemies reads this list.
 export const EXTRA_OVERWORLD_SPAWNS = [
   ['fieldmouse', 10, 'meadow'], ['gelgreen', 10, 'meadow'], ['gelblue', 8, 'meadow'], ['gorselizard', 8, 'meadow'], ['burrower', 6, 'meadow'], ['meadowcap', 6, 'meadow'],
-  ['dewbeetle', 8, 'meadow'], ['quillkin', 6, 'meadow'],
+  ['dewbeetle', 8, 'meadow'], ['quillkin', 6, 'meadow'], ['cyanslime', 8, 'meadow'],
   ['stinger', 8, 'woods'], ['bramblesnake', 8, 'woods'], ['hootling', 6, 'woods'], ['fernlizard', 6, 'woods'], ['lilykappa', 5, 'woods'], ['pondaxolot', 5, 'woods'], ['bamboolet', 6, 'woods'], ['mossbear', 3, 'woods'],
   ['brambleboar', 6, 'woods'], ['moss_treant', 4, 'woods'], ['forest_briarsapling', 5, 'woods'],
   ['mudmollusc', 6, 'ruins'], ['reedoctopus', 5, 'ruins'], ['mirefiend', 5, 'ruins'], ['embercyclops', 4, 'ruins'], ['ruinlantern', 4, 'ruins'], ['rexling', 3, 'ruins'],
@@ -175,8 +178,9 @@ const BEHAVIOUR = {
   gravemaw:     { lv: 13, ai: 'boss' },
   frostwisp:    { lv: 12, ai: 'ranged',  aggro: 125, inflict: { id: 'slow', chance: 0.5 }, shot: 0xbfe8ff },
   rimecrawler:  { lv: 13, ai: 'charger', aggro: 95,  social: true, inflict: { id: 'poison', chance: 0.3 } },
-  // 12 new custom biome monsters
+  // biome-pack custom monsters (incl. the meadow cyan slime)
   dewbeetle:    { lv: 2,  ai: 'hopper',  aggro: 70,  social: true,  spd: 0.85 },
+  cyanslime:    { lv: 2,  ai: 'hopper',  aggro: 75,  social: true,  spd: 0.85 },
   quillkin:     { lv: 3,  ai: 'charger', aggro: 80,  inflict: { id: 'bleed', chance: 0.25 } },
   brambleboar:  { lv: 5,  ai: 'charger', aggro: 95,  social: true,  spd: 1.1,  inflict: { id: 'bleed', chance: 0.3 } },
   moss_treant:  { lv: 6,  ai: 'melee',   aggro: 85,  spd: 0.75,     inflict: { id: 'stun', chance: 0.15 } },

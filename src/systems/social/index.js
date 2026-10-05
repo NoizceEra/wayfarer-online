@@ -504,8 +504,9 @@ class Social {
     const setCh = (ch) => { this.channel = ch; bus.emit(Events.SOCIAL_UI, { panel: 'channel', channel: ch }); if (arg) this.chat(ch, arg); else this.system(`Now talking in ${CHANNELS[ch].label}.`); };
     switch (cmd) {
       case 'help': case '?':
-        this.system('Commands: /say /s /party /p /world /y /g(uild) /w name msg /r msg /me text /emote id /who /invite name /accept /decline /leave /kick name /promote name /friend name /unfriend name /friends /ignore name /unignore name /trade name /gift name [gold] /taccept /tdecline /duel name /dtaccept /dtdecline /dtend /petduel name /pda /pdd /arena [name|leave] /aqaccept /aqdecline /gcreate TAG name /gjoin TAG /gleave /filter /time /clear /help');
+        this.system('Commands: /say /s /party /p /world /y /g(uild) /w name msg /r msg /me text /emote id /who /invite name /accept /decline /leave /kick name /promote name /friend name /unfriend name /friends /ignore name /unignore name /trade name /gift name [gold] /taccept /tdecline /duel name /dtaccept /dtdecline /dtend /petduel name /pda /pdd /arena [name|leave] /aqaccept /aqdecline /gcreate TAG name /gjoin TAG /gleave /tutorial /filter /time /clear /help');
         this.system(`Emotes: ${EMOTES.map((e) => `/${e.id}`).join(' ')}. Keys: Enter chat · P party · O players · G emotes · Tab cycles channel.`);
+        this.system('Press H (or F1) for the full reference: every command plus every keybinding.');
         return;
       case 'say': case 's': return setCh('say');
       case 'party': case 'p': return setCh('party');

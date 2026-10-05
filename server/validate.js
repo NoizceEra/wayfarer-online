@@ -118,6 +118,7 @@ function sanitizeProgShape(raw) {
   const out = { ...raw };
   out.paths = sanitizeProgPaths(raw.paths);
   out.nodes = sanitizeProgNodes(raw.nodes);
+  out.respecs = int(raw.respecs, 0, 999, 0); // mirrors client sanitizeProgression
   return out;
 }
 // Arena record: start 1000, floor 100. The cap (3000) is far above any pace
@@ -193,6 +194,14 @@ export function validateSave(prev, progress, now = Date.now()) {
   // (craft consumption, consumable use) are always accepted; increases beyond
   // the allowance are clamped and reported like level/gold.
   if (!p.ext || typeof p.ext !== 'object') p.ext = {};
+  // Arena rating is server-authoritative: server/arena.js writes it straight
+  // into the character record, and the client only mirrors the last value it
+  // saw. A client save must never erase or regress it, so when a stored record
+  // already has an arena, keep that copy (a stale client value would otherwise
+  // reset the rating). First save / no prior arena: the clamped client value
+  // from sanitizeExtras stands.
+  const prevArena = pp && typeof pp.ext === 'object' ? pp.ext.arena : undefined;
+  if (prevArena && typeof prevArena === 'object') p.ext.arena = sanitizeArena(prevArena);
   const rawMats = p.ext.mats && typeof p.ext.mats === 'object' && !Array.isArray(p.ext.mats) ? p.ext.mats : {};
   const prevMats = pp?.ext && typeof pp.ext === 'object' && pp.ext.mats && typeof pp.ext.mats === 'object' && !Array.isArray(pp.ext.mats) ? pp.ext.mats : {};
   if (Object.keys(rawMats).length > MAT_IDS.length) clamped.push(`mat-keys ${Object.keys(rawMats).length}>${MAT_IDS.length}`);

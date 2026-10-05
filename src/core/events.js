@@ -37,7 +37,7 @@ export const Events = {
   //KILL_DUP: 'kill',           // hero killed an enemy {typeId, name, level, rank, boss, xp, x, y, areaId, by}
   PLAYER_DIED: 'player-died', // {xpLoss, goldLoss, respawn}
   REVIVE_OFFER: 'revive-offer', // {accept?, cost} premium revive flow
-  PARTY_KILL: 'party-kill',   // (consumed) party-mate kill share {typeId, xp, by, questCredit?}
+  PARTY_KILL: 'party-kill',   // UNWIRED: party kill share runs over the server instead ('party-xp' -> social.onPartyXp). Constant kept for API stability; no producer or consumer today.
   REFERRAL_STATE: 'referral-state', // {code, invited, goldPaid, tokenBonusPaid, boundTo, treasuryGold} referral code / bind / stats
   REFERRAL_PAID: 'referral-paid',   // {milestone, gold} a referral milestone was paid to this player
   REFERRAL_TOKEN_STATS: 'referral-token-stats', // {total, rows[]} token bonus breakdown

@@ -36,6 +36,13 @@ const calm = () => !!settings.get('reduceMotion'); // settings.js:13 — no puls
 
 const OWNER = new WeakMap();   // StatusSet -> binding record | null (resolved non-enemy)
 const SCENES = new WeakMap();  // Phaser.Scene -> { arr, free, made, on }
+// Late-binding safety: a set that is transiently absent from every `enemies`
+// group (e.g. applied a frame before its spawner adds the enemy) must NOT be
+// poison-pilled to `null` on the first miss, or its readout dies forever. We
+// retry on later applies and only give up after a bounded number of misses so
+// a genuine non-enemy set cannot scan the scene graph endlessly.
+const TRIES = new WeakMap();   // StatusSet -> miss count (enemy group present, owner not found)
+const MAX_TRIES = 256;
 
 function diamond(c, cx, cy, r) {
   c.beginPath(); c.moveTo(cx, cy - r); c.lineTo(cx + r, cy); c.lineTo(cx, cy + r); c.lineTo(cx - r, cy); c.closePath();
@@ -169,7 +176,13 @@ function readoutWatch(set) {
   if (!scenes || !scenes.length) return;    // app not up yet — retry on a later apply
   let sawGroup = false;
   for (let i = 0; i < scenes.length; i++) {
-    const sc = scenes[i], grp = sc && sc.enemies;
+    const sc = scenes[i];
+    // The hero owns its own StatusSet (the HUD draws that readout) — resolve it
+    // positively instead of guessing "not an enemy" and ignore it.
+    if (sc && ((sc.combat && sc.combat.statuses === set) || (sc.player && sc.player.statuses === set))) {
+      OWNER.set(set, null); TRIES.delete(set); return;
+    }
+    const grp = sc && sc.enemies;
     const list = grp && grp.getChildren ? grp.getChildren() : null;
     if (!list) continue;
     sawGroup = true;
@@ -179,13 +192,19 @@ function readoutWatch(set) {
         const rec = { set, ent: e, scene: sc, pool: null, items: [], halo: null, n: 0, col: -1,
                       strong: false, calm: false, now: 0, linked: false, dead: false };
         OWNER.set(set, rec);
+        TRIES.delete(set);
         bindScene(sc, rec);                    // creates the scene pool on first enemy status
         rec.pool = SCENES.get(sc);
         return;
       }
     }
   }
-  if (sawGroup) OWNER.set(set, null);        // enemy statuses only; ignore the hero set
+  if (!sawGroup) return;                       // app/group not up yet — retry, count nothing
+  // Group present but owner not listed yet: retry on later applies (transient
+  // spawn ordering) and give up only after a bounded number of misses.
+  const t = (TRIES.get(set) || 0) + 1;
+  if (t >= MAX_TRIES) { OWNER.set(set, null); TRIES.delete(set); }
+  else TRIES.set(set, t);
 }
 
 export class StatusSet {

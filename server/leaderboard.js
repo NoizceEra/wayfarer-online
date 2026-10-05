@@ -35,7 +35,7 @@ function compute(type, limit) {
       case 'level': value = prog.level || 1; break;
       case 'gold': value = prog.gold || 0; break;
       case 'season': value = ext.season?.xp || 0; break;
-      case 'pets': value = (ext.pets?.roster?.length || 0) + (ext.pets?.active !== undefined ? 0 : 0); break;
+      case 'pets': value = ext.pets?.roster?.length || 0; break;
       case 'arena': {
         // Rating sort desc; sanitize so a malformed ext.arena can never
         // poison the sort (NaN) or the display. Floor 100 matches arena.js.

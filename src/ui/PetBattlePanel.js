@@ -113,7 +113,11 @@ export class PetBattlePanel {
     this.c.add(platform);
 
     let sprite = null;
-    const key = `mon.${def.sprite}`;
+    // PETS[*].sprite already carries its full texture key (e.g. 'mon.Mouse'), so
+    // resolve it as-is and only fall back to the 'mon.' prefix when the raw value
+    // does not resolve. Re-prefixing unconditionally produced 'mon.mon.Mouse',
+    // which made the texture check fail and every pet battle render no sprite.
+    const key = s.textures.exists(def.sprite) ? def.sprite : `mon.${def.sprite}`;
     if (s.textures.exists(key)) {
       sprite = s.add.sprite(x, baseY, key).setScale(3);
       sprite.setFlipX(!isPlayer);
