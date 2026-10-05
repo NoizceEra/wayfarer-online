@@ -53,6 +53,6 @@ input.install(game);
 installMobile();
 installPwa();
 installPerf(game);
-import { installTheme } from './ui/theme.js';
+installTheme(); // shared tokens, focus rings, font floor, reduce-motion / large-text classes (ui/theme.js)
 installTrailer(game); // lazy, desktop/good-connection only; poster-only otherwise
 // (HUD polish CSS + the specialization catalogue global are installed by scenes/gameplay.js when that chunk loads)
