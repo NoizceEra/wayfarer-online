@@ -190,7 +190,7 @@ export class GatherSystem {
     if (!got) return;
     // luck: bonus extra
     if (Math.random() < 0.08 + (s.player.equipBonuses().luk || 0) * 0.004) addMat(s, t.mat, 1, { quiet: true });
-    this.burst(node.x, node.y - 6, t.color);
+    this.burst(node.x, node.y - 6, t.color, t.kind);
     audio.play('coin', 0.6);
     bus.emit(Events.ACH_EVENT, { k: 'gather', n });
     this.deplete(node);
@@ -211,12 +211,59 @@ export class GatherSystem {
     if (!s.areas.interacts.includes(node.itRef)) s.areas.interacts.push(node.itRef);
   }
 
-  burst(x, y, color) {
+  burst(x, y, color, kind) {
     const s = this.scene;
-    for (let i = 0; i < 9; i++) {
-      const a = (i / 9) * Math.PI * 2 + Math.random() * 0.5, d = 10 + Math.random() * 14;
-      const p = s.add.rectangle(x, y, 3, 3, color).setDepth(2700);
-      s.tweens.add({ targets: p, x: x + Math.cos(a) * d, y: y + Math.sin(a) * d - 8, alpha: 0, angle: 180, duration: 420 + Math.random() * 200, onComplete: () => p.destroy() });
+    if (kind === 'ore' || kind === 'bone') {
+      const count = Phaser.Math.Between(8, 12);
+      for (let i = 0; i < count; i++) {
+        const a = Math.random() * Math.PI * 2, d = 10 + Math.random() * 20;
+        const p = s.add.rectangle(x, y, Phaser.Math.Between(2, 4), Phaser.Math.Between(2, 4), color).setDepth(2700);
+        s.tweens.add({ targets: p, x: x + Math.cos(a) * d, y: y + Math.sin(a) * d, alpha: 0, angle: Math.random() * 360, duration: 400 + Math.random() * 300, onComplete: () => p.destroy() });
+      }
+      for (let i = 0; i < 5; i++) {
+        const a = Math.random() * Math.PI * 2, d = 15 + Math.random() * 15;
+        const p = s.add.rectangle(x, y, 2, 2, 0xffe270).setDepth(2700);
+        s.tweens.add({ targets: p, x: x + Math.cos(a) * d, y: y + Math.sin(a) * d, scale: 0, duration: 300 + Math.random() * 200, ease: 'quad.out', onComplete: () => p.destroy() });
+      }
+    } else if (kind === 'crystal') {
+      const count = Phaser.Math.Between(8, 12);
+      const cols = [0x00ffff, 0xff00ff, color];
+      for (let i = 0; i < count; i++) {
+        const a = Math.random() * Math.PI * 2, d = 15 + Math.random() * 20;
+        const c = cols[Math.floor(Math.random() * cols.length)];
+        const p = s.add.rectangle(x, y, 3, 3, c).setDepth(2700).setBlendMode(Phaser.BlendModes.ADD);
+        s.tweens.add({ targets: p, x: x + Math.cos(a) * d, y: y - Math.random() * 15 + Math.sin(a) * d, alpha: 0, angle: Math.random() * 180, duration: 600 + Math.random() * 400, onComplete: () => p.destroy() });
+      }
+    } else if (kind === 'herb' || kind === 'bush') {
+      const count = Phaser.Math.Between(8, 10);
+      for (let i = 0; i < count; i++) {
+        const a = Math.random() * Math.PI * 2, d = 10 + Math.random() * 15;
+        const p = s.add.circle(x, y, Phaser.Math.Between(2, 3), color).setDepth(2700);
+        s.tweens.add({ targets: p, x: x + Math.cos(a) * d + (Math.random() * 10 - 5), y: y + Math.sin(a) * d + 15, alpha: 0, scale: 0.5, duration: 1000 + Math.random() * 500, ease: 'sine.inout', onComplete: () => p.destroy() });
+      }
+    } else if (kind === 'log') {
+      const count = Phaser.Math.Between(8, 10);
+      for (let i = 0; i < count; i++) {
+        const a = Math.random() * Math.PI * 2, d = 12 + Math.random() * 18;
+        const p = s.add.rectangle(x, y, Phaser.Math.Between(3, 5), Phaser.Math.Between(2, 3), 0x8b5a2b).setDepth(2700);
+        s.tweens.add({ targets: p, x: x + Math.cos(a) * d, y: y + Math.sin(a) * d - 5, alpha: 0, angle: Math.random() * 360, duration: 500 + Math.random() * 200, ease: 'quad.out', onComplete: () => p.destroy() });
+      }
+    } else if (kind === 'fish') {
+      for (let i = 0; i < 2; i++) {
+        const p = s.add.circle(x, y + 4, 2).setStrokeStyle(1, 0xbfe4ff).setDepth(y - 300);
+        s.tweens.add({ targets: p, scale: 3 + i * 2, alpha: 0, duration: 600 + i * 200, ease: 'quad.out', onComplete: () => p.destroy() });
+      }
+      for (let i = 0; i < 8; i++) {
+        const a = Math.random() * Math.PI * 2, d = 10 + Math.random() * 15;
+        const p = s.add.circle(x, y, 2, 0xbfe4ff).setDepth(2700);
+        s.tweens.add({ targets: p, x: x + Math.cos(a) * d, y: y + Math.sin(a) * d + 5, alpha: 0, scale: 0.5, duration: 400 + Math.random() * 200, ease: 'quad.out', onComplete: () => p.destroy() });
+      }
+    } else {
+      for (let i = 0; i < 9; i++) {
+        const a = (i / 9) * Math.PI * 2 + Math.random() * 0.5, d = 10 + Math.random() * 14;
+        const p = s.add.rectangle(x, y, 3, 3, color).setDepth(2700);
+        s.tweens.add({ targets: p, x: x + Math.cos(a) * d, y: y + Math.sin(a) * d - 8, alpha: 0, angle: 180, duration: 420 + Math.random() * 200, onComplete: () => p.destroy() });
+      }
     }
     const p2 = s.add.circle(x, y, 4, 0xffffff, 0.7).setDepth(2700);
     s.tweens.add({ targets: p2, scale: 3, alpha: 0, duration: 300, onComplete: () => p2.destroy() });
@@ -230,7 +277,7 @@ export class GatherSystem {
     const m = matById(id);
     addMat(s, id, 1, { quiet: true, noQuest: true });
     s.quests?.onPack();
-    this.burst(node.x, node.y - 4, 0xbfe4ff);
+    this.burst(node.x, node.y - 4, 0xbfe4ff, 'fish');
     bus.emit(Events.SYSTEM, `You caught a ${m.name}!`);
     if (m.kind === 'fish') { bus.emit(Events.ACH_EVENT, { k: 'fish', id }); bus.emit(Events.TOAST, { title: id === 'golden_koi' ? 'Legendary catch!' : 'Caught', text: m.name, color: id === 'golden_koi' ? '#ffd84a' : '#9fd8ff' }); }
     audio.play('gold', 0.7);
@@ -239,7 +286,17 @@ export class GatherSystem {
 
   update() {
     const now = this.scene.time.now;
-    for (const n of this.nodes) if (!n.ready && now >= n.at) this.respawn(n);
+    for (const n of this.nodes) {
+      if (!n.ready && now >= n.at) this.respawn(n);
+      else if (n.ready) {
+        if ((n.type.kind === 'crystal' || n.type.kind === 'herb') && Math.random() < 0.005) {
+          const x = n.x + (Math.random() * 16 - 8);
+          const y = n.y - (Math.random() * 16);
+          const p = this.scene.add.rectangle(x, y, 2, 2, 0xffffff).setDepth(2700);
+          this.scene.tweens.add({ targets: p, y: y - 10, alpha: { from: 1, to: 0 }, duration: 800, onComplete: () => p.destroy() });
+        }
+      }
+    }
   }
 }
 

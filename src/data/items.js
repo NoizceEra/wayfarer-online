@@ -74,9 +74,9 @@ for (const [id, nm, f, p] of [['tool_axe', 'Woodsman Axe', 'Axe', 40], ['tool_ha
 for (const [id, nm, f] of [['w_club', 'Club', 'Club'], ['w_lance', 'Lance', 'Lance'], ['w_lance2', 'Iron Lance', 'Lance2'], ['w_stick', 'Walking Stick', 'Stick'], ['w_whip', 'Whip', 'Whip'], ['w_fork', 'Pitchfork', 'Fork'], ['w_pickaxe', 'Miner Pick', 'Pickaxe'], ['w_fishing', 'Fishing Rod', 'Fishing_Rod'], ['w_axe', 'Hand Axe', 'Axe'], ['w_bigsword', 'Great Sword', 'BigSword'], ['w_katana', 'Katana', 'Katana'], ['w_rapier', 'Rapier', 'Rapier'], ['w_sai', 'Sai', 'Sai'], ['w_bone', 'Bone Club', 'Bone'], ['w_book', 'Spell Tome', 'Book'], ['w_ninjaku', 'Ninjaku', 'Ninjaku'], ['w_sword2', 'Steel Sword', 'Sword2'], ['w_bow2', 'Hunting Bow', 'Bow2']]) I(id, nm, 'weapon', `Weapons/${f}/Sprite`, 50, 'Weapon art (see gear for stats).');
 
 // ——— pet eggs (purely additive quest items) ———
-I('pet_egg_emberling', 'Emberling Egg', 'treasure', 'Other/Egg', 0, 'A warm egg that flickers like embers.');
-I('pet_egg_dewdrop', 'Dewdrop Egg', 'treasure', 'Other/Egg', 0, 'A cool egg beaded with dew.');
-I('pet_egg_sprig', 'Sprig Egg', 'treasure', 'Other/Egg', 0, 'A tiny seed pulses inside this egg.');
+I('pet_egg_emberling', 'Emberling Egg', 'treasure', 'Other/EggEmber', 0, 'A warm egg that flickers like embers.');
+I('pet_egg_dewdrop', 'Dewdrop Egg', 'treasure', 'Other/EggDew', 0, 'A cool egg beaded with dew.');
+I('pet_egg_sprig', 'Sprig Egg', 'treasure', 'Other/EggSprig', 0, 'A tiny seed pulses inside this egg.');
 
 // ——— capture items ———
 I('wayfarer_orb', 'Wayfarer Orb', 'treasure', 'Object/Crystal', 25, 'A glass orb used to capture wild pet wisps.', { capture: { quality: 1, bonus: 0 } });

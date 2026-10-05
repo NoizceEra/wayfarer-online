@@ -1,8 +1,10 @@
 // hudPolish.js — ADDITIVE HUD/UX polish helpers.
 //
-// This module is intentionally dependency-free (no imports from existing UI
-// files) so the parent can wire it in later without touching UIScene.js,
-// econDom.js, socialDom.js or core/input.js. Every helper is a graceful
+// This module is intentionally dependency-light so the parent can wire it in
+// later without touching the host scenes/panels. Its only imports are three
+// read-only core/data modules (the event bus, the settings store, and the HUD
+// icon id maps); it imports nothing from any UI file (UIScene.js, econDom.js,
+// socialDom.js, core/input.js are never touched). Every helper is a graceful
 // no-op when its target elements / scene / input manager are absent
 // (SSR, tests, HUD elements not yet built).
 //
@@ -11,6 +13,10 @@
 //   cyan #03E1FF, magenta #DC1FFF, white #E1E8F0, muted #6B7A99.
 //   Fonts: Jacquard12 (display), Silkscreen (labels/buttons),
 //   PixelifySans (body).
+
+import { bus, Events } from '../core/events.js';
+import { settings } from '../core/settings.js';
+import { hudStatusIconKey } from '../systems/hudIcons.js';
 
 export const POLISH_PALETTE = Object.freeze({
   bg: '#0A0E1A',
@@ -370,4 +376,314 @@ export function polishHud({ root = null, inputManager = null, panels = [] } = {}
     }
   } catch { /* global noop */ }
   return summary;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// COMBAT READABILITY
+// Skill-bar readiness / MP-failure clarity, low HP/MP warnings, and on-HUD
+// status indicators. Additive and no-op tolerant like everything above.
+//
+// Reads ONLY existing sources — no new state store:
+//   • cooldown/readiness : player.cooldowns[ab.id] + player.skillCd(ab) +
+//                          player.skillLv(ab.id)   (same source UIScene uses)
+//   • MP cost / afford   : the ability's fx.mp + player.mp  (same check as
+//                          skillFx.castFx's "Not enough MP!" gate)
+//   • statuses           : StatusSet.list(now) from systems/status.js
+//   • shield / buff      : player.invulnUntil (Ward) + player.buff (empower)
+//   • HP/MP numbers      : the existing Events.PLAYER_HP payload
+//
+// Honours settings.reduceMotion (steady state, no pulse/flash) and CONFIG.isMobile
+// (pass it as opts.isMobile so touch gets a gentler, slower pulse).
+//
+// Host wire-in (~4 lines, after UIScene's hotbar is built):
+//   this.combatRead = createCombatReadability(this, {
+//     slots: this.hotbar, getPlayer: () => this.world()?.player,
+//     hpBar: this.hpBar, mpBar: this.mpBar, small: this.small,
+//     isMobile: CONFIG.isMobile,
+//     statusList: () => this.world()?.combat?.statuses?.list(this.world()?.time?.now ?? 0) || [],
+//     anchor: { x: 18, y: this.small ? 150 : 128 },
+//   });
+//   this.events.once('shutdown', this.combatRead.destroy);   // cleanup
+//   // in UIScene.update():  this.combatRead.update();
+// ══════════════════════════════════════════════════════════════════════════
+
+export const COMBAT_READ = Object.freeze({
+  lowHpFrac: 0.25,     // HP ≤ 25% -> warn
+  lowMpFrac: 0.15,     // MP ≤ 15% -> warn
+  pulseMs: 1000,       // warn pulse period on desktop
+  warnAlpha: 0.9,      // peak frame alpha (also the steady value)
+  warnAlphaMin: 0.28,  // trough alpha (desktop swing)
+  readyFlashMs: 300,   // green edge flash when a slot comes off cooldown
+  maxStatus: 6,        // status squares drawn at once
+  statusStep: 26,      // px between status squares
+});
+
+// Status read-model. Ids match STATUS in data/combatMath.js (+ `shield` from
+// Ward/invulnUntil and `buff` from player.buff). Kept local so the module needs
+// no data import; colours are the Solana palette.
+export const READ_STATUS = Object.freeze({
+  poison: { label: 'Poison', color: POLISH_PALETTE.green, glyph: 'P' },
+  burn: { label: 'Burn', color: POLISH_PALETTE.magenta, glyph: 'B' },
+  bleed: { label: 'Bleed', color: POLISH_PALETTE.magenta, glyph: 'b' },
+  slow: { label: 'Slow', color: POLISH_PALETTE.cyan, glyph: 'S' },
+  stun: { label: 'Stun', color: POLISH_PALETTE.green, glyph: '*' },
+  shield: { label: 'Shield', color: POLISH_PALETTE.purple, glyph: 'D' },
+  buff: { label: 'Buff', color: POLISH_PALETTE.green, glyph: '+' },
+});
+
+function hexInt(hex) {
+  try {
+    const h = String(hex).replace('#', '');
+    const f = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
+    const n = parseInt(f, 16);
+    return Number.isFinite(n) ? n : 0xffffff;
+  } catch {
+    return 0xffffff;
+  }
+}
+
+// ── Pure decision helpers (no Phaser, unit-testable) ───────────────────────
+
+// One skill slot's readiness/affordability from the existing sources only.
+// `now` is the world clock (ms), matching player.cooldowns + UIScene.update().
+export function skillSlotState(player, ab, now) {
+  const out = { learned: false, ready: false, cooldown: false, canAfford: false, brake: false, remain: 0, total: 1, mpCost: 0 };
+  if (!player || !ab) return out;
+  try { out.learned = (player.skillLv ? player.skillLv(ab.id) : 1) >= 1; } catch { out.learned = true; }
+  try { out.total = (player.skillCd ? player.skillCd(ab) : ab.cd) || 1; } catch { out.total = ab.cd || 1; }
+  const until = (player.cooldowns && player.cooldowns[ab.id]) || 0;
+  out.remain = Math.max(0, (until - now) / 1000);
+  out.cooldown = out.remain > 0;
+  out.mpCost = (ab.fx && ab.fx.mp) || 0;
+  out.canAfford = !out.mpCost || (player.mp || 0) >= out.mpCost;
+  out.ready = out.learned && !out.cooldown && out.canAfford;
+  // off cooldown but unaffordable -> the distinct "not enough MP" affordance
+  out.brake = out.learned && !out.cooldown && !out.canAfford;
+  return out;
+}
+
+// Low-resource flags: HP ≤ 25% and MP ≤ 15% (dead suppresses both).
+export function lowResourceState({ hp = 0, maxHp = 1, mp = 0, maxMp = 1, dead = false } = {}) {
+  const hpFrac = Math.max(0, Math.min(1, maxHp ? hp / maxHp : 0));
+  const mpFrac = Math.max(0, Math.min(1, maxMp ? mp / maxMp : 0));
+  return {
+    hpFrac,
+    mpFrac,
+    lowHp: !dead && hpFrac <= COMBAT_READ.lowHpFrac,
+    lowMp: !dead && mpFrac <= COMBAT_READ.lowMpFrac,
+  };
+}
+
+// StatusSet.list(now) -> draw models. Unknown ids fall back to a muted square.
+export function statusIndicators(list = []) {
+  const out = [];
+  for (const s of list || []) {
+    if (!s || !s.id) continue;
+    const d = READ_STATUS[s.id] || { label: String(s.id), color: POLISH_PALETTE.muted, glyph: '?' };
+    out.push({
+      id: s.id, label: d.label, color: d.color, colorInt: hexInt(d.color), glyph: d.glyph,
+      left: s.left || 0, frac: typeof s.frac === 'number' ? s.frac : 1,
+      iconKey: (() => { try { return hudStatusIconKey(s.id); } catch { return null; } })(),
+    });
+    if (out.length >= COMBAT_READ.maxStatus) break;
+  }
+  return out;
+}
+
+// Player buff/shield indicators from player.invulnUntil (Ward) + player.buff.
+export function playerIndicators(player, now = 0) {
+  const out = [];
+  if (!player) return out;
+  try {
+    if (typeof player.invulnUntil === 'number' && player.invulnUntil > now && !player.dead) {
+      const left = player.invulnUntil - now;
+      if (left < 60000) out.push({ id: 'shield', label: 'Shield', color: POLISH_PALETTE.purple, colorInt: hexInt(POLISH_PALETTE.purple), glyph: 'D', left, frac: 1, iconKey: (() => { try { return hudStatusIconKey('shield'); } catch { return null; } })() });
+    }
+  } catch { /* noop */ }
+  try {
+    const b = player.buff;
+    if (b && typeof b.until === 'number' && b.until > now) {
+      const left = b.until - now;
+      out.push({ id: 'buff', label: 'Buff', color: POLISH_PALETTE.green, colorInt: hexInt(POLISH_PALETTE.green), glyph: '+', left, frac: 1, iconKey: (() => { try { return hudStatusIconKey('buff'); } catch { return null; } })() });
+    }
+  } catch { /* noop */ }
+  return out;
+}
+
+// Warning pulse alpha. reduceMotion -> steady at peak (unmistakable, no motion);
+// mobile -> gentler, slower swing so it reads without nagging. Pure.
+export function pulseAlpha(now, { reduceMotion = false, isMobile = false } = {}) {
+  const hi = COMBAT_READ.warnAlpha;
+  if (reduceMotion) return hi;
+  const period = isMobile ? COMBAT_READ.pulseMs * 1.6 : COMBAT_READ.pulseMs;
+  const lo = isMobile ? 0.55 : COMBAT_READ.warnAlphaMin;
+  const t = (Math.sin((now / period) * Math.PI * 2) + 1) / 2;
+  return lo + (hi - lo) * t;
+}
+
+// ── Phaser overlay controller ──────────────────────────────────────────────
+
+export function createCombatReadability(scene, opts = {}) {
+  const noopFn = () => {};
+  const noop = { ready: false, update: noopFn, destroy: noopFn, slotCount: 0, statusCount: 0 };
+  try {
+    if (!scene || !scene.add || typeof scene.add.rectangle !== 'function') return noop;
+  } catch { return noop; }
+
+  const getPlayer = typeof opts.getPlayer === 'function' ? opts.getPlayer : () => null;
+  const nowFn = typeof opts.getNow === 'function' ? opts.getNow : () => { try { return scene.time?.now ?? 0; } catch { return 0; } };
+  const readReduce = () => {
+    if (typeof opts.reduceMotion === 'boolean') return opts.reduceMotion;
+    try { return !!settings.get('reduceMotion'); } catch { return false; }
+  };
+  const readMobile = () => {
+    if (typeof opts.isMobile === 'boolean') return opts.isMobile;
+    try {
+      if (typeof window === 'undefined') return false;
+      if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) return true;
+      return Math.min(window.innerWidth || 9999, window.innerHeight || 9999) < 620;
+    } catch { return false; }
+  };
+
+  const made = [];   // every Phaser object we create
+  const offs = [];   // every bus unsubscribe fn
+  const track = [];  // per-skill-slot feedback records
+  const strip = [];  // status-strip entries
+  let hpCache = null;      // last Events.PLAYER_HP payload
+  let diedAt = -Infinity;  // suppress warnings for a beat after death
+  const keep = (o) => { if (o) made.push(o); return o; };
+
+  // — low-resource warning frames (HP magenta, MP cyan) around the bars —
+  const mkFrame = (bar, colorInt) => {
+    if (!bar || typeof bar.setStrokeStyle !== 'function') return null;
+    const w = bar.width || bar.displayWidth || 0, h = bar.height || bar.displayHeight || 0;
+    if (!w || !h) return null;
+    try {
+      const r = keep(scene.add.rectangle(bar.x, bar.y, w, h, 0x000000, 0).setOrigin(0, 0).setDepth(105));
+      r.setStrokeStyle(2, colorInt, 1).setVisible(false);
+      return r;
+    } catch { return null; }
+  };
+  const hpWarn = mkFrame(opts.hpBar, hexInt(POLISH_PALETTE.magenta));
+  const mpWarn = mkFrame(opts.mpBar, hexInt(POLISH_PALETTE.cyan));
+
+  // — per-slot skill feedback: magenta MP badge + green ready flash —
+  for (const slot of opts.slots || []) {
+    const ab = slot && slot.s && slot.s.ab;
+    if (!ab) continue;
+    let bx = 0, by = 0, bw = 44, bh = 44;
+    try { bx = slot.bg?.x ?? 0; by = slot.bg?.y ?? 0; bw = slot.bw || slot.bg?.width || 44; bh = slot.bh || slot.bg?.height || 44; } catch { /* noop */ }
+    let brake = null, ready = null, brakeT = null;
+    try {
+      brake = keep(scene.add.rectangle(bx, by, bw - 2, bh - 2, hexInt(POLISH_PALETTE.magenta), 0.30).setDepth(107).setVisible(false));
+      brake.setStrokeStyle(2, hexInt(POLISH_PALETTE.magenta), 0.95);
+      ready = keep(scene.add.rectangle(bx, by, bw - 2, bh - 2, 0x000000, 0).setDepth(108).setVisible(false));
+      ready.setStrokeStyle(2, hexInt(POLISH_PALETTE.green), 1);
+      brakeT = keep(scene.add.text(bx + bw / 2 - 3, by + bh / 2 - 3, 'MP', {
+        fontFamily: POLISH_FONTS.label, fontSize: '9px', color: POLISH_PALETTE.white,
+        stroke: POLISH_PALETTE.bg, strokeThickness: 3,
+      }).setOrigin(1, 1).setDepth(109).setVisible(false));
+    } catch { /* no Phaser text renderer */ }
+    track.push({ ab, brake, ready, brakeT, wasReady: false, flashUntil: 0 });
+  }
+
+  // — status strip (icons + remaining seconds) —
+  const anchor = opts.anchor || { x: 18, y: 128 };
+  try {
+    for (let i = 0; i < COMBAT_READ.maxStatus; i++) {
+      const c = keep(scene.add.container(anchor.x + i * COMBAT_READ.statusStep, anchor.y).setDepth(107).setVisible(false));
+      const g = keep(scene.add.graphics());
+      const glyph = keep(scene.add.text(11, 11, '', { fontFamily: POLISH_FONTS.label, fontSize: '11px', color: POLISH_PALETTE.white, stroke: POLISH_PALETTE.bg, strokeThickness: 2 }).setOrigin(0.5));
+      const secs = keep(scene.add.text(21, 21, '', { fontFamily: POLISH_FONTS.label, fontSize: '8px', color: POLISH_PALETTE.white, stroke: POLISH_PALETTE.bg, strokeThickness: 2 }).setOrigin(1, 1));
+      c.add([g, glyph, secs]);
+      strip.push({ c, g, glyph, secs, icon: null });
+    }
+  } catch { /* noop */ }
+
+  // — bus subscriptions (existing events; auto-detached in destroy) —
+  try {
+    offs.push(bus.on(Events.SKILL_CAST, (p) => {
+      const id = p && p.id;
+      if (!id) return;
+      let now = 0; try { now = nowFn() || 0; } catch { now = 0; }
+      for (const t of track) if (t.ab && t.ab.id === id) t.flashUntil = now + COMBAT_READ.readyFlashMs;
+    }));
+    offs.push(bus.on(Events.PLAYER_HP, (p) => { if (p && typeof p.hp === 'number') hpCache = p; }));
+    offs.push(bus.on(Events.PLAYER_DIED, () => { try { diedAt = nowFn() || 0; } catch { diedAt = 0; } hpCache = null; }));
+  } catch { /* noop */ }
+
+  function update() {
+    let now = 0;
+    try { now = nowFn() || 0; } catch { now = 0; }
+    let player = null;
+    try { player = getPlayer(); } catch { player = null; }
+    const reduceMotion = readReduce();
+    const isMobile = readMobile();
+
+    // — skill slots: MP-failure badge + ready flash (cooldown sweep stays the host's) —
+    for (const t of track) {
+      let st;
+      try { st = skillSlotState(player, t.ab, now); } catch { st = skillSlotState(null, t.ab, now); }
+      const brake = !!st.brake;
+      if (t.brake) { t.brake.setVisible(brake); if (brake) t.brake.setAlpha(reduceMotion ? 1 : 0.6 + 0.4 * Math.abs(Math.sin(now / 450))); }
+      if (t.brakeT) t.brakeT.setVisible(brake);
+      if (!reduceMotion && st.ready && !t.wasReady) t.flashUntil = now + COMBAT_READ.readyFlashMs;
+      t.wasReady = st.ready;
+      const flashing = !reduceMotion && now < t.flashUntil;
+      if (t.ready) { t.ready.setVisible(flashing); if (flashing) t.ready.setAlpha(1 - (t.flashUntil - now) / COMBAT_READ.readyFlashMs); }
+    }
+
+    // — low HP/MP warnings: prefer the existing PLAYER_HP payload —
+    let hp = player && player.hp, mp = player && player.mp;
+    let maxHp = player ? (player.effMaxHp ? player.effMaxHp() : player.maxHp) : 1;
+    let maxMp = player ? (player.effMaxMp ? player.effMaxMp() : player.maxMp) : 1;
+    if (hpCache && typeof hpCache.hp === 'number') { hp = hpCache.hp; maxHp = hpCache.maxHp; mp = hpCache.mp; maxMp = hpCache.maxMp; }
+    const dead = !!(player && player.dead) || (now - diedAt) < 1500;
+    const rs = lowResourceState({ hp, maxHp, mp, maxMp, dead });
+    const pa = pulseAlpha(now, { reduceMotion, isMobile });
+    if (hpWarn) { hpWarn.setVisible(rs.lowHp); if (rs.lowHp) hpWarn.setAlpha(pa); }
+    if (mpWarn) { mpWarn.setVisible(rs.lowMp); if (rs.lowMp) mpWarn.setAlpha(pa); }
+
+    // — status strip —
+    let models = [];
+    try { models = statusIndicators(typeof opts.statusList === 'function' ? opts.statusList() : []); } catch { models = []; }
+    try { models = models.concat(playerIndicators(player, now)); } catch { /* noop */ }
+    if (models.length > COMBAT_READ.maxStatus) models = models.slice(0, COMBAT_READ.maxStatus);
+    for (let i = 0; i < strip.length; i++) {
+      const e = strip[i], m = models[i];
+      if (!m) { e.c.setVisible(false); continue; }
+      e.c.setVisible(true);
+      const g = e.g;
+      g.clear();
+      g.fillStyle(hexInt(POLISH_PALETTE.bg), 0.92).fillRect(0, 0, 22, 22);
+      g.fillStyle(m.colorInt, 0.95).fillRect(1, 1, 20, 20);
+      g.fillStyle(0x000000, 0.5).fillRect(1, 1, 20, 20 * (1 - Math.max(0, Math.min(1, m.frac)))); // drains top-down
+      g.lineStyle(2, m.colorInt, 1).strokeRect(1, 1, 20, 20);
+      let hasIcon = false;
+      if (m.iconKey) {
+        try {
+          if (scene.textures && scene.textures.exists(m.iconKey)) {
+            if (!e.icon) { e.icon = keep(scene.add.image(1, 1, m.iconKey).setOrigin(0, 0).setScale(1.25)); e.c.add(e.icon); }
+            else e.icon.setTexture(m.iconKey);
+            e.icon.setVisible(true); hasIcon = true;
+          }
+        } catch { hasIcon = false; }
+      }
+      if (e.icon && !hasIcon) e.icon.setVisible(false);
+      e.glyph.setText(hasIcon ? '' : m.glyph);
+      e.secs.setText(m.left > 0 ? String(Math.ceil(m.left / 1000)) : '');
+    }
+    return models.length;
+  }
+
+  function destroy() {
+    for (const off of offs) { try { off(); } catch { /* noop */ } }
+    offs.length = 0;
+    for (const o of made) { try { o?.destroy?.(); } catch { /* noop */ } }
+    made.length = 0;
+    track.length = 0;
+    strip.length = 0;
+  }
+
+  return { ready: true, update, destroy, slotCount: track.length, statusCount: strip.length, hpWarn, mpWarn };
 }

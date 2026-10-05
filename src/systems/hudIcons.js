@@ -11,6 +11,10 @@ export const HUD_PAL = {
   blue: '#4a8ee0', blueHi: '#9cd0ff', blueLo: '#2a58a8',
   purple: '#a66ad8', purpleHi: '#e0b8ff',
   gray: '#9aa0aa', grayLo: '#626874', white: '#ffffff',
+  // Solana theme palette — used ONLY by the combat-readability status /
+  // feedback glyphs added below, so they match ui/hudPolish.js POLISH_PALETTE.
+  solGreen: '#14F195', solPurple: '#9945FF', solCyan: '#03E1FF', solMagenta: '#DC1FFF',
+  solWhite: '#E1E8F0', solMuted: '#6B7A99', solBg: '#0A0E1A',
 };
 
 class Grid {
@@ -304,6 +308,64 @@ const ICONS = {
     g.line(13, 12, 14, 11, 'blueLo'); g.px(13, 12, 'blueHi');
     g.px(1, 8, 'blueHi'); g.px(14, 8, 'blueHi'); g.px(7, 7, 'white'); g.px(9, 9, 'white');
   },
+
+  // — status / combat-feedback glyphs (Solana palette; driven by the existing
+  //   StatusSet in systems/status.js + player.invulnUntil / player.buff) —
+  burn(g) { // magenta flame (STATUS.burn)
+    g.rect(7, 1, 2, 2, 'solMagenta'); g.rect(6, 2, 4, 2, 'solMagenta');
+    g.rect(5, 3, 6, 3, 'solMagenta'); g.rect(4, 6, 8, 4, 'solMagenta');
+    g.rect(5, 10, 6, 3, 'solMagenta'); g.rect(6, 12, 4, 2, 'solMagenta'); g.rect(7, 14, 2, 1, 'solMagenta');
+    g.rect(7, 4, 2, 3, 'solWhite'); g.rect(6, 7, 4, 4, 'solWhite'); g.rect(7, 11, 2, 3, 'solWhite');
+    g.px(5, 8, 'solWhite'); g.px(10, 8, 'solWhite');
+  },
+  slow(g) { // cyan snowflake (STATUS.slow)
+    g.line(8, 2, 8, 13, 'solCyan'); g.line(2, 8, 13, 8, 'solCyan');
+    g.line(4, 4, 12, 12, 'solCyan'); g.line(12, 4, 4, 12, 'solCyan');
+    g.px(8, 2, 'solWhite'); g.px(2, 8, 'solWhite'); g.px(4, 4, 'solWhite'); g.px(12, 4, 'solWhite');
+    g.px(8, 4, 'solWhite'); g.px(8, 12, 'solWhite'); g.px(4, 8, 'solWhite'); g.px(12, 8, 'solWhite');
+    g.disc(8, 8, 1, 'solWhite');
+  },
+  stun(g) { // green impact starburst (STATUS.stun)
+    g.disc(8, 8, 3, 'solGreen'); g.disc(8, 8, 1, 'solWhite');
+    for (const [x, y] of [[8, 1], [8, 14], [1, 8], [14, 8], [3, 3], [13, 3], [3, 13], [13, 13]]) g.px(x, y, 'solGreen');
+    g.px(8, 3, 'solGreen'); g.px(8, 12, 'solGreen'); g.px(3, 8, 'solGreen'); g.px(12, 8, 'solGreen');
+    g.px(8, 2, 'solWhite'); g.px(8, 13, 'solWhite'); g.px(2, 8, 'solWhite'); g.px(13, 8, 'solWhite');
+    g.px(4, 4, 'solWhite'); g.px(12, 4, 'solWhite'); g.px(4, 12, 'solWhite'); g.px(12, 12, 'solWhite');
+  },
+  poison(g) { // green bubbling flask (STATUS.poison)
+    g.rect(6, 1, 4, 3, 'solGreen'); g.rect(7, 4, 2, 3, 'solGreen');
+    g.rect(4, 7, 8, 5, 'solGreen'); g.rect(5, 12, 6, 2, 'solGreen'); g.rect(6, 14, 4, 1, 'solGreen');
+    g.px(6, 8, 'solWhite'); g.px(7, 10, 'solWhite'); g.px(10, 9, 'solWhite'); g.px(9, 12, 'solWhite');
+    g.px(2, 4, 'solGreen'); g.px(13, 4, 'solGreen'); g.px(3, 3, 'solWhite'); g.px(12, 3, 'solWhite');
+  },
+  bleed(g) { // magenta droplets (STATUS.bleed)
+    g.px(6, 2, 'solMagenta'); g.rect(5, 3, 3, 2, 'solMagenta'); g.rect(4, 5, 5, 4, 'solMagenta'); g.rect(5, 9, 3, 2, 'solMagenta');
+    g.px(5, 6, 'solWhite');
+    g.px(11, 7, 'solMagenta'); g.rect(10, 8, 3, 3, 'solMagenta'); g.px(11, 11, 'solMagenta');
+    g.px(10, 9, 'solWhite');
+  },
+  shieldUp(g) { // purple shield — Ward / invulnerability buff
+    g.rect(3, 2, 10, 7, 'solPurple'); g.rect(4, 9, 8, 2, 'solPurple'); g.rect(5, 11, 6, 2, 'solPurple'); g.rect(7, 13, 2, 1, 'solPurple');
+    g.rect(4, 3, 8, 1, 'solWhite'); g.rect(4, 3, 1, 5, 'solWhite');
+    g.rect(7, 5, 2, 5, 'solWhite'); g.rect(5, 7, 6, 2, 'solWhite');
+  },
+  boost(g) { // green double up-chevron — active buff / empower
+    g.line(3, 8, 8, 3, 'solGreen'); g.line(8, 3, 13, 8, 'solGreen');
+    g.line(3, 13, 8, 8, 'solGreen'); g.line(8, 8, 13, 13, 'solGreen');
+    g.px(8, 3, 'solWhite'); g.px(8, 8, 'solWhite'); g.px(4, 7, 'solWhite'); g.px(12, 7, 'solWhite');
+  },
+  noMp(g) { // cyan mana droplet slashed by magenta — "not enough MP" affordance
+    g.px(8, 2, 'solCyan'); g.rect(7, 3, 2, 2, 'solCyan'); g.rect(6, 5, 4, 2, 'solCyan');
+    g.rect(5, 7, 6, 5, 'solCyan'); g.rect(6, 12, 4, 2, 'solCyan');
+    g.rect(6, 8, 1, 3, 'solWhite'); g.px(7, 7, 'solWhite');
+    g.line(2, 13, 13, 2, 'solMagenta'); g.line(3, 13, 13, 3, 'solMagenta');
+    g.px(2, 13, 'solWhite'); g.px(13, 2, 'solWhite');
+  },
+  ready(g) { // green double chevron — skill came off cooldown / ready flash
+    g.line(3, 3, 8, 8, 'solGreen'); g.line(8, 8, 3, 13, 'solGreen');
+    g.line(7, 3, 12, 8, 'solGreen'); g.line(12, 8, 7, 13, 'solGreen');
+    g.px(3, 3, 'solWhite'); g.px(3, 13, 'solWhite'); g.px(7, 3, 'solWhite'); g.px(7, 13, 'solWhite'); g.px(8, 8, 'solWhite');
+  },
 };
 
 export const HUD_ABILITY_ICON = {
@@ -323,6 +385,19 @@ export const HUD_ABILITY_ICON = {
 };
 // texture key for an ability id (null when unknown)
 export const hudIconKey = (id) => (HUD_ABILITY_ICON[id] ? `hud.${HUD_ABILITY_ICON[id]}` : null);
+
+// Status-effect id -> icon name. Ids match STATUS in data/combatMath.js plus
+// the two player-buff sources (`shield` = Ward / invulnUntil, `buff` = empower).
+// The `hud.<name>` textures are built by makeHudIcons() like every other icon.
+export const HUD_STATUS_ICON = {
+  poison: 'poison', burn: 'burn', bleed: 'bleed', slow: 'slow', stun: 'stun',
+  shield: 'shieldUp', buff: 'boost',
+};
+export const hudStatusIconKey = (id) => (HUD_STATUS_ICON[id] ? `hud.${HUD_STATUS_ICON[id]}` : null);
+
+// Non-status combat-feedback glyphs (skill-bar affordances).
+export const HUD_FEEDBACK_ICON = { noMp: 'noMp', ready: 'ready' };
+export const hudFeedbackIconKey = (name) => (HUD_FEEDBACK_ICON[name] ? `hud.${HUD_FEEDBACK_ICON[name]}` : null);
 
 export function makeHudIcons(scene) {
   for (const [name, draw] of Object.entries(ICONS)) {

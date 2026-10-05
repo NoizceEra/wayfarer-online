@@ -7,6 +7,7 @@ import { audio } from '../systems/audio.js';
 import { CONFIG } from '../config.js';
 import { makeHudIcons, HUD_ABILITY_ICON } from '../systems/hudIcons.js';
 import { createAdvBar, updateAdvBar } from '../ui/advSkillBar.js';
+import { createCombatReadability } from '../ui/hudPolish.js';
 import { EquipPanel } from '../ui/EquipPanel.js';
 import { ShopPanel } from '../ui/ShopPanel.js';
 import { social } from '../systems/social/index.js';
@@ -279,6 +280,28 @@ export class UIScene extends Phaser.Scene {
 
     createAdvBar(this, W / 2, hotY - cellH / 2 - (this.small ? 24 : 26), this.small ? 34 : 40); // class skills 5/6
 
+    // ── Combat readability (ui/hudPolish.js) ────────────────────────────────
+    // Cooldown/MP clarity on the hotbar, low-HP/MP warning frames and the
+    // player status strip. Pure presentation: it reads cooldowns/MP/statuses
+    // that already exist and never mutates gameplay state. destroy() is owned
+    // by the shutdown handler below.
+    // Anchor: right of the resource panel on desktop (that column is always
+    // free); on phones the top row is taken, so tuck it above the hotbar.
+    this.combatRead = createCombatReadability(this, {
+      slots: this.hotbar,
+      getPlayer: () => this.world()?.player,
+      getNow: () => this.world()?.time?.now ?? 0,
+      hpBar: this.hpBar,
+      mpBar: this.mpBar,
+      small: this.small,
+      isMobile: CONFIG.isMobile,
+      statusList: () => {
+        const w = this.world();
+        return w?.combat?.statuses?.list(w?.time?.now ?? 0) || [];
+      },
+      anchor: this.small ? { x: 10, y: hotY - cellH / 2 - 42 } : { x: 8 + pw + 12, y: 12 },
+    });
+
     // ── Chat / system log (bottom-left) ─────────────────────────────────────
     // The MMO chat window (channels, whispers, scrollback) is a DOM overlay:
     // src/ui/ChatPanel.js, mounted by installSocialUI() below. say() routes
@@ -380,6 +403,7 @@ export class UIScene extends Phaser.Scene {
     this.events.once('shutdown', () => {
       this.offs.forEach((off) => { try { off(); } catch { /* ignore */ } });
       this.offs = [];
+      this.combatRead?.destroy(); // detaches its bus handlers + frees its HUD objects
       this.resizeTimer?.remove(false);
       this.equip?.destroy(); this.shop?.destroy(); this.journal?.destroy(); this.craftPanel?.destroy(); this.fishing?.destroy(); this.toast?.destroy(); this.walletPanel?.destroy();
       this.dailyPanel?.destroy(); this.dailyRewards?.destroy();
@@ -846,6 +870,7 @@ export class UIScene extends Phaser.Scene {
     const dtS = (delta || 16) / 1000;
     this.fishing?.update(dtS);
     this.craftPanel?.update();
+    this.combatRead?.update(); // cooldown/MP badges, low-resource warnings, status strip
     this.syncRaise(); // no-op unless a full-screen panel opened/closed (phones)
     if (this.dailyRewards && Math.floor(time / 1000) !== this._dailySec) {
       this._dailySec = Math.floor(time / 1000);

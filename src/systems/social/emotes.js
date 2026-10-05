@@ -114,16 +114,136 @@ const ART = {
     '...kkkkkk...',
     '............',
   ],
+  heart: [
+    '............',
+    '............',
+    '.kkkk..kkkk.',
+    'kwwrrkkrrppk',
+    'kwwrrrrrrrpk',
+    'kwrrrrrrrrpk',
+    '.krrrrrrrpk.',
+    '..krrrrrrk..',
+    '...krrrrk...',
+    '....krrk....',
+    '.....kk.....',
+    '............',
+  ],
+  skull: [
+    '............',
+    '...kkkkkk...',
+    '..kwwwwwwk..',
+    '.kwwwwwwwwk.',
+    '.kwkkwwkkwk.',
+    '.kwkkwwkkwk.',
+    '..kwwkkwwk..',
+    '..kkwwwwkk..',
+    '..kwkwwkwk..',
+    '..kwkwwkwk..',
+    '..kkkkkkkk..',
+    '............',
+  ],
+  loot: [
+    '.........w..',
+    '........www.',
+    '..kkkkkk.w..',
+    '.kwwyyyyk...',
+    'kwwwyyyyok..',
+    'kwwkyykook..',
+    '.kwwyyyok...',
+    '..kwyyok....',
+    '...kyok.....',
+    '....kk......',
+    '............',
+    '............',
+  ],
+  alert: [
+    '............',
+    '.....kk.....',
+    '....kyyk....',
+    '...kyrryk...',
+    '..kyyrryyk..',
+    '..kyyrryyk..',
+    '.kyyyrryyyk.',
+    '.kyyyyyyyyk.',
+    '.kyyyrryyyk.',
+    'kkyyyyyyyykk',
+    'kkkkkkkkkkkk',
+    '............',
+  ],
+  question: [
+    '............',
+    '...kkkkkk...',
+    '..kbwbbbbk..',
+    '.kbbkkkkbbk.',
+    '..kk...kbbk.',
+    '.....kbbkk..',
+    '....kbbk....',
+    '....kkkk....',
+    '............',
+    '....kwwk....',
+    '....kbbk....',
+    '....kkkk....',
+  ],
+  zzz: [
+    '......kpwppk',
+    '........kppk',
+    '.......kppk.',
+    '......kppppk',
+    '...kbwbk....',
+    '.....kbk....',
+    '....kbk.....',
+    '...kbbbk....',
+    '.kppk.......',
+    '..kpk.......',
+    '.kppk.......',
+    '..kk......w.',
+  ],
+  sweat: [
+    '............',
+    '......kk....',
+    '.....kbbk...',
+    '....kbbk....',
+    '...kwwbbk...',
+    '..kwwbbbbk..',
+    '.kwwbbbbbbk.',
+    '.kwbbbbbbbk.',
+    '.kbbbbbbbbk.',
+    '..kbbbbbbk..',
+    '...kkkkkk...',
+    '............',
+  ],
+  sword: [
+    '..........w.',
+    '.........www',
+    '.......kwwkw',
+    '......kwwbk.',
+    '.....kwwbk..',
+    '....kwwbk...',
+    '...kwwbk....',
+    '..kkyyyykk..',
+    '.kyyroyk....',
+    '..kddk......',
+    '.kyyk.......',
+    '..kk........',
+  ],
 };
 
 export const EMOTES = [
-  { id: 'wave',  label: 'Wave',  text: 'waves.',                 key: '1' },
-  { id: 'cheer', label: 'Cheer', text: 'cheers!',                key: '2' },
-  { id: 'dance', label: 'Dance', text: 'busts out a dance move.', key: '3' },
-  { id: 'laugh', label: 'Laugh', text: 'laughs out loud.',       key: '4' },
-  { id: 'cry',   label: 'Cry',   text: 'sobs quietly.',          key: '5' },
-  { id: 'point', label: 'Point', text: 'points over there.',     key: '6' },
-  { id: 'sit',   label: 'Sit',   text: 'sits down to rest.',     key: '7' },
+  { id: 'wave',     label: 'Wave',     text: 'waves.',                       key: '1' },
+  { id: 'cheer',    label: 'Cheer',    text: 'cheers!',                      key: '2' },
+  { id: 'dance',    label: 'Dance',    text: 'busts out a dance move.',       key: '3' },
+  { id: 'laugh',    label: 'Laugh',    text: 'laughs out loud.',             key: '4' },
+  { id: 'cry',      label: 'Cry',      text: 'sobs quietly.',                key: '5' },
+  { id: 'point',    label: 'Point',    text: 'points over there.',           key: '6' },
+  { id: 'sit',      label: 'Sit',      text: 'sits down to rest.',           key: '7' },
+  { id: 'heart',    label: 'Heart',    text: 'shows some love <3',           key: '8' },
+  { id: 'skull',    label: 'Skull',    text: 'warns of danger!',             key: '9' },
+  { id: 'loot',     label: 'Loot',     text: 'points at shiny treasure!',    key: '0' },
+  { id: 'alert',    label: 'Alert',    text: 'signals an alert!' },
+  { id: 'question', label: 'Question', text: 'looks around puzzled?' },
+  { id: 'zzz',      label: 'Sleep',    text: 'nods off to sleep... zzz' },
+  { id: 'sweat',    label: 'Sweat',    text: 'breaks into a nervous sweat.' },
+  { id: 'sword',    label: 'Battle',   text: 'draws weapon for battle!' },
 ];
 export const EMOTE_IDS = EMOTES.map((e) => e.id);
 export const emoteById = (id) => EMOTES.find((e) => e.id === id) || null;
@@ -169,13 +289,21 @@ export function playEmoteAnim(scene, rig, id) {
   const done = () => { rig.setAngle(0).setScale(1); rig.x = 0; };
   const T = (cfg) => scene.tweens.add({ targets: rig, onComplete: done, ...cfg });
   switch (id) {
-    case 'wave':  return T({ angle: { from: -10, to: 10 }, duration: 110, yoyo: true, repeat: 5, ease: 'sine.inout' });
-    case 'cheer': return T({ scaleY: 1.18, scaleX: 0.9, duration: 140, yoyo: true, repeat: 3, ease: 'quad.out' });
-    case 'dance': return T({ angle: { from: -14, to: 14 }, x: { from: -3, to: 3 }, duration: 160, yoyo: true, repeat: 7, ease: 'sine.inout' });
-    case 'laugh': return T({ scaleY: 0.9, scaleX: 1.08, duration: 90, yoyo: true, repeat: 7 });
-    case 'cry':   return T({ angle: 6, scaleY: 0.94, duration: 400, yoyo: true, repeat: 3, ease: 'sine.inout' });
-    case 'point': return T({ angle: 18, duration: 160, hold: 900, yoyo: true });
-    case 'sit':   return T({ scaleY: 0.78, scaleX: 1.1, duration: 200, hold: 3200, yoyo: true, ease: 'quad.out' });
+    case 'wave':     return T({ angle: { from: -10, to: 10 }, duration: 110, yoyo: true, repeat: 5, ease: 'sine.inout' });
+    case 'cheer':    return T({ scaleY: 1.18, scaleX: 0.9, duration: 140, yoyo: true, repeat: 3, ease: 'quad.out' });
+    case 'dance':    return T({ angle: { from: -14, to: 14 }, x: { from: -3, to: 3 }, duration: 160, yoyo: true, repeat: 7, ease: 'sine.inout' });
+    case 'laugh':    return T({ scaleY: 0.9, scaleX: 1.08, duration: 90, yoyo: true, repeat: 7 });
+    case 'cry':      return T({ angle: 6, scaleY: 0.94, duration: 400, yoyo: true, repeat: 3, ease: 'sine.inout' });
+    case 'point':    return T({ angle: 18, duration: 160, hold: 900, yoyo: true });
+    case 'sit':      return T({ scaleY: 0.78, scaleX: 1.1, duration: 200, hold: 3200, yoyo: true, ease: 'quad.out' });
+    case 'heart':    return T({ scaleX: 1.15, scaleY: 1.15, duration: 160, yoyo: true, repeat: 3, ease: 'sine.inout' });
+    case 'skull':    return T({ angle: { from: -6, to: 6 }, duration: 60, yoyo: true, repeat: 7, ease: 'sine.inout' });
+    case 'loot':     return T({ scaleY: 1.2, scaleX: 0.9, duration: 120, yoyo: true, repeat: 4, ease: 'quad.out' });
+    case 'alert':    return T({ scaleY: 1.25, scaleX: 0.88, duration: 110, yoyo: true, repeat: 2, ease: 'back.out' });
+    case 'question': return T({ angle: 15, duration: 180, hold: 800, yoyo: true, ease: 'sine.out' });
+    case 'zzz':      return T({ angle: 8, scaleY: 0.88, duration: 350, hold: 2500, yoyo: true, ease: 'sine.inout' });
+    case 'sweat':    return T({ angle: { from: -4, to: 4 }, duration: 55, yoyo: true, repeat: 9, ease: 'sine.inout' });
+    case 'sword':    return T({ x: { from: -2, to: 2 }, scaleX: 1.1, duration: 120, yoyo: true, repeat: 4, ease: 'sine.inout' });
     default: return null;
   }
 }

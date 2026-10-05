@@ -102,7 +102,7 @@ export class PauseMenu {
       ['Resume', () => h.resume()],
       ['Settings', () => this.goto('settings')],
       ['Controls / rebind keys', () => this.goto('controls')],
-      [`Help & hotkeys [${input.labelFor('help')}]`, () => h.help()],
+      [`Controls & commands [${input.labelFor('help')}]`, () => h.help()],
       [h.leaveLabel(), () => h.leave()],
     ];
     rows.forEach(([label, cb], i) => this.button(0, -ph / 2 + 58 + i * 34, 220, 26, label, cb, { size: 10 }));

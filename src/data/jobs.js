@@ -10,10 +10,10 @@ export const JOBS = {
     growth: { str: 0.2, agi: 0.1, vit: 0.2, dex: 0.1 },
     advanced: ['knight', 'lanternwarden'],
     abilities: [
-      { id: 'slash', name: 'Trail Slash', key: '1', cd: 0.6, desc: 'Quick sword arc.' },
+      { id: 'slash', name: 'Trail Slash', key: '1', cd: 0.6, desc: 'Quick sword arc.', fx: { type: 'shot', n: 1, spread: 0, mul: 1.25, kind: 'shuriken', mp: 8 } },
       { id: 'flare', name: 'Waylight', key: '2', cd: 8, desc: 'Radiant burst that scorches and pushes nearby foes.', fx: { type: 'aoe', radius: 60, mul: 1.1, mp: 15, vfx: 'fx.circleOrange', knock: 180, status: { id: 'burn', chance: 0.65, secs: 3 } } },
       { id: 'dash', name: 'Dust Dash', key: '3', cd: 4, desc: 'Short dash, brief iframes.' },
-      { id: 'camp', name: 'Make Camp', key: '4', cd: 20, desc: 'Drop a campfire that heals nearby.' },
+      { id: 'camp', name: 'Make Camp', key: '4', cd: 20, desc: 'Drop a campfire that heals nearby.', fx: { type: 'heal', pct: 0.32, mp: 0 } },
     ],
   },
   ranger: {
@@ -25,10 +25,10 @@ export const JOBS = {
     growth: { agi: 0.2, dex: 0.25, luk: 0.1 },
     advanced: ['hunter', 'wildwarden'],
     abilities: [
-      { id: 'shot', name: 'Thorn Shot', key: '1', cd: 0.5, desc: 'Fire an arrow.' },
+      { id: 'shot', name: 'Thorn Shot', key: '1', cd: 0.5, desc: 'Fire an arrow.', fx: { type: 'shot', n: 1, spread: 0, mul: 1.35, kind: 'arrow', mp: 8 } },
       { id: 'volley', name: 'Leaf Volley', key: '2', cd: 7, desc: 'Wide fan of 5 nature seeds.', fx: { type: 'shot', n: 5, spread: 0.32, mul: 0.85, kind: 'nature', mp: 14 } },
       { id: 'dash', name: 'Dust Dash', key: '3', cd: 4, desc: 'Short dash, brief iframes.' },
-      { id: 'snare', name: 'Snare Trap', key: '4', cd: 14, desc: 'Root enemies in a circle.' },
+      { id: 'snare', name: 'Snare Trap', key: '4', cd: 14, desc: 'Root enemies in a circle.', fx: { type: 'aoe', radius: 70, mul: 0.6, slow: 4, mp: 12 } },
     ],
   },
   arcanist: {
@@ -41,9 +41,9 @@ export const JOBS = {
     advanced: ['elementalist', 'tidecaller'],
     abilities: [
       { id: 'bolt', name: 'Ember Bolt', key: '1', cd: 0.65, desc: 'Fire a blazing flame bolt.', fx: { type: 'shot', n: 1, spread: 0, mul: 1.35, kind: 'fire', mp: 8, status: { id: 'burn', chance: 0.4, secs: 2.5 } } },
-      { id: 'burst', name: 'Moss Burst', key: '2', cd: 9, desc: 'Nature AoE around caster.' },
+      { id: 'burst', name: 'Moss Burst', key: '2', cd: 9, desc: 'Nature AoE around caster.', fx: { type: 'aoe', radius: 60, mul: 1.4, mp: 25 } },
       { id: 'blink', name: 'Wisp Blink', key: '3', cd: 5, desc: 'Short teleport.' },
-      { id: 'ward', name: 'Tide Ward', key: '4', cd: 16, desc: 'Shield that absorbs damage.' },
+      { id: 'ward', name: 'Tide Ward', key: '4', cd: 16, desc: 'Shield that absorbs damage.', fx: { type: 'buff', secs: 3, ward: 3, mp: 20 } },
     ],
   },
   bandit: {
@@ -55,10 +55,10 @@ export const JOBS = {
     growth: { str: 0.1, agi: 0.25, luk: 0.2 },
     advanced: ['shadowblade', 'trickster'],
     abilities: [
-      { id: 'stab', name: 'Fang Stab', key: '1', cd: 0.4, desc: 'Very fast stab.' },
+      { id: 'stab', name: 'Fang Stab', key: '1', cd: 0.4, desc: 'Very fast stab.', fx: { type: 'shot', n: 1, spread: 0, mul: 1.3, kind: 'kunai', mp: 8 } },
       { id: 'fan', name: 'Crow Fan', key: '2', cd: 7, desc: 'Swift shadow fan of 4 void arrows.', fx: { type: 'shot', n: 4, spread: 0.28, mul: 0.75, kind: 'void', stagger: true, mp: 12 } },
       { id: 'dash', name: 'Dust Dash', key: '3', cd: 3.5, desc: 'Short dash, brief iframes.' },
-      { id: 'smoke', name: 'Smoke Pouch', key: '4', cd: 15, desc: 'Blind nearby enemies.' },
+      { id: 'smoke', name: 'Smoke Pouch', key: '4', cd: 15, desc: 'Blind nearby enemies.', fx: { type: 'aoe', radius: 70, mul: 1.0, mp: 12, status: { id: 'stun', chance: 1, secs: 1.5 } } },
     ],
   },
 };

@@ -101,17 +101,17 @@ export class Combat {
     this.poolIdx = (this.poolIdx + 1) % POOL;
     if (t._tw) { t._tw.stop(); t._tw = null; }
     if (t._tw2) { t._tw2.stop(); t._tw2 = null; }
-    const size = style === 'crit' ? 15 : style === 'big' ? 12 : style === 'small' ? 8 : 10;
+    const size = style === 'crit' ? 16 : style === 'big' ? 12 : style === 'small' ? 8 : 10;
     t.setText(String(text)).setColor(color).setFontSize(size).setPosition(x + Phaser.Math.Between(-5, 5), y)
       .setAlpha(1).setScale(1).setVisible(true).setActive(true).setDepth(2800 + (style === 'crit' ? 5 : 0));
-    const rise = style === 'crit' ? 22 : 15;
+    const rise = style === 'crit' ? 35 : 15;
     const dur = style === 'crit' ? 850 : style === 'small' ? 600 : 700;
     if (style === 'crit') {
-      t.setScale(1.9);
+      t.setScale(2.2);
       t._tw2 = this.s.tweens.add({ targets: t, scale: 1, duration: 160, ease: 'back.out' });
     }
     t._tw = this.s.tweens.add({
-      targets: t, y: y - rise, alpha: { from: 1, to: 0 }, duration: dur, ease: 'quad.out', delay: style === 'crit' ? 90 : 0,
+      targets: t, y: y - rise, x: x + (style === 'crit' ? Phaser.Math.Between(-15, 15) : 0), alpha: { from: 1, to: 0 }, duration: dur, ease: style === 'crit' ? 'circ.out' : 'quad.out', delay: style === 'crit' ? 90 : 0,
       onComplete: () => { t.setVisible(false).setActive(false); t._tw = null; },
     });
     return t;
@@ -137,7 +137,7 @@ export class Combat {
   }
 
   // ── hero → enemy ──────────────────────────────────────────────────────────
-  // opts: { crit, knock, status:{id,chance?,secs?}, dot:statusId }
+  // opts: { crit, knock, status:{id,chance?,secs?}, dot:statusId, element, shot }
   damageEnemy(ed, dmg, fromRemote = false, opts = {}) {
     const s = this.s, p = this.p;
     if (!(ed instanceof Enemy) || !ed.alive) return false;
@@ -161,11 +161,31 @@ export class Combat {
       audio.play('hit', crit ? 1 : 0.8);
       s.spawnFx(ed.x, ed.y - 8, 'fx.cut', crit ? 1.4 : 1);
       hitSpark(s, ed.x, ed.y - 8, crit);
+      
+      let dmgColor = '#ffffff';
+      let element = opts.element || (opts.shot && opts.shot.getData('kind'));
+      if (element) {
+        if (element === 'fire') dmgColor = '#ff7a3a';
+        else if (element === 'ice' || element === 'frost') dmgColor = '#9fd8ff';
+        else if (element === 'thunder' || element === 'lightning') dmgColor = '#ffe65a';
+        else if (element === 'shadow' || element === 'void') dmgColor = '#c880ff';
+        else if (element === 'holy') dmgColor = '#fff0a0';
+        else if (element === 'nature' || element === 'poison') dmgColor = '#7dff9a';
+      }
+      
       if (opts.shot) {
         projectileImpactVfx(s, ed.x, ed.y - 8, opts.shot.getData('kind'));
+      } else {
+        const sparkColor = crit ? 0xffd84a : 0xffffff;
+        for (let i = 0; i < (crit ? 10 : 5); i++) {
+          const a = Math.random() * Math.PI * 2, d = 15 + Math.random() * 25;
+          const p2 = s.add.rectangle(ed.x, ed.y - 8 - Math.random() * 8, 2, 2, sparkColor).setDepth(2700);
+          s.tweens.add({ targets: p2, x: ed.x + Math.cos(a) * d, y: ed.y - 8 + Math.sin(a) * d, scale: 0, alpha: 0, duration: 250 + Math.random() * 150, ease: 'expo.out', onComplete: () => p2.destroy() });
+        }
       }
-      if (crit) this.floatText(ed.x, ed.y - 22, `${n}!`, '#ffd24a', 'crit');
-      else this.floatText(ed.x, ed.y - 20, n, '#ffffff');
+      
+      if (crit) this.floatText(ed.x, ed.y - 22, `${n}!`, '#ffd84a', 'crit');
+      else this.floatText(ed.x, ed.y - 20, n, dmgColor);
       if (!fromRemote) this.bumpCombo();
       if (crit) { this.hitStop(60); s.cameras.main.shake(70, 0.0022); }
     }

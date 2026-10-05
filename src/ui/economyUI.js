@@ -2,6 +2,7 @@ import { bus, Events } from '../core/events.js';
 import { input } from '../core/input.js';
 import { social } from '../systems/social/index.js';
 import { econ } from '../net/economyNet.js';
+import { net } from '../net/NetworkManager.js';
 import { trade } from '../systems/trade.js';
 import { TradePanel } from './TradePanel.js';
 import { TradeEscrowPanel } from './TradeEscrowPanel.js';
