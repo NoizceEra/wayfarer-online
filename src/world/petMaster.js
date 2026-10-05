@@ -65,6 +65,7 @@ export function onPetMasterTalk(scene, name, fallback) {
         if (pet) pets.roster.push(pet);
         bus.emit(Events.SYSTEM, `The ${PETS[choice].name} egg hatches! You now have a companion.`);
         bus.emit(Events.TOAST, { title: 'Pet unlocked', text: `${PETS[choice].name} joined you!`, color: '#ffd84a' });
+        bus.emit(Events.PET_HATCH, { id: choice });
         scene.saveNow();
       });
       return true;

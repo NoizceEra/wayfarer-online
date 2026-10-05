@@ -142,6 +142,7 @@ export class WayfarerRoom extends Room {
       'pet-duel', 'economy', 'mail', 'market', 'referral', 'world-boss', 'social-error',
       'season:getState', 'season:earnXp', 'season:claim', 'season:upgradePremium', 'season:state', 'season:xp', 'season:claimed', 'season:premium', 'season:error',
       'lfg:queue', 'lfg:cancel', 'lfg:accept', 'lfg:queued', 'lfg:waiting', 'lfg:match', 'dungeon:enter', 'dungeon:wave', 'dungeon:complete', 'dungeon:match',
+      'arena:queue', 'arena:leave', 'arena:challenge', 'arena:accept', 'arena:decline', 'arena:report', 'arena:rating', 'arena:queued', 'arena:match', 'arena:declined', 'arena:result', 'arena:error',
     ]);
     this.onMessage('*', (client, type, m) => {
       STATS.msgsIn++;

@@ -3,6 +3,7 @@
 // canvas: real text input, scrollback and per-span colours come for free, and
 // the pixel fonts are already loaded by index.html. #wf-social itself never
 // eats pointer events; each panel opts in.
+import { labelTabs } from './hudPolish.js';
 export const escapeHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 export function el(tag, cls, html) {
@@ -14,11 +15,43 @@ export function el(tag, cls, html) {
 
 export function socialRoot() {
   let root = document.getElementById('wf-social');
-  if (root) return root;
+  if (root) { autoLabelTabs(root); return root; }
   root = el('div'); root.id = 'wf-social';
   document.body.appendChild(root);
   injectCss();
+  autoLabelTabs(root);
   return root;
+}
+
+// Tab bars built by ChatPanel/SocialPanels live outside this module, so keep
+// their accessible names + aria-selected in sync here: label every .wf-tabs
+// bar on arrival (MutationObserver, childList) and re-sync the bar whenever a
+// tab button's selected class flips (attribute filter is class-only, and
+// labelTabs() never touches class, so this cannot self-trigger).
+let tabsObserverOn = false;
+function autoLabelTabs(root) {
+  try {
+    const syncBar = (bar) => { try { labelTabs(bar); } catch { /* noop */ } };
+    root.querySelectorAll('.wf-tabs').forEach(syncBar);
+    if (tabsObserverOn || typeof MutationObserver === 'undefined') return;
+    tabsObserverOn = true;
+    new MutationObserver((muts) => {
+      for (const m of muts) {
+        if (m.type === 'attributes' && m.target?.tagName === 'BUTTON') {
+          const bar = m.target.closest?.('.wf-tabs');
+          if (bar && root.contains(bar)) syncBar(bar);
+        } else {
+          for (const n of m.addedNodes || []) {
+            if (!n || n.nodeType !== 1) continue;
+            if (n.classList?.contains('wf-tabs')) syncBar(n);
+            n.querySelectorAll?.('.wf-tabs').forEach(syncBar);
+            const host = n.closest?.('.wf-tabs');
+            if (host && root.contains(host)) syncBar(host);
+          }
+        }
+      }
+    }).observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+  } catch { /* observer is best-effort polish */ }
 }
 
 let cssDone = false;
@@ -93,7 +126,7 @@ function injectCss() {
 #wf-social .wf-shade{pointer-events:auto;position:absolute;inset:0;background:rgba(0,0,0,.25)}
 @keyframes wf-panel-in{from{opacity:0;filter:brightness(.75);margin-top:5px}to{opacity:1;filter:brightness(1);margin-top:0}}
 @media (prefers-reduced-motion:reduce){#wf-social .wf-panel{animation:none}#wf-social button{transition:none}}
-@media (max-width:560px){#wf-social .wf-chat{width:min(340px,calc(100vw - 16px));bottom:190px}#wf-social .wf-log{height:90px;font-size:11px;min-height:90px}#wf-social .wf-tabs button{font-size:10px;padding:6px 8px;min-width:44px;min-height:44px}#wf-social .wf-inrow input{font-size:12px;padding:4px 6px}#wf-social .wf-list{width:min(340px,calc(100vw - 16px))}#wf-social .wf-row{min-height:44px}#wf-social button{min-height:44px;min-width:44px}}
+@media (max-width:560px){#wf-social .wf-chat{width:min(340px,calc(100vw - 16px));bottom:190px}#wf-social .wf-log{height:90px;font-size:11px;min-height:90px}#wf-social .wf-tabs button{font-size:10px;padding:6px 8px;min-width:44px;min-height:44px}#wf-social .wf-inrow input,#wf-social .wf-foot input{font-size:13px;padding:4px 6px}#wf-social .wf-list{width:min(340px,calc(100vw - 16px))}#wf-social .wf-row{min-height:44px}#wf-social button{min-height:44px;min-width:44px}}
 `;
   document.head.appendChild(style);
 }

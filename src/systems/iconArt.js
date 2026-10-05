@@ -8,7 +8,7 @@ const OUT = [0x1a, 0x10, 0x24];
 const WHITE = [255, 255, 255];
 const GOLD = [232, 178, 42], WOOD = [138, 90, 43], WOODLO = [90, 58, 26], STEEL = [201, 211, 220], STEELLO = [125, 138, 154];
 
-class G {
+export class G {
   constructor() { this.p = new Array(256).fill(null); }
   px(x, y, c) { x = Math.round(x); y = Math.round(y); if (c && x >= 0 && y >= 0 && x < 16 && y < 16) this.p[y * 16 + x] = c; return this; }
   r(x, y, w, h, c) { for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) this.px(x + i, y + j, c); return this; }
@@ -37,7 +37,7 @@ class G {
   }
 }
 
-const ICON = {
+export const ICON = {
   // head
   brim(g, a, b) { g.rows([[3, 6, 9], [4, 5, 10], [5, 4, 11], [6, 4, 11]], a.mid); g.r(4, 7, 8, 1, b.mid); g.r(1, 8, 14, 2, a.hi); g.r(2, 10, 12, 1, a.lo); g.r(5, 4, 2, 1, a.hi); },
   cap(g, a, b) { g.rows([[4, 4, 11], [5, 3, 12], [6, 3, 12], [7, 3, 12], [8, 3, 12]], a.mid); g.r(4, 4, 3, 1, a.hi); g.r(3, 5, 2, 3, a.hi); g.r(10, 6, 3, 3, a.lo); g.r(2, 9, 9, 2, a.lo); g.r(7, 5, 1, 3, a.lo2); },
@@ -89,6 +89,29 @@ const ICON = {
   staff(g, a, b) { const r = ramp((a.mid[0] << 16) | (a.mid[1] << 8) | a.mid[2]); g.line(4, 15, 10, 4, WOOD); g.line(5, 15, 11, 4, WOODLO); g.disc(11, 3, 2, [120, 210, 255]); g.disc(11, 3, 1, WHITE); g.px(9, 5, r.mid); g.px(13, 5, r.mid); g.px(10, 1, r.hi); },
   wand(g, a, b) { g.line(3, 13, 10, 6, WOOD); g.line(4, 13, 11, 6, WOODLO); g.disc(11, 4, 2, a.mid); g.disc(11, 4, 1, a.hi); g.px(10, 3, WHITE); g.px(14, 1, a.hi); g.px(14, 7, a.hi); g.px(8, 1, a.hi); },
   bow(g, a, b) { const w = [196, 140, 70]; g.line(11, 1, 14, 8, w); g.line(14, 8, 11, 14, w); g.line(10, 1, 13, 8, [150, 100, 50]); g.line(13, 8, 10, 14, [150, 100, 50]); g.line(11, 1, 11, 14, [230, 230, 230]); g.line(2, 7, 12, 8, STEEL); g.px(2, 7, WHITE); g.px(3, 6, [200, 60, 60]); g.px(3, 8, [200, 60, 60]); if (a.mid.join() !== '255,255,255') { g.px(12, 3, a.hi); g.px(13, 12, a.hi); g.px(14, 8, a.mid); } },
+  scythe(g, a, b) {
+    const c = a.mid.join() === '255,255,255' ? STEEL : a.mid;
+    const r = ramp((c[0] << 16) | (c[1] << 8) | c[2]);
+    g.line(3, 14, 11, 4, WOOD); g.line(4, 14, 12, 4, WOODLO);
+    g.px(2, 14, GOLD); g.px(3, 13, GOLD);
+    g.r(10, 3, 3, 3, b.mid.join() === '255,255,255' ? GOLD : b.mid);
+    g.px(11, 3, b.hi); g.px(12, 5, b.lo);
+    g.line(11, 2, 4, 1, r.mid); g.line(4, 1, 1, 4, r.mid); g.line(1, 4, 2, 8, r.mid); g.line(2, 8, 4, 11, r.hi);
+    g.line(10, 3, 5, 2, r.hi); g.line(5, 2, 2, 4, WHITE); g.line(2, 4, 3, 8, r.hi);
+    g.line(8, 4, 6, 3, r.lo); g.line(6, 3, 3, 5, r.lo); g.px(4, 11, WHITE);
+  },
+  halberd(g, a, b) {
+    const c = a.mid.join() === '255,255,255' ? STEEL : a.mid;
+    const r = ramp((c[0] << 16) | (c[1] << 8) | c[2]);
+    g.line(2, 14, 10, 4, WOOD); g.line(3, 14, 11, 4, WOODLO);
+    g.px(1, 14, GOLD);
+    g.r(9, 4, 3, 3, b.mid.join() === '255,255,255' ? GOLD : b.mid);
+    g.px(10, 4, WHITE);
+    g.line(11, 3, 14, 1, STEEL); g.line(12, 3, 14, 1, STEELLO); g.px(14, 1, WHITE);
+    g.rows([[2, 6, 8], [3, 5, 8], [4, 6, 9]], r.mid);
+    g.line(6, 2, 5, 3, r.hi); g.px(6, 2, WHITE); g.px(8, 4, r.lo);
+    g.line(10, 7, 13, 8, STEEL); g.px(13, 8, STEELLO); g.px(10, 6, r.hi);
+  },
   // off-hand
   round(g, a, b) { g.disc(8, 8, 6, a.mid); g.disc(8, 8, 5, a.mid); g.rows([[3, 6, 9], [4, 4, 5], [5, 3, 4], [6, 3, 3]], a.hi); g.r(11, 8, 3, 4, a.lo); g.disc(8, 8, 2, b.mid); g.px(7, 7, b.hi); for (const [x, y] of [[8, 3], [8, 13], [3, 8], [13, 8]]) g.px(x, y, b.mid); },
   kite(g, a, b) { g.rows([[1, 3, 12], [2, 2, 13], [3, 2, 13], [4, 2, 13], [5, 2, 13], [6, 3, 12], [7, 3, 12], [8, 4, 11], [9, 4, 11], [10, 5, 10], [11, 6, 9], [12, 7, 8], [13, 7, 8]], a.mid); g.r(2, 2, 2, 4, a.hi); g.r(11, 4, 2, 5, a.lo); g.r(7, 1, 2, 12, b.mid); g.r(2, 5, 12, 2, b.mid); g.px(7, 5, b.hi); },
@@ -96,6 +119,37 @@ const ICON = {
   tome(g, a, b) { g.r(2, 2, 12, 12, a.mid); g.r(2, 2, 12, 1, a.hi); g.r(2, 13, 12, 1, a.lo); g.r(12, 3, 2, 10, [240, 232, 210]); g.r(2, 2, 2, 12, a.lo); g.r(5, 4, 6, 6, b.mid); g.r(6, 5, 4, 4, a.mid); g.px(7, 6, b.hi); g.px(8, 7, b.hi); g.px(7, 7, b.mid); },
   lantern(g, a, b) { g.r(5, 1, 6, 1, b.mid); g.px(5, 2, b.mid); g.px(10, 2, b.mid); g.px(7, 0, b.mid); g.px(8, 0, b.mid); g.r(3, 3, 10, 1, b.lo); g.r(3, 4, 10, 8, a.mid); g.r(5, 5, 6, 6, [255, 236, 150]); g.r(7, 6, 2, 3, WHITE); g.r(3, 12, 10, 2, b.lo); g.px(3, 4, a.hi); g.px(12, 11, a.lo); g.r(7, 4, 2, 8, null); g.r(7, 5, 2, 6, [255, 244, 190]); g.r(4, 4, 1, 8, a.lo); g.r(11, 4, 1, 8, a.lo); },
   orb(g, a, b) { g.disc(8, 8, 5, a.mid); g.disc(7, 7, 3, a.hi); g.r(10, 10, 3, 3, a.lo); g.px(6, 6, WHITE); g.px(7, 6, WHITE); g.px(2, 3, b.mid); g.px(14, 12, b.mid); g.px(13, 2, b.mid); g.px(3, 13, b.mid); },
+  spellbook(g, a, b) {
+    g.rows([[2, 4, 11], [3, 3, 12]], a.mid);
+    g.r(3, 4, 10, 8, a.mid);
+    g.r(3, 3, 10, 1, a.hi); g.r(2, 3, 1, 9, a.hi);
+    g.r(12, 4, 2, 8, [240, 230, 200]); g.r(13, 4, 1, 8, [210, 195, 160]);
+    g.r(2, 12, 11, 1, a.lo);
+    g.px(3, 4, GOLD); g.px(4, 4, GOLD); g.px(3, 5, GOLD);
+    g.px(11, 4, GOLD); g.px(10, 4, GOLD); g.px(11, 5, GOLD);
+    g.px(3, 11, GOLD); g.px(4, 11, GOLD); g.px(3, 10, GOLD);
+    g.px(11, 11, GOLD); g.px(10, 11, GOLD); g.px(11, 10, GOLD);
+    g.rows([[6, 7, 8], [7, 6, 9], [8, 6, 9], [9, 7, 8]], b.mid.join() === '255,255,255' ? GOLD : b.mid);
+    g.r(7, 7, 2, 2, b.hi); g.px(7, 7, WHITE);
+    g.line(8, 12, 9, 14, b.mid); g.px(9, 14, b.hi);
+  },
+  relic_cross(g, a, b) {
+    g.r(7, 1, 2, 13, a.mid); g.r(2, 5, 12, 2, a.mid);
+    g.rows([[1, 6, 9], [2, 6, 9]], a.hi); g.rows([[5, 1, 3], [6, 1, 3]], a.hi);
+    g.rows([[5, 12, 14], [6, 12, 14]], a.mid); g.rows([[13, 6, 9], [14, 7, 8]], a.lo);
+    g.line(7, 2, 7, 13, a.hi); g.line(3, 5, 12, 5, a.hi);
+    g.rows([[4, 7, 8], [5, 6, 9], [6, 6, 9], [7, 7, 8]], b.mid.join() === '255,255,255' ? GOLD : b.mid);
+    g.r(5, 5, 2, 2, b.hi); g.px(5, 5, WHITE);
+    g.px(6, 14, GOLD); g.px(9, 14, GOLD);
+  },
+  orb_arcane(g, a, b) {
+    g.disc(8, 8, 4, a.mid); g.disc(7, 7, 3, a.hi); g.r(9, 9, 3, 3, a.lo);
+    g.px(6, 5, WHITE); g.px(7, 5, WHITE); g.px(6, 6, WHITE);
+    g.rows([[4, 11, 13], [5, 9, 11], [11, 5, 7], [12, 3, 5]], b.mid.join() === '255,255,255' ? GOLD : b.mid);
+    g.line(3, 11, 6, 12, b.hi); g.line(10, 4, 13, 5, b.lo);
+    g.px(13, 4, GOLD); g.px(3, 12, GOLD);
+    g.px(2, 4, WHITE); g.px(13, 12, a.hi); g.px(8, 2, a.hi); g.px(8, 14, a.lo);
+  },
   // feet
   boots(g, a, b) { for (const [x0, dx] of [[2, 0], [9, 0]]) { g.r(x0, 3, 5, 7, a.mid); g.r(x0, 3, 5, 2, b.mid); g.r(x0, 10, 7, 3, a.mid); g.r(x0, 3, 2, 10, a.hi); g.r(x0, 12, 7, 1, a.lo2); g.r(x0 + 4, 6, 1, 6, a.lo); void dx; } },
   sandals(g, a, b) { for (const x0 of [2, 9]) { g.r(x0, 6, 5, 7, a.mid); g.r(x0, 6, 1, 7, a.hi); g.r(x0 + 4, 8, 1, 5, a.lo); g.r(x0, 8, 5, 1, b.mid); g.r(x0, 11, 5, 1, b.mid); g.r(x0 + 1, 4, 1, 3, b.mid); g.r(x0 + 3, 4, 1, 3, b.mid); } },
@@ -108,6 +162,154 @@ const ICON = {
   fang(g, a, b) { g.rows([[2, 5, 10], [3, 5, 10], [4, 5, 9], [5, 6, 9], [6, 6, 9], [7, 7, 9], [8, 7, 8], [9, 7, 8], [10, 8, 8], [11, 8, 8], [12, 8, 8]], a.mid); g.r(5, 2, 2, 3, a.hi); g.r(9, 5, 1, 4, b.mid); g.r(5, 2, 6, 1, b.mid); g.px(8, 1, GOLD); g.px(7, 0, GOLD); },
   gem(g, a, b) { g.rows([[2, 5, 10], [3, 3, 12], [4, 2, 13], [5, 2, 13], [6, 3, 12], [7, 4, 11], [8, 5, 10], [9, 6, 9], [10, 7, 8]], a.mid); g.r(3, 3, 3, 3, a.hi); g.r(9, 5, 4, 3, a.lo); g.r(6, 2, 4, 1, b.mid); g.px(5, 4, WHITE); g.px(4, 3, b.hi); g.line(7, 0, 7, 1, GOLD); g.line(8, 0, 8, 1, GOLD); },
   locket(g, a, b) { g.line(4, 0, 7, 4, [200, 190, 160]); g.line(11, 0, 8, 4, [200, 190, 160]); g.disc(8, 9, 4, a.mid); g.disc(8, 9, 3, a.hi); g.disc(8, 9, 2, b.mid); g.px(7, 8, WHITE); g.r(10, 10, 2, 3, a.lo); g.px(8, 4, a.lo); g.px(8, 5, a.mid); },
+  amulet(g, a, b) {
+    g.line(3, 1, 6, 5, GOLD); g.line(12, 1, 9, 5, GOLD);
+    g.px(7, 5, GOLD); g.px(8, 5, GOLD);
+    g.rows([[6, 6, 9], [7, 5, 10], [8, 4, 11], [9, 4, 11], [10, 5, 10], [11, 6, 9], [12, 7, 8]], b.mid.join() === '255,255,255' ? GOLD : b.mid);
+    g.r(6, 6, 4, 1, b.hi);
+    g.rows([[7, 6, 9], [8, 5, 10], [9, 5, 10], [10, 6, 9]], a.mid);
+    g.r(7, 6, 3, 2, a.hi); g.px(7, 7, WHITE); g.r(9, 9, 2, 2, a.lo);
+    g.px(7, 13, GOLD); g.px(8, 13, GOLD); g.px(7, 14, b.hi);
+  },
+  ring_gem(g, a, b) {
+    g.rows([[6, 4, 11], [7, 3, 12], [8, 3, 5], [8, 10, 12], [9, 3, 5], [9, 10, 12], [10, 3, 5], [10, 10, 12], [11, 4, 11], [12, 5, 10]], GOLD);
+    g.line(4, 7, 4, 10, WHITE); g.line(11, 8, 11, 11, WOODLO);
+    g.rows([[8, 6, 9], [9, 6, 9], [10, 6, 9]], WOODLO);
+    g.r(6, 4, 4, 2, b.mid.join() === '255,255,255' ? GOLD : b.mid);
+    g.rows([[1, 7, 8], [2, 6, 9], [3, 5, 10], [4, 6, 9]], a.mid);
+    g.r(2, 6, 3, 2, a.hi); g.px(7, 2, WHITE); g.px(9, 4, a.lo);
+    g.px(5, 5, GOLD); g.px(10, 5, GOLD);
+  },
+  ring_skull(g, a, b) {
+    const c = a.mid.join() === '255,255,255' ? [235, 230, 220] : a.mid;
+    const r = ramp((c[0] << 16) | (c[1] << 8) | c[2]);
+    g.r(1, 6, 3, 6, STEEL); g.r(12, 6, 3, 6, STEELLO);
+    g.line(2, 6, 2, 11, WHITE);
+    g.rows([[2, 5, 10], [3, 4, 11], [4, 4, 11], [5, 4, 11]], r.mid);
+    g.line(5, 2, 8, 2, r.hi); g.px(5, 3, WHITE);
+    g.rows([[6, 4, 11], [7, 4, 11]], r.mid);
+    g.r(5, 6, 2, 2, OUT); g.r(9, 6, 2, 2, OUT);
+    g.px(7, 8, OUT); g.px(8, 8, OUT);
+    g.rows([[8, 5, 10], [9, 5, 10]], r.mid);
+    g.rows([[10, 6, 9], [11, 6, 9]], r.lo);
+    g.px(6, 10, r.hi); g.px(8, 10, r.hi); g.px(7, 10, r.lo); g.px(9, 10, r.lo);
+    g.px(5, 6, b.mid); g.px(9, 6, b.mid);
+  },
+  feather_charm(g, a, b) {
+    g.line(3, 13, 12, 2, a.hi); g.line(4, 13, 13, 3, a.lo);
+    g.rows([[3, 9, 11], [4, 8, 12], [5, 7, 12], [6, 6, 12], [7, 6, 11], [8, 5, 10], [9, 5, 9], [10, 4, 8], [11, 4, 6]], a.mid);
+    g.line(9, 4, 11, 3, a.hi); g.line(7, 6, 10, 5, a.hi); g.line(6, 8, 9, 7, a.hi); g.line(5, 10, 7, 9, a.hi);
+    g.px(12, 6, a.lo); g.px(11, 8, a.lo); g.px(10, 10, a.lo);
+    g.r(2, 12, 3, 2, b.mid.join() === '255,255,255' ? GOLD : b.mid);
+    g.px(2, 12, b.hi);
+    g.px(1, 14, GOLD); g.px(2, 14, b.mid); g.px(3, 14, b.hi);
+  },
+  // consumables
+  flask_elixir(g, a, b) {
+    g.r(7, 1, 2, 2, WOOD); g.px(7, 1, WOODLO);
+    g.r(7, 3, 2, 3, STEEL);
+    g.px(6, 3, b.mid.join() === '255,255,255' ? GOLD : b.mid);
+    g.px(9, 3, b.mid.join() === '255,255,255' ? GOLD : b.mid);
+    g.rows([[6, 5, 10], [7, 4, 11], [8, 3, 12], [9, 2, 13], [10, 2, 13], [11, 2, 13], [12, 3, 12], [13, 5, 10]], STEEL);
+    g.rows([[8, 4, 11], [9, 3, 12], [10, 3, 12], [11, 3, 12], [12, 4, 11], [13, 6, 9]], a.mid);
+    g.line(4, 8, 11, 8, a.hi);
+    g.px(5, 9, WHITE); g.px(8, 10, WHITE); g.px(6, 11, a.hi);
+    g.r(9, 12, 2, 2, a.lo); g.r(11, 10, 2, 2, a.lo);
+    g.px(4, 7, WHITE); g.px(3, 9, WHITE);
+  },
+  scroll_magic(g, a, b) {
+    g.rows([[2, 3, 5], [3, 2, 5]], WOOD);
+    g.rows([[12, 10, 13], [13, 10, 12]], WOOD);
+    g.rows([[3, 4, 11], [4, 3, 12], [5, 3, 12], [6, 2, 12], [7, 2, 12], [8, 2, 12], [9, 2, 12], [10, 3, 12], [11, 3, 12], [12, 4, 11]], [245, 236, 205]);
+    g.line(4, 3, 11, 3, WHITE);
+    g.line(3, 12, 10, 12, [200, 185, 150]);
+    g.r(6, 4, 3, 8, a.mid);
+    g.line(6, 4, 6, 11, a.hi);
+    g.disc(7, 8, 2, b.mid.join() === '255,255,255' ? GOLD : b.mid);
+    g.px(7, 8, b.hi); g.px(6, 7, WHITE);
+    g.px(3, 6, [160, 140, 110]); g.px(4, 8, [160, 140, 110]); g.px(3, 10, [160, 140, 110]);
+    g.px(10, 5, [160, 140, 110]); g.px(11, 7, [160, 140, 110]); g.px(10, 9, [160, 140, 110]);
+  },
+  bomb(g, a, b) {
+    const c = a.mid.join() === '255,255,255' ? [70, 75, 85] : a.mid;
+    const r = ramp((c[0] << 16) | (c[1] << 8) | c[2]);
+    g.disc(7, 9, 5, r.mid); g.disc(7, 9, 4, r.lo);
+    g.r(4, 6, 2, 2, r.hi);
+    g.px(4, 6, WHITE); g.px(5, 6, WHITE);
+    g.r(9, 11, 3, 3, r.lo2);
+    g.r(6, 3, 3, 2, STEELLO); g.px(7, 3, STEEL);
+    g.line(7, 2, 10, 1, WOOD); g.px(11, 2, WOODLO);
+    g.disc(12, 2, 1, GOLD); g.px(12, 2, WHITE);
+    g.px(14, 2, [255, 100, 30]); g.px(12, 1, [255, 100, 30]);
+    g.px(13, 3, [255, 180, 50]); g.px(10, 1, [255, 180, 50]);
+  },
+  // elemental sigils / runes
+  sigil_fire(g, a, b) {
+    g.rows([[12, 4, 11], [13, 5, 10]], b.lo);
+    g.rows([[11, 5, 10]], b.mid);
+    g.px(7, 11, b.hi); g.px(8, 11, b.hi);
+    g.rows([[2, 7, 8], [3, 6, 9], [4, 6, 9]], a.hi);
+    g.rows([[5, 4, 11], [6, 3, 12], [7, 3, 12], [8, 3, 12], [9, 4, 11], [10, 4, 11]], a.mid);
+    g.px(4, 4, a.mid); g.px(11, 4, a.mid);
+    g.rows([[6, 6, 9], [7, 6, 9], [8, 6, 9], [9, 6, 9]], a.hi);
+    g.rows([[7, 7, 8], [8, 7, 8]], WHITE);
+    g.r(3, 8, 2, 3, a.lo); g.r(11, 8, 2, 3, a.lo);
+    g.px(2, 3, b.hi); g.px(13, 3, b.hi);
+  },
+  sigil_frost(g, a, b) {
+    g.rows([[7, 4, 11], [8, 4, 11]], a.mid);
+    g.rows([[5, 6, 9], [6, 5, 10], [9, 5, 10], [10, 6, 9]], a.mid);
+    g.line(7, 2, 7, 13, a.hi); g.line(8, 2, 8, 13, a.mid);
+    g.line(2, 7, 13, 7, a.hi); g.line(2, 8, 13, 8, a.mid);
+    g.px(4, 4, a.hi); g.px(11, 4, a.hi); g.px(4, 11, a.mid); g.px(11, 11, a.mid);
+    g.px(3, 5, b.mid); g.px(12, 5, b.mid); g.px(3, 10, b.mid); g.px(12, 10, b.mid);
+    g.r(7, 7, 2, 2, WHITE);
+    g.px(6, 6, WHITE); g.px(9, 9, a.lo); g.px(6, 9, a.lo); g.px(9, 6, a.hi);
+    g.px(7, 1, WHITE); g.px(8, 14, a.lo);
+  },
+  sigil_thunder(g, a, b) {
+    g.rows([[1, 8, 11], [2, 7, 10], [3, 6, 9], [4, 5, 8], [5, 4, 8]], a.mid);
+    g.rows([[6, 3, 12], [7, 5, 13]], a.mid);
+    g.rows([[8, 7, 11], [9, 6, 10], [10, 5, 9], [11, 5, 8], [12, 6, 8], [13, 6, 7], [14, 6, 6]], a.mid);
+    g.line(8, 2, 5, 5, a.hi); g.line(5, 5, 11, 7, WHITE);
+    g.line(10, 7, 6, 11, a.hi); g.px(6, 12, WHITE); g.px(6, 13, WHITE);
+    g.line(9, 3, 8, 5, a.lo); g.line(11, 8, 8, 11, a.lo); g.line(8, 12, 7, 14, a.lo2);
+    g.px(3, 3, b.hi); g.px(12, 3, b.mid); g.px(2, 9, b.hi); g.px(13, 11, b.mid);
+  },
+  sigil_shadow(g, a, b) {
+    g.rows([[2, 4, 10], [3, 3, 11], [4, 2, 7], [5, 2, 6], [6, 2, 5], [7, 2, 5], [8, 2, 5], [9, 2, 6], [10, 2, 7], [11, 3, 11], [12, 4, 10]], a.mid);
+    g.line(4, 2, 10, 3, a.hi); g.line(3, 4, 3, 10, a.hi);
+    g.line(4, 11, 10, 12, a.lo); g.px(10, 4, a.lo); g.px(10, 10, a.lo);
+    g.disc(8, 7, 3, a.lo2);
+    g.r(7, 6, 2, 3, b.hi); g.px(7, 5, b.mid); g.px(8, 9, b.mid);
+    g.px(7, 7, WHITE); g.px(8, 7, WHITE);
+    g.px(12, 4, b.lo); g.px(13, 7, b.mid); g.px(12, 10, b.lo);
+  },
+  sigil_holy(g, a, b) {
+    g.rows([[3, 6, 9], [4, 4, 5], [4, 10, 11], [11, 4, 5], [11, 10, 11], [12, 6, 9]], b.mid);
+    g.px(4, 4, b.hi); g.px(11, 4, b.hi); g.px(4, 11, b.lo); g.px(11, 11, b.lo);
+    g.r(7, 1, 2, 14, a.mid);
+    g.r(1, 7, 14, 2, a.mid);
+    g.line(7, 2, 7, 13, a.hi); g.line(2, 7, 13, 7, a.hi);
+    g.rows([[6, 7, 8], [7, 6, 9], [8, 6, 9], [9, 7, 8]], a.hi);
+    g.r(7, 7, 2, 2, WHITE);
+    g.px(6, 1, a.hi); g.px(9, 1, a.lo);
+    g.px(1, 6, a.hi); g.px(1, 9, a.lo);
+    g.px(14, 6, a.hi); g.px(14, 9, a.lo);
+    g.px(6, 14, a.hi); g.px(9, 14, a.lo);
+  },
+  sigil_nature(g, a, b) {
+    g.disc(8, 8, 2, a.hi);
+    g.px(8, 8, WHITE);
+    g.rows([[2, 7, 8], [3, 7, 10], [4, 7, 11], [5, 8, 11]], a.mid);
+    g.line(7, 2, 10, 4, a.hi); g.px(11, 5, a.lo);
+    g.rows([[9, 8, 12], [10, 9, 13], [11, 9, 12], [12, 9, 10]], a.mid);
+    g.line(12, 9, 10, 12, a.hi); g.px(9, 12, a.lo);
+    g.rows([[7, 3, 6], [8, 2, 6], [9, 3, 7], [10, 4, 7]], a.mid);
+    g.line(3, 7, 3, 9, a.hi); g.px(6, 10, a.lo);
+    g.px(8, 1, b.hi); g.px(13, 8, b.mid); g.px(4, 12, b.mid);
+    g.px(8, 6, b.lo); g.px(10, 8, b.lo); g.px(7, 10, b.lo);
+  },
 };
 
 // `mainTint` / `trimTint`: hex ints (main may be a dye). Returns a 16x16 canvas.

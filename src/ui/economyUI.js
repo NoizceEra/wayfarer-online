@@ -197,6 +197,18 @@ function installCommands(mail) {
       case 'pda': return social.acceptPetDuel();
       case 'pdd': return social.declinePetDuel();
       case 'petbattle': case 'pvb': return say('Walk up to a wild pet wisp and press E to capture it; /petduel name to challenge a player.');
+      case 'home': {
+        const game = window.__wayfarer;
+        if (!game?.scene) return say('The way home is not built yet.');
+        const world = game.scene.getScene('world');
+        game.scene.start('home', {
+          name: world?.pname || 'Wayfarer',
+          hero: world?.heroData || null,
+          mode: world?.mode || 'solo',
+          returnTo: { name: world?.pname, hero: world?.heroData, mode: world?.mode },
+        });
+        return;
+      }
       case 'ginfo': case 'guildinfo': {
         const g = econ.guild;
         if (!g) return say(econ.online ? 'You are not in a guild. /gcreate TAG Name' : 'Play Online to use guilds.');
@@ -204,7 +216,7 @@ function installCommands(mail) {
       }
       case 'help': case '?':
         orig(raw);
-        return say(`Economy: /trade name · /mail [name] · /claim · /sinks · /bridge · /refer · /finder · /lfg · /season · /guild · /leaderboard · /boss · /pet · /petduel name · /pda · /pdd · /ginvite /gaccept /gkick /gpromote /gdemote /gleader /gmotd /gdeposit /gwithdraw /ginfo. Mailbox: ${input.labelFor('mail')}. Market: talk to the notice-board clerks.`);
+        return say(`Economy: /trade name · /mail [name] · /claim · /sinks · /bridge · /refer · /finder · /lfg · /season · /guild · /leaderboard · /home · /boss · /pet · /petduel name · /pda · /pdd · /ginvite /gaccept /gkick /gpromote /gdemote /gleader /gmotd /gdeposit /gwithdraw /ginfo. Mailbox: ${input.labelFor('mail')}. Market: talk to the notice-board clerks.`);
       default: return orig(raw);
     }
   };

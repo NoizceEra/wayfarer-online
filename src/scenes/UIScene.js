@@ -26,6 +26,7 @@ import LFGPanel from '../ui/LFGPanel.js';
 import SeasonPanel from '../ui/SeasonPanel.js';
 import GuildPanel from '../ui/GuildPanel.js';
 import { WorldBossAlert } from '../ui/WorldBossAlert.js';
+import { ArenaPanel } from '../ui/ArenaPanel.js';
 import DungeonSystem from '../systems/dungeonSystem.js';
 import SeasonSystem from '../systems/seasonSystem.js';
 import GuildSystem from '../systems/guildSystem.js';
@@ -151,6 +152,9 @@ export class UIScene extends Phaser.Scene {
     const pbw  = pw - barX - 12;   // bar fill width
     this.hpBarW = pbw;
     this.barH = { hp: 14, mp: 11, xp: 7 };
+    // Small-screen legibility floor: canvas stat numbers never render below
+    // 8px on phones; desktop sizes pass through untouched so layout is stable.
+    const statPx = (px) => (this.small ? Math.max(px, 8) : px);
 
     this._ns(8, 8, pw, 106);       // wood frame panel
     this.nameT = this.add.text(18, 15, `${this.pname} · ${this.job.name} Lv 1`, F(this.small ? 10 : 11, '#fff8e0', { fontStyle: 'bold' })).setDepth(101);
@@ -162,24 +166,24 @@ export class UIScene extends Phaser.Scene {
       return this.add.rectangle(barX, y, pbw, h, fc).setOrigin(0).setDepth(103);
     };
     this.hpBar = mkBar('heart', 32, 14, 0x3a1014, 0x4cc060);
-    this.hpT   = this.add.text(barX + pbw / 2, 39, '', F(9, '#ffffff', { stroke: '#1a1024', strokeThickness: 3 })).setOrigin(0.5).setDepth(104);
+    this.hpT   = this.add.text(barX + pbw / 2, 39, '', F(statPx(9), '#ffffff', { stroke: '#1a1024', strokeThickness: 3 })).setOrigin(0.5).setDepth(104);
     this.mpBar = mkBar('mana', 52, 11, 0x0c1a3a, 0x3a9cf0);
-    this.mpT   = this.add.text(barX + pbw / 2, 57.5, '', F(8, '#ffffff', { stroke: '#1a1024', strokeThickness: 3 })).setOrigin(0.5).setDepth(104);
+    this.mpT   = this.add.text(barX + pbw / 2, 57.5, '', F(statPx(8), '#ffffff', { stroke: '#1a1024', strokeThickness: 3 })).setOrigin(0.5).setDepth(104);
     this.xpBar = mkBar('xp', 69, 7, 0x2a2008, 0xffd84a);
     // A percentage makes the thin XP bar useful at a glance, especially on a
     // phone where exact XP totals would compete with the resource readout.
-    this.xpT = this.add.text(barX + pbw, 72.5, '0%', F(7, '#2a1d10', { fontStyle: 'bold' }))
+    this.xpT = this.add.text(barX + pbw, 72.5, '0%', F(statPx(7), '#2a1d10', { fontStyle: 'bold' }))
       .setOrigin(1, 0.5).setDepth(104);
 
     // gold / potions / atk+def as glyph + number
     this.add.image(18, 92, 'hud.coin').setOrigin(0, 0.5).setDepth(102);
-    this.goldT = this.add.text(36, 92, '0', F(10, '#ffe27a')).setOrigin(0, 0.5).setDepth(102);
+    this.goldT = this.add.text(36, 92, '0', F(statPx(10), '#ffe27a')).setOrigin(0, 0.5).setDepth(102);
     this.add.image(78, 92, 'hud.potion').setOrigin(0, 0.5).setDepth(102);
-    this.potT  = this.add.text(96, 92, '0', F(10, '#ffb0a0')).setOrigin(0, 0.5).setDepth(102);
+    this.potT  = this.add.text(96, 92, '0', F(statPx(10), '#ffb0a0')).setOrigin(0, 0.5).setDepth(102);
     this.add.image(122, 92, 'hud.sword').setOrigin(0, 0.5).setDepth(102);
-    this.atkT  = this.add.text(140, 92, '0', F(10, '#e6f2c0')).setOrigin(0, 0.5).setDepth(102);
+    this.atkT  = this.add.text(140, 92, '0', F(statPx(10), '#e6f2c0')).setOrigin(0, 0.5).setDepth(102);
     this.add.image(pw - 46, 92, 'hud.shield').setOrigin(0, 0.5).setDepth(102);
-    this.defT  = this.add.text(pw - 28, 92, '0', F(10, '#aed6f1')).setOrigin(0, 0.5).setDepth(102);
+    this.defT  = this.add.text(pw - 28, 92, '0', F(statPx(10), '#aed6f1')).setOrigin(0, 0.5).setDepth(102);
 
     // ── Zone label (top-centre; on phones: below status panel + party line) ──
     // phones: status panel bottom = 8+82=90, party line ~104; zone label y=90+4=94
@@ -330,6 +334,7 @@ export class UIScene extends Phaser.Scene {
       input.addCloser({ id: 'lfg', priority: 940, isOpen: () => !!this.lfgPanel?.visible, close: () => this.lfgPanel?.close() }),
       input.addCloser({ id: 'season', priority: 930, isOpen: () => !!this.seasonPanel?.visible, close: () => this.seasonPanel?.close() }),
       input.addCloser({ id: 'guild', priority: 920, isOpen: () => !!this.guildPanel?.visible, close: () => this.guildPanel?.close() }),
+      input.addCloser({ id: 'arena', priority: 935, isOpen: () => !!this.arenaPanel?.container, close: () => this.arenaPanel?.hide() }),
       input.addCloser({ id: 'pause-sub', priority: 850, isOpen: () => this.menu.isOpen && this.menu.page !== 'main', close: () => this.menu.goto('main') }),
       input.addCloser({ id: 'shop', priority: 450, isOpen: () => !!this.shop?.isOpen, close: () => this.shop.close() }),
       input.addCloser({ id: 'equip', priority: 400, isOpen: () => !!this.equip?.isOpen, close: () => this.equip.toggle(false) }),
@@ -348,6 +353,10 @@ export class UIScene extends Phaser.Scene {
       input.addCloser({ id: 'fishing', priority: 700, isOpen: () => !!this.fishing?.isOpen, close: () => this.fishing.end('cancel') }),
       input.addCloser({ id: 'journal', priority: 470, isOpen: () => !!this.journal?.isOpen, close: () => this.journal.close() }),
       input.addCloser({ id: 'craft', priority: 460, isOpen: () => !!this.craftPanel?.isOpen, close: () => this.craftPanel.close() }),
+      // Large minimap (M / tap) collapses before anything else closes; the
+      // world-boss banner dismisses (its ✕ button stays the explicit close).
+      input.addCloser({ id: 'minimap-large', priority: 300, isOpen: () => !!this.mapLarge, close: () => { this.mapLarge = false; this.layoutMinimap(); } }),
+      input.addCloser({ id: 'worldboss', priority: 750, isOpen: () => !!this.worldBossAlert?.visible, close: () => this.worldBossAlert?.hide() }),
     );
     const sub = (ev, fn) => this.offs.push(bus.on(ev, fn));
     sub(Events.SYSTEM,    (s) => this.say(s));
@@ -369,8 +378,8 @@ export class UIScene extends Phaser.Scene {
       this.resizeTimer?.remove(false);
       this.equip?.destroy(); this.shop?.destroy(); this.journal?.destroy(); this.craftPanel?.destroy(); this.fishing?.destroy(); this.toast?.destroy(); this.walletPanel?.destroy();
       this.dailyPanel?.destroy(); this.dailyRewards?.destroy();
-      this.partyFinderBtn?.destroy(); this.lfgBtn?.destroy(); this.seasonBtn?.destroy(); this.guildBtn?.destroy(); this.worldBossBtn?.destroy();
-      this.lfgPanel?.destroy(); this.seasonPanel?.destroy(); this.guildPanel?.destroy(); this.worldBossAlert?.destroy();
+      this.partyFinderBtn?.destroy(); this.lfgBtn?.destroy(); this.seasonBtn?.destroy(); this.guildBtn?.destroy(); this.arenaBtn?.destroy(); this.worldBossBtn?.destroy();
+      this.lfgPanel?.destroy(); this.seasonPanel?.destroy(); this.guildPanel?.destroy(); this.arenaPanel?.destroy(); this.worldBossAlert?.destroy();
       this.dungeonSystem?.destroy(); this.seasonSystem?.destroy(); this.guildSystem?.destroy();
     });
     // Mail unread indicator for the touch HUD
@@ -431,6 +440,7 @@ export class UIScene extends Phaser.Scene {
     this.lfgPanel.onAccept = () => this.dungeonSystem.acceptMatch();
     this.seasonPanel = new SeasonPanel(this, cx, cy, { seasonSystem: this.seasonSystem, onClaim: (tier, track) => this.seasonSystem.claim(tier, track), onUpgrade: () => this.seasonSystem.upgradePremium() });
     this.guildPanel = new GuildPanel(this, cx, cy, this.guildSystem);
+    this.arenaPanel = new ArenaPanel(this);
     this.worldBossAlert = new WorldBossAlert(this, W / 2, 110, {
       onTeleport: () => {
         const d = this._worldBossData;
@@ -597,7 +607,14 @@ export class UIScene extends Phaser.Scene {
     this.guildBtn.on('pointerover', () => this.guildBtn.setBackgroundColor('#3a2d20ee'));
     this.guildBtn.on('pointerout', () => this.guildBtn.setBackgroundColor('#2a1d10dd'));
     this.guildBtn.on('pointerdown', () => { audio.play('ui', 0.6); this.guildPanel?.open(); });
-
+    // Arena icon
+    this.arenaBtn = this.add.text(baseX - (iconSize + gap) * 6, startY, '⚡', {
+      fontFamily: '"Silkscreen", monospace', fontSize: '16px', color: '#dc1fff',
+      backgroundColor: '#2a1d10dd', padding: { x: 4, y: 2 },
+    }).setOrigin(1, 0).setDepth(110).setInteractive({ useHandCursor: true });
+    this.arenaBtn.on('pointerover', () => this.arenaBtn.setBackgroundColor('#3a2d20ee'));
+    this.arenaBtn.on('pointerout', () => this.arenaBtn.setBackgroundColor('#2a1d10dd'));
+    this.arenaBtn.on('pointerdown', () => { audio.play('ui', 0.6); if (this.arenaPanel?.container) this.arenaPanel.hide(); else this.arenaPanel?.show(); });
     this.walletPanel = new WalletPanel(this);
   }
 

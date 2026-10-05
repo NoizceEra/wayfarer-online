@@ -4,6 +4,7 @@ import { SocialStore } from './store.js';
 import { EMOTES, emoteById } from './emotes.js';
 import { installSocialNet } from '../../net/socialNet.js';
 import { petDuel } from '../../net/petDuelNet.js';
+import { arenaNet } from '../../net/arenaNet.js';
 import { JOBS } from '../../data/jobs.js';
 
 // Social layer (chat channels, whispers, party, emotes, friends/ignore,
@@ -503,7 +504,7 @@ class Social {
     const setCh = (ch) => { this.channel = ch; bus.emit(Events.SOCIAL_UI, { panel: 'channel', channel: ch }); if (arg) this.chat(ch, arg); else this.system(`Now talking in ${CHANNELS[ch].label}.`); };
     switch (cmd) {
       case 'help': case '?':
-        this.system('Commands: /say /s /party /p /world /y /g(uild) /w name msg /r msg /me text /emote id /who /invite name /accept /decline /leave /kick name /promote name /friend name /unfriend name /friends /ignore name /unignore name /trade name /gift name [gold] /taccept /tdecline /duel name /dtaccept /dtdecline /dtend /petduel name /pda /pdd /gcreate TAG name /gjoin TAG /gleave /filter /time /clear /help');
+        this.system('Commands: /say /s /party /p /world /y /g(uild) /w name msg /r msg /me text /emote id /who /invite name /accept /decline /leave /kick name /promote name /friend name /unfriend name /friends /ignore name /unignore name /trade name /gift name [gold] /taccept /tdecline /duel name /dtaccept /dtdecline /dtend /petduel name /pda /pdd /arena [name|leave] /aqaccept /aqdecline /gcreate TAG name /gjoin TAG /gleave /filter /time /clear /help');
         this.system(`Emotes: ${EMOTES.map((e) => `/${e.id}`).join(' ')}. Keys: Enter chat · P party · O players · G emotes · Tab cycles channel.`);
         return;
       case 'say': case 's': return setCh('say');
@@ -527,6 +528,12 @@ class Social {
       case 'petduel': case 'pd': if (!first) return this.system('Usage: /petduel name'); return this.challengePetDuel(first);
       case 'pda': return this.acceptPetDuel();
       case 'pdd': return this.declinePetDuel();
+      case 'arena': case 'aq':
+        if (!first) { if (!arenaNet.queue()) return this.system('(offline) arena needs a room.'); return; }
+        if (first === 'leave') return void arenaNet.leave();
+        return void arenaNet.challenge(first);
+      case 'aqaccept': return void arenaNet.accept(first);
+      case 'aqdecline': return void arenaNet.decline(first);
       case 'accept': case 'join': return this.accept();
       case 'decline': return this.decline();
       case 'leave': return this.leaveParty();

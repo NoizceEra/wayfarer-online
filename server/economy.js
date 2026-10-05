@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { CFG } from './config.js';
 import { loadChar, saveChar, deviceKey } from './store.js';
 import {
-  ECON, GEAR_META, isGearId, goldAmount, itemList, cleanLine, cleanCharName, cleanPetName, revOf, hasItems, withoutItems,
+  ECON, GEAR_META, isGearId, isMatId, CAPS, goldAmount, itemList, cleanLine, cleanCharName, cleanPetName, revOf, hasItems, withoutItems,
 } from './validate.js';
 import { db, initEconStore, markDirty, commit, flushEcon, ledger, stopEcon } from './econStore.js';
 
@@ -390,6 +390,23 @@ export function beforeSave(room, client, p, m, prev) {
       }
     }
     if (stripped.length) suspicious(room, client, p, 'dupe', { stripped });
+  }
+  // craft-material consistency at the authority boundary: progress.ext.mats is
+  // client-simulated (gathering/crafting run on the client), so the upload may
+  // only carry known catalogue ids within the stack cap. Unknown ids and
+  // non-counts are dropped, over-cap stacks are clamped. Gain-bounding vs the
+  // server copy lives in validateSave, which runs next and reports it; this
+  // strip keeps junk from ever reaching the server copy, mirroring the
+  // econOut strip above. Decreases (craft consumption) always pass through.
+  const upMats = m.progress?.ext?.mats;
+  if (upMats && typeof upMats === 'object' && !Array.isArray(upMats)) {
+    const badMats = [];
+    for (const [id, v] of Object.entries(upMats)) {
+      const n = Math.floor(Number(v));
+      if (!isMatId(id) || !Number.isFinite(n) || n <= 0) { delete upMats[id]; badMats.push(String(id).slice(0, 32)); }
+      else if (n > CAPS.matStack) { upMats[id] = CAPS.matStack; badMats.push(`${String(id).slice(0, 32)}>${n}`); }
+    }
+    if (badMats.length) suspicious(room, client, p, 'bad-mats', { stripped: badMats.slice(0, 8) });
   }
   return true;
 }

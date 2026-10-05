@@ -43,6 +43,10 @@ let petDuel = null;
 try { petDuel = await import('./petDuel.js'); } catch (e) {
   if (e?.code !== 'ERR_MODULE_NOT_FOUND') log.error('petDuel.js failed to load', { err: e.message });
 }
+let arena = null;
+try { arena = await import('./arena.js'); } catch (e) {
+  if (e?.code !== 'ERR_MODULE_NOT_FOUND') log.error('arena.js failed to load', { err: e.message });
+}
 let dungeonMatch = null;
 try { dungeonMatch = await import('./dungeonMatch.js'); } catch (e) {
   if (e?.code !== 'ERR_MODULE_NOT_FOUND') log.error('dungeonMatch.js failed to load', { err: e.message });
@@ -76,6 +80,9 @@ if (referrals) {
 }
 if (petDuel) {
   try { addRoomModule(petDuel); log.info('pet duel module loaded'); } catch (e) { log.error('pet duel init failed', { err: e.message }); petDuel = null; }
+}
+if (arena) {
+  try { addRoomModule(arena); log.info('arena module loaded'); } catch (e) { log.error('arena init failed', { err: e.message }); arena = null; }
 }
 if (dungeonMatch) {
   try { dungeonMatch.init?.(); addRoomModule(dungeonMatch); log.info('dungeon match module loaded'); } catch (e) { log.error('dungeon match init failed', { err: e.message }); dungeonMatch = null; }

@@ -1,5 +1,5 @@
 // Quest system v2: data-driven (data/quests.js), up to 8 active quests, chains
-// via prerequisites, 9 objective types, NPC '!' / '?' markers, turn-in dialogue
+// via prerequisites, 12 objective types, NPC '!' / '?' markers, turn-in dialogue
 // with reward choices, notice-board bounties, HUD tracker text, journal hooks.
 // WorldScene owns one instance (`scene.quests`). Persistent state lives in
 // scene.meta.quests ({active, done, tracked, bounty}) and is saved with the hero.
@@ -36,6 +36,9 @@ export function objText(o) {
     case 'use': return `Use ${matById(o.id)?.name || o.id}`;
     case 'interact': return `Find ${INTERACT_NAMES[o.id] || o.id}`;
     case 'craft': return `Craft ${matById(o.id)?.name || o.id}`;
+    case 'skill': return `Cast ${o.id}`;
+    case 'daily': return `Claim daily reward${o.n > 1 ? ` x${o.n}` : ''}`;
+    case 'pethatch': return `Hatch a pet${o.id ? ` (${o.id})` : ''}`;
     default: return o.t;
   }
 }
@@ -70,6 +73,9 @@ export class QuestSystem {
     this.offs = [
       bus.on(Events.LEVEL_UP, () => this.refresh()),
       bus.on(Events.ZONE, () => this.checkLoreAndExplore()),
+      bus.on(Events.SKILL_CAST, (e) => { if (e?.id) this.onSkill(e.id); }),
+      bus.on(Events.DAILY_REWARD, (e) => { if (e?.claimed) this.onDaily(); }),
+      bus.on(Events.PET_HATCH, (e) => this.onPetHatch(e?.id)),
     ];
   }
 
@@ -246,6 +252,28 @@ export class QuestSystem {
   onKill(typeId) { this._bump('kill', typeId, 1); }
   onUse(id) { this._bump('use', id, 1); }
   onCraft(id, n = 1) { this._bump('craft', id, n); }
+  onSkill(id, n = 1) { this._bump('skill', id, n); }
+  onDaily(n = 1) { this._bumpType('daily', n); }
+  onPetHatch(id) { if (id) this._bump('pethatch', id, 1); this._bumpType('pethatch', 1, true); }
+  // Credit objectives of a type regardless of id (for id-less beats like daily
+  // claim; for pethatch, onlyIdless=true credits just generic {t:'pethatch'} steps
+  // so a single hatch never double-counts a quest mixing generic + specific steps).
+  _bumpType(type, n = 1, onlyIdless = false) {
+    let any = false;
+    for (const qid of this.activeIds()) {
+      const q = this.def(qid), st = this.s.active[qid];
+      q.obj.forEach((o, i) => {
+        if (o.t !== type) return;
+        if (onlyIdless && o.id) return;
+        const before = this.prog(qid, i).done;
+        st.p[i] = Math.min(needOf(o), (st.p[i] || 0) + n);
+        any = true;
+        this.notifyObj(qid, i, before);
+      });
+    }
+    if (any) this.changed();
+    return any;
+  }
   onInteract(id) { return this._bump('interact', id, 1); }
   // collected-items progress is live; just detect completion transitions.
   onPack(silent) {
@@ -271,7 +299,7 @@ export class QuestSystem {
         bus.emit(Events.SYSTEM, `${q.name}: ready to turn in to ${this.turnNpc(q)}.`);
         bus.emit(Events.TOAST, { title: 'Ready to turn in', text: `${q.name} -> ${this.turnNpc(q)}`, color: '#9be88a' });
       }
-    } else if (!pr.done && q.obj[i].n > 1 && ['kill', 'use', 'craft'].includes(q.obj[i].t)) {
+    } else if (!pr.done && q.obj[i].n > 1 && ['kill', 'use', 'craft', 'skill'].includes(q.obj[i].t)) {
       this.scene.damageNumber?.(this.p.x, this.p.y - 18, `${objText(q.obj[i]).split(' ').slice(-2).join(' ')} ${pr.cur}/${pr.need}`, '#ffd84a');
     }
   }

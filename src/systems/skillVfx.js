@@ -211,7 +211,10 @@ export function hitSpark(scene, x, y, crit = false) {
   else if (el === 'ice') burst(scene, x, y, { n: 3, key: 'vfx.star', speed: [20, 60], life: [300, 450], color: 0xdff6ff, size: [0.6, 0.9] });
   else if (el === 'thunder') streak(scene, x + 6, y - 8, -0.9, 18, { color: 0xffffff, dur: 100 });
   else if (el === 'nature') burst(scene, x, y, { n: 3, key: 'vfx.leaf', speed: [20, 60], life: [350, 550], color: 0x8fe070, size: [0.8, 1.1], g: 60, blend: 0, rot: 400 });
-  if (crit) ring(scene, x, y + 5, { r: 21, from: 0.35, color: 0xffe57a, dur: 220, a: 0.8 });
+  if (crit) {
+    ring(scene, x, y + 5, { r: 21, from: 0.35, color: 0xffe57a, dur: 220, a: 0.8 });
+    critImpactFx(scene, x, y, 0);
+  }
 }
 
 // Small, reusable feedback for an evasive roll. It deliberately uses the shared
@@ -503,6 +506,8 @@ const SK = {
     decal(scene, p.x, p.y + 2, { r: R * 0.8, color: 0xffd860, blend: ADD, a: 0.35, ms: 1200 });
     burst(scene, p.x, p.y - 6, { n: 22, speed: [50, 140], life: [500, 900], color: [0xffe880, 0xffffff, 0xffb040], size: [0.7, 1.3] });
     flashScreen(scene, 0xfff2c0, 0.22, 220); shakeScreen(scene, 120, 0.003);
+    holyRadianceVfx(scene, p.x, p.y);
+    groundRuneVfx(scene, p.x, p.y, 'holy', 78, 600);
   },
   // — Hunter —
   pierce(scene, p, a) {
@@ -560,6 +565,7 @@ const SK = {
     anim(scene, p.x, p.y - 6, 'fx.plant', { scale: 3, alpha: 0.75 });
     burst(scene, p.x, p.y - 4, { n: 14, key: 'vfx.leaf', blend: 0, color: [0x7fe06a, 0x3fa050], speed: [40, 100], life: [500, 800], g: 50, rot: 400 });
     shakeScreen(scene, 90, 0.002);
+    poisonBloomVfx(scene, p.x, p.y);
   },
   wildmend(scene, p, a, c) {
     setEl(scene, 'nature');
@@ -581,6 +587,7 @@ const SK = {
     // telegraph, then a fireball drops from the sky and detonates (skillFx delays damage to match)
     decal(scene, x, y + 2, { r: R, color: 0xff3010, blend: ADD, a: 0.3, ms: 500, hold: 200 });
     ring(scene, x, y + 2, { r: R, from: 1, color: 0xff6a20, dur: 280, ease: 'quad.in', a: 0.8 });
+    groundRuneVfx(scene, x, y, 'fire', 72, 700);
     const m = grab(scene, 'vfx.disc');
     const f = scene.add.sprite(x + 50, y - 150, 'proj.fireball', 0).setDepth(2900).setScale(3.2).setRotation(Math.PI * 0.75);
     if (scene.anims.exists('proj.fireball')) f.play('proj.fireball');
@@ -594,6 +601,7 @@ const SK = {
       onComplete: () => {
         f.destroy(); m && release(scene, m);
         anim(scene, x, y - 10, 'fx.explosion', { scale: Math.min(2, R / 34) });
+        earthShatterVfx(scene, x, y);
         anim(scene, x, y - 6, 'fx.flam', { scale: R / 28 });
         sweepRing(scene, x, y, R, 0xff7a20, 480);
         glow(scene, x, y - 6, { r: R, color: 0xffb060, dur: 300, a: 0.9 });
@@ -937,4 +945,94 @@ export function bossIntro(scene, boss) {
     scene.tweens.add({ targets: off, x: 0, y: 0, duration: 600, ease: 'sine.inout', onUpdate: () => cam.setFollowOffset(off.x, off.y), onComplete: () => cam.setFollowOffset(0, 0) });
     cam.zoomTo(z0, 600, 'Sine.easeInOut');
   });
+}
+
+// ── Custom Skill & Combat Effects ───────────────────────────────────────────
+export function critImpactFx(scene, x, y, angle) {
+  const c = 0xffe57a;
+  burst(scene, x, y, { n: 8, key: 'vfx.streak', color: [c, 0xffffff], speed: [60, 150], angle: angle, spread: 0.8, life: [200, 400], len: 1.2 });
+  anim(scene, x, y, 'fx.spark', { scale: 1.5, tint: c, blend: ADD });
+  ring(scene, x, y, { r: 25, from: 0.4, color: c, dur: 250, a: 0.9 });
+  flashScreen(scene, c, 0.1, 100);
+}
+
+export function dashGhostTrail(scene, entity) {
+  if (calm()) return;
+  trail(scene, entity, 300, 0xa8d8ff, 40);
+}
+
+export function frostNovaVfx(scene, x, y) {
+  setEl(scene, 'ice');
+  anim(scene, x, y - 8, 'fx.frostNova', { scale: 1.5, blend: ADD });
+  sweepRing(scene, x, y, 60, 0x9fe0ff, 400);
+  burst(scene, x, y - 8, { n: 12, key: 'vfx.star', color: [0xbfe8ff, 0xffffff], speed: [40, 100], up: 20, g: 80, life: [400, 700], size: [0.8, 1.2] });
+}
+
+export function thunderStrikeVfx(scene, x, y) {
+  setEl(scene, 'thunder');
+  anim(scene, x, y - 16, 'fx.thunderStrike', { scale: 1.5, blend: ADD });
+  burst(scene, x, y - 4, { n: 8, key: 'vfx.streak', color: [0xffee55, 0xffffff], speed: [50, 120], up: 60, g: 0, life: [200, 400], len: 1.2 });
+  glow(scene, x, y - 4, { r: 40, color: 0xffee55, dur: 200, a: 0.8 });
+  shakeScreen(scene, 100, 0.003);
+}
+
+export function shadowVortexVfx(scene, x, y) {
+  setEl(scene, 'shadow');
+  anim(scene, x, y - 8, 'fx.shadowVortex', { scale: 1.8, blend: ADD, alpha: 0.85 });
+  sweepRing(scene, x, y, 50, 0xb27aff, 500);
+  burst(scene, x, y - 8, { n: 10, key: 'vfx.dot', color: [0xb27aff, 0x3a2a58], speed: [20, 60], g: -20, life: [500, 800], size: [0.6, 1.1] });
+}
+
+export function holyRadianceVfx(scene, x, y) {
+  setEl(scene, 'holy');
+  anim(scene, x, y - 10, 'fx.holyRadiance', { scale: 1.6, blend: ADD });
+  pillar(scene, x, y, 0xfff0a0, 80, 20, 600, 0.8);
+  healCrosses(scene, x, y - 8, 0xfff0a0, 5, 12);
+}
+
+export function poisonBloomVfx(scene, x, y) {
+  setEl(scene, 'nature');
+  anim(scene, x, y - 6, 'fx.poisonBloom', { scale: 1.4, alpha: 0.9 });
+  decal(scene, x, y + 2, { r: 35, color: 0x3a9a20, a: 0.4, ms: 1200 });
+  burst(scene, x, y - 4, { n: 8, key: 'vfx.bubble', color: [0x7fe06a, 0x3a9a20], speed: [15, 40], up: 30, g: -10, life: [400, 800], size: [0.3, 0.6] });
+}
+
+export function groundRuneVfx(scene, x, y, element, radius, duration) {
+  const c = ELEMENT[element] || 0xffffff;
+  const r = radius;
+  const im = grab(scene, 'vfx.ring');
+  if (im) {
+    im.setPosition(x, y + 2).setTint(c).setBlendMode(ADD).setDepth(3).setAlpha(0).setScale(r * 2 / 64, r * 2 / 64 * 0.62);
+    scene.tweens.add({
+      targets: im, alpha: 0.7, rotation: Math.PI * 2, duration: duration, ease: 'sine.out',
+      onComplete: () => release(scene, im)
+    });
+  }
+  glow(scene, x, y + 2, { r: radius * 0.9, color: c, dur: duration, a: 0.5 });
+  burst(scene, x, y, { n: 12, key: 'vfx.star', color: c, speed: [10, 30], up: 40, g: -15, life: [duration * 0.6, duration * 1.2], size: [0.6, 1.0], blend: ADD });
+}
+
+export function whirlwindVfx(scene, x, y) {
+  setEl(scene, 'phys');
+  anim(scene, x, y - 8, 'fx.whirlwind', { scale: 1.5, blend: ADD });
+}
+
+export function earthShatterVfx(scene, x, y) {
+  setEl(scene, 'phys');
+  anim(scene, x, y - 4, 'fx.earthShatter', { scale: 1.6 });
+}
+
+export function arcaneBeamVfx(scene, x, y) {
+  setEl(scene, 'shadow');
+  anim(scene, x, y - 16, 'fx.arcaneBeam', { scale: 1.4, blend: ADD });
+}
+
+export function voidCleaveVfx(scene, x, y) {
+  setEl(scene, 'shadow');
+  anim(scene, x, y - 8, 'fx.voidCleave', { scale: 1.5, blend: ADD });
+}
+
+export function healingBloomVfx(scene, x, y) {
+  setEl(scene, 'holy');
+  anim(scene, x, y - 8, 'fx.healingBloom', { scale: 1.5, blend: ADD });
 }

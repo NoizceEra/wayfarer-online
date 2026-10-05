@@ -18,6 +18,11 @@ export const CAPS = {
   levelPerSec: 1 / 20,
   // generous starting/earned gold cap per save (no per-second compounding)
   goldBase: 1500, goldPerSec: 0,
+  // craft-material stack cap (client PACK_CAP, src/data/materials.js) and the
+  // per-save gain allowance vs the previous server copy (see validateSave).
+  // Gathering is client-simulated, so the allowance is a rate bound + anomaly
+  // signal, not a proof of legitimate gathering.
+  matStack: 99, matGainBase: 30, matGainPerSec: 0.5,
 };
 
 export function sanitizeProgress(p) {
@@ -96,6 +101,36 @@ export function validateSave(prev, progress, now = Date.now()) {
   const invBefore = p.inventory.length;
   p.inventory = p.inventory.filter(isGearId);
   if (p.inventory.length !== invBefore) clamped.push(`inventory ${invBefore}->${p.inventory.length} non-gear removed`);
+  // craft materials (progress.ext.mats, {id: count}): the client simulates
+  // gathering, so the save path cannot prove a gain. It enforces what it can:
+  // known catalogue ids only, per-stack caps, an empty bag on first save, and
+  // a generous per-save gain allowance vs the previous server copy. Decreases
+  // (craft consumption, consumable use) are always accepted; increases beyond
+  // the allowance are clamped and reported like level/gold.
+  if (!p.ext || typeof p.ext !== 'object') p.ext = {};
+  const rawMats = p.ext.mats && typeof p.ext.mats === 'object' && !Array.isArray(p.ext.mats) ? p.ext.mats : {};
+  const prevMats = pp?.ext && typeof pp.ext === 'object' && pp.ext.mats && typeof pp.ext.mats === 'object' && !Array.isArray(pp.ext.mats) ? pp.ext.mats : {};
+  if (Object.keys(rawMats).length > MAT_IDS.length) clamped.push(`mat-keys ${Object.keys(rawMats).length}>${MAT_IDS.length}`);
+  let mats = {};
+  for (const [id, v] of Object.entries(rawMats).slice(0, MAT_IDS.length)) {
+    if (!isMatId(id)) { clamped.push(`mat-id ${String(id).slice(0, 32)}`); continue; }
+    const n = Math.floor(Number(v));
+    if (!Number.isFinite(n) || n <= 0) continue;
+    if (n > CAPS.matStack) clamped.push(`mat-stack ${id} ${n}>${CAPS.matStack}`);
+    mats[id] = Math.min(CAPS.matStack, n);
+  }
+  if (pp) {
+    const mdt = Math.max(0, (now - (prev.savedAt || now)) / 1000);
+    for (const [id, n] of Object.entries(mats)) {
+      const had = Math.max(0, Math.floor(Number(prevMats[id])) || 0);
+      const maxMat = had + CAPS.matGainBase + Math.floor(mdt * CAPS.matGainPerSec);
+      if (n > maxMat) { clamped.push(`mat-gain ${id} ${n}>${maxMat}`); if (maxMat <= 0) delete mats[id]; else mats[id] = maxMat; }
+    }
+  } else if (Object.keys(mats).length) {
+    clamped.push(`first-mats ${Object.keys(mats).length} types cleared`);
+    mats = {};
+  }
+  p.ext.mats = mats;
   return { rec: p, clamped };
 }
 
@@ -111,6 +146,16 @@ try {
   ITEM_DB = JSON.parse(fs.readFileSync(file, 'utf8'));
 } catch (e) { console.error(`item_ids.json missing or invalid (${e.message}): economy rejects every item`); }
 export const GEAR_META = ITEM_DB.gear || {};
+// Craft-material catalogue: item_ids.json carries mats as an array of ids
+// (unlike gear, which is an id->meta map). Uploaded progress.ext.mats is
+// filtered by it: unknown ids are dropped (they were never gatherable) and
+// counts are capped at the client stack cap. Trade-off vs gear (which saves
+// deliberately do NOT filter): a stale whitelist could strip a real mat id,
+// but mats are re-gatherable consumables, while unfiltered mats are an
+// unbounded mint vector. Known ids are always kept.
+const MAT_IDS = Array.isArray(ITEM_DB.mats) ? ITEM_DB.mats : [];
+const MAT_SET = new Set(MAT_IDS);
+export const isMatId = (id) => typeof id === 'string' && MAT_SET.has(id);
 
 export const ECON = {
   BAG_SIZE: 30,              // client BAG_SIZE (src/core/save.js)

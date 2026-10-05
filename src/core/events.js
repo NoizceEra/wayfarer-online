@@ -44,6 +44,8 @@ export const Events = {
   WORLDBOSS_SPAWN: 'worldboss-spawn', // {area, x, y, name, expiresAt, hp, maxHp} server-authoritative world boss
   WORLDBOSS_SLAIN: 'worldboss-slain', // {name, killerName, contributors:[{name, damage}]}
   PET_DUEL_START: 'pet-duel-start',   // {a, b, aName, bName, aTeam, bTeam, seed, round, mySide}
+  SKILL_CAST: 'skill-cast',       // {id} emitted by WorldScene.cast() on every successful player skill cast
+  PET_HATCH: 'pet-hatch',         // {id} a pet hatch/capture completed (petEncounter capture success)
 };
 
 export class Bus {

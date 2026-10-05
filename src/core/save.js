@@ -2,6 +2,7 @@ import { ADVANCED } from '../data/jobs.js';
 import { STAT_IDS, MAX_STAT, SKILL_MAX, CLASS_CHANGE_LEVEL, emptyAlloc, retroProg } from '../data/stats.js';
 import { gearById, SLOTS } from '../data/gear.js';
 import { matById } from '../data/materials.js';
+import { normalizeHousing } from '../data/housing.js';
 
 const PROFILE_KEY = 'wayfarer.profile.v1';
 const HERO_KEY = 'wayfarer.hero.v1';
@@ -134,6 +135,7 @@ export function normalizeExtras(raw) {
       })) : [],
       seen: flagMap(r.pets.seen),
     } : { unlocked: false, active: 0, roster: [], seen: {} },
+    housing: normalizeHousing(r.housing),
     quests: q ? {
       active: isObj(q.active) ? q.active : {},
       done: flagMap(q.done),

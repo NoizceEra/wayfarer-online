@@ -244,6 +244,7 @@ export class PetEncounterSystem {
       pets.unlocked = true;
       if (pet) pets.roster.push(pet);
       s.saveNow();
+      bus.emit(Events.PET_HATCH, { id: w.petId });
       bus.emit(Events.SYSTEM, `Captured ${w.name}! ${PETS[w.petId]?.name || w.petId} joins your roster.`);
       bus.emit(Events.TOAST, { title: 'Pet captured!', text: `${PETS[w.petId]?.name || w.petId} Lv${level}`, color: '#9fd8ff' });
       this._absorbWisp(w);

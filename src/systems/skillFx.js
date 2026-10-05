@@ -3,7 +3,7 @@ import { Enemy } from '../entities/Enemy.js';
 import { bus, Events } from '../core/events.js';
 import { audio } from './audio.js';
 import { skillDmgMul } from '../data/stats.js';
-import { hasVfx, impactAt, SKILL_DELAY, ELEMENT_OF } from './skillVfx.js';
+import { hasVfx, impactAt, SKILL_DELAY, ELEMENT_OF, dashGhostTrail } from './skillVfx.js';
 
 // Data-driven skill effects for abilities that carry an `fx` block (jobs.js).
 // Returns true if the ability was handled (WorldScene.cast then returns).
@@ -75,6 +75,7 @@ export function castFx(scene, ab, lv, setCd) {
     audio.play('dash');
     const a = scene.facingAngle();
     if (!hasVfx(ab.id)) scene.spawnFx(p.x, p.y - 8, 'fx.dust', 1.4);
+    dashGhostTrail(scene, p);
     p.attackPose();
     const steps = 4;
     for (let i = 1; i <= steps; i++) {

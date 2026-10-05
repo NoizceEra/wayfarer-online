@@ -1,4 +1,6 @@
 import { socialRoot, el, escapeHtml } from './socialDom.js';
+import { attachPanelBehavior, labelTabs } from './hudPolish.js';
+import { input } from '../core/input.js';
 import { gearById, RARITY, SLOT_LABEL, statLine } from '../data/gear.js';
 import { iconKey } from '../systems/gearArt.js';
 
@@ -40,7 +42,8 @@ export function chip(id, onClick, { small = false, badge = '' } = {}) {
 export function panel(cls, title, onClose) {
   const root = socialRoot(); injectCss();
   const p = el('div', `wf-panel ec-panel ${cls}`); p.style.display = 'none';
-  const titleId = `wf-panel-title-${nextPanelId++}`;
+  const pid = nextPanelId++;
+  const titleId = `wf-panel-title-${pid}`;
   p.setAttribute('role', 'dialog'); p.setAttribute('aria-labelledby', titleId); p.setAttribute('tabindex', '-1');
   const t = el('div', 'wf-title', `<span id="${titleId}" role="heading" aria-level="2">${title}</span>`);
   const x = el('button', 'wf-ghost wf-x', '✕'); x.setAttribute('aria-label', `Close ${title}`); x.addEventListener('click', onClose);
@@ -49,14 +52,28 @@ export function panel(cls, title, onClose) {
   // keep clicks/keys inside the panel from reaching the game
   p.addEventListener('pointerdown', (e) => e.stopPropagation());
   root.appendChild(p);
-  return { p, title: t.querySelector('span') };
+  // Escape closes the open panel via the input-manager closer stack (falls
+  // back to a local keydown listener when the manager is absent); the ✕
+  // button above stays the explicit close. No-op when onClose is missing.
+  const detachCloser = attachPanelBehavior({
+    panelEl: p,
+    onClose,
+    inputManager: input,
+    closerId: `econ-panel-${pid}`,
+  });
+  return { p, title: t.querySelector('span'), detachCloser };
 }
 
 export function tabs(defs, onPick) {
   const bar = el('div', 'wf-tabs');
+  bar.setAttribute('role', 'tablist');
   const btns = {};
   for (const [id, label] of defs) { const b = el('button', '', label); b.addEventListener('click', () => onPick(id)); bar.appendChild(b); btns[id] = b; }
-  return { bar, set: (id) => { for (const [k, b] of Object.entries(btns)) b.classList.toggle('wf-on', k === id); }, btns };
+  // Accessible names + selected state now, and again on every set() so
+  // screen readers track the active tab (Mail/Market panels call set() per render).
+  labelTabs(bar, defs.map(([, label]) => label));
+  const syncAria = () => { for (const b of Object.values(btns)) b.setAttribute('aria-selected', b.classList.contains('wf-on') ? 'true' : 'false'); };
+  return { bar, set: (id) => { for (const [k, b] of Object.entries(btns)) b.classList.toggle('wf-on', k === id); syncAria(); }, btns };
 }
 
 export const fmtLeft = (ms) => {

@@ -470,6 +470,7 @@ export class WorldScene extends Phaser.Scene {
     const cd = this.player.cooldowns[ab.id] || 0;
     if (this.time.now < cd) { audio.play('error', 0.7); return; }
     const setCd = () => { this.player.cooldowns[ab.id] = this.time.now + this.player.skillCd(ab) * 1000; bus.emit(Events.PLAYER_HP, this.hpPayload()); castVfx(this, ab, lv); };
+    bus.emit(Events.SKILL_CAST, { id: ab.id });
     if (castFx(this, ab, lv, setCd)) return;
     if (ab.id === 'camp') {
       setCd();

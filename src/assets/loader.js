@@ -93,6 +93,18 @@ const FX = [
   ['fx.spirit', 'FX/Magic/Spirit/SpriteSheet.png', 32, 32, 14],
   ['fx.shieldYellow', 'FX/Magic/Shield/SpriteSheetYellow.png', 24, 26, 16],
 ];
+const CUSTOM_FX = [
+  ['fx.frostNova', 'assets/custom/fx/frost_nova.png', 48, 48, 18],
+  ['fx.thunderStrike', 'assets/custom/fx/thunder_strike.png', 32, 48, 20],
+  ['fx.shadowVortex', 'assets/custom/fx/shadow_vortex.png', 40, 40, 16],
+  ['fx.holyRadiance', 'assets/custom/fx/holy_radiance.png', 48, 48, 18],
+  ['fx.poisonBloom', 'assets/custom/fx/poison_bloom.png', 32, 32, 16],
+  ['fx.whirlwind', 'assets/custom/fx/whirlwind_slash.png', 48, 48, 20],
+  ['fx.earthShatter', 'assets/custom/fx/earth_shatter.png', 48, 48, 18],
+  ['fx.arcaneBeam', 'assets/custom/fx/arcane_beam.png', 32, 64, 18],
+  ['fx.voidCleave', 'assets/custom/fx/void_cleave.png', 40, 40, 18],
+  ['fx.healingBloom', 'assets/custom/fx/healing_bloom.png', 32, 32, 16],
+];
 const PROJ_SHEETS = [
   ['proj.energyBall', 'FX/Projectile/EnergyBall.png', 16, 16, 12],
   ['proj.fireball', 'FX/Projectile/Fireball.png', 16, 16, 12],
@@ -174,6 +186,7 @@ export function preloadWorld(scene) {
     L.spritesheet(`mon.${name}`, path, { frameWidth: 16, frameHeight: 16 });
   }
   for (const [key, path, fw, fh] of FX) L.spritesheet(key, `${NA}/${path}`, { frameWidth: fw, frameHeight: fh });
+  for (const [key, path, fw, fh] of CUSTOM_FX) L.spritesheet(key, path, { frameWidth: fw, frameHeight: fh });
   for (const [key, path, fw, fh] of PROJ_SHEETS) L.spritesheet(key, `${NA}/${path}`, { frameWidth: fw, frameHeight: fh });
   for (const [key, path] of PROJ_IMAGES) L.image(key, `${NA}/${path}`);
   for (const [key, path] of WEAPONS) L.image(key, `${NA}/${path}`);
@@ -246,6 +259,9 @@ export function createAnims(scene) {
     });
   }
   for (const [key, , , , fps, loop] of FX) {
+    makeAnim(scene, { key, frames: A.generateFrameNumbers(key), frameRate: fps, repeat: loop ? -1 : 0 });
+  }
+  for (const [key, , , , fps, loop] of CUSTOM_FX) {
     makeAnim(scene, { key, frames: A.generateFrameNumbers(key), frameRate: fps, repeat: loop ? -1 : 0 });
   }
   for (const [key, , , , fps] of PROJ_SHEETS) {
