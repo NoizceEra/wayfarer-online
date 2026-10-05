@@ -5,7 +5,7 @@ import { audio } from './audio.js';
 import { net } from '../net/NetworkManager.js';
 import { input } from '../core/input.js';
 import { StatusSet } from './status.js';
-import { STATUS, RANKS, heroDmgMul, mobDmgMul, heroMissChance, xpMul } from '../data/combatMath.js';
+import { STATUS, RANKS, heroDmgMul, mobDmgMul, mobHitDamage, heroMissChance, xpMul } from '../data/combatMath.js';
 import { gearById, rollGearDrop, RARITY } from '../data/gear.js';
 import { rollDefDrop, rollItemDrops } from '../data/worldEnemies.js';
 import { WAYSTONES } from '../data/zones.js';
@@ -298,8 +298,7 @@ export class Combat {
       return;
     }
     if (p.tryDodge()) return; // FLEE-based dodge (shows Miss)
-    const raw = ed.hitDmg * mobDmgMul(p.level, ed.level);
-    const n = Math.max(1, Math.round(raw - p.effDef() * 0.5));
+    const n = mobHitDamage(ed.hitDmg, p.level, ed.level, p.effDef());
     if (this.hitPlayer(n, ed)) {
       const inf = ed.def.inflict;
       if (inf && Math.random() < inf.chance) this.applyPlayerStatus(inf.id, ed.atk);

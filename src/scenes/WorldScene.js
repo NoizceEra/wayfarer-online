@@ -39,6 +39,8 @@ import { addMat } from '../systems/pack.js';
 import { rollMatDrops } from '../data/materials.js';
 import { NPC_SPOTS } from '../data/quests.js';
 import { spawnPetMaster, onPetMasterTalk } from '../world/petMaster.js';
+import { potionHeal, potionPrice } from '../systems/economy.js';
+import { installFirstTimeSafeguards } from '../systems/firstTimeSafeguards.js';
 import { OnboardingSystem } from '../systems/onboarding.js';
 import { PetEncounterSystem } from '../systems/petEncounter.js';
 import { installReviveSystem } from '../systems/reviveSystem.js';
@@ -190,6 +192,7 @@ export class WorldScene extends Phaser.Scene {
     this.combat = new Combat(this);
 
     this.onboarding = new OnboardingSystem(this);
+    this._offSafeguards = installFirstTimeSafeguards(this); // autosave pip, first-time tips, /stuck, /tutorial
     this.petEncounter = new PetEncounterSystem(this);
     installReviveSystem(this);
 
@@ -216,6 +219,7 @@ export class WorldScene extends Phaser.Scene {
       if (this._worldBossToast) { this._worldBossToast.destroy(); this._worldBossToast = null; }
       if (this._offWorldBoss) { this._offWorldBoss(); this._offWorldBoss = null; }
       this.onboarding?.destroy();
+      this._offSafeguards?.();
       this.petEncounter?.destroy();
       this.scene.stop('overlay');
     });
@@ -587,16 +591,17 @@ export class WorldScene extends Phaser.Scene {
   }
 
   drinkPotion() {
+    const price = potionPrice(this.player.level), heal = potionHeal(this.player.effMaxHp());
     if (this.player.potions <= 0) {
-      if (this.player.gold >= 3) { this.player.gold -= 3; this.player.potions += 1; bus.emit(Events.SYSTEM, 'Bought a potion from Maren (3g).'); }
-      else { bus.emit(Events.SYSTEM, 'No potions! Earn gold from monsters.'); audio.play('error', 0.7); return; }
+      if (this.player.gold >= price) { this.player.gold -= price; this.player.potions += 1; bus.emit(Events.SYSTEM, `Bought a potion from Maren (${price}g).`); }
+      else { bus.emit(Events.SYSTEM, `No potions! Maren sells them for ${price}g: earn gold from monsters.`); audio.play('error', 0.7); return; }
     }
     if (this.player.hp >= this.player.effMaxHp()) { bus.emit(Events.SYSTEM, 'HP already full.'); return; }
     this.player.potions -= 1;
-    this.player.heal(45);
+    this.player.heal(heal);
     audio.play('potion');
     this.spawnFx(this.player.x, this.player.y - 10, 'fx.spark', 1.2);
-    this.damageNumber(this.player.x, this.player.y, '+45', '#2ecc71');
+    this.damageNumber(this.player.x, this.player.y, `+${heal}`, '#2ecc71');
     bus.emit(Events.PLAYER_HP, this.hpPayload());
   }
 

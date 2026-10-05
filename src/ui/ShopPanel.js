@@ -5,14 +5,14 @@ import { bus, Events } from '../core/events.js';
 import { matById, KINDS } from '../data/materials.js';
 import { matIconKey } from '../systems/matArt.js';
 import { addMat, takeMat, packList } from '../systems/pack.js';
-import { shopStock, MAT_STOCK, restockIn, pushBuyback, buybackCost, matSellValue } from '../systems/economy.js';
+import { shopStock, MAT_STOCK, restockIn, pushBuyback, buybackCost, matSellValue, potionHeal, potionPrice } from '../systems/economy.js';
 import { GOLD, label, box, addIcon, itemLines, Tip } from './gearUI.js';
 
 // Market-stall shop: BUY (rotating stall stock + potions + materials), GEAR
 // (sell your bag at 40%), MATS (sell gathered materials / junk) and BACK
 // (buy back what you sold, +25%). Click a row to inspect, double-click or use
 // the button to trade. Stock rotates every 10 minutes.
-const POTION = { id: '__potion', name: 'Healing Potion', price: 3, desc: 'Restores 45 HP. Drink with Q.', special: true };
+const POTION = { id: '__potion', name: 'Healing Potion', special: true };
 const TABS = [['buy', 'BUY'], ['sell', 'GEAR'], ['mats', 'MATS'], ['back', 'BUYBACK']];
 
 export class ShopPanel {
@@ -48,7 +48,8 @@ export class ShopPanel {
   entries(p) {
     const meta = this.meta;
     if (this.tab === 'buy') {
-      const out = [{ key: POTION.id, kind: 'potion', name: POTION.name, sub: POTION.desc, price: POTION.price, desc: POTION.desc }];
+      const pDesc = `Restores ${potionHeal(p.effMaxHp())} HP. Drink with Q.`;
+      const out = [{ key: POTION.id, kind: 'potion', name: POTION.name, sub: pDesc, price: potionPrice(p.level), desc: pDesc }];
       for (const m of MAT_STOCK[this.shopId] || []) { const mm = matById(m.id); if (mm) out.push({ key: `m:${m.id}`, kind: 'mat', mat: mm, name: mm.name, sub: mm.desc, price: m.price, desc: mm.desc }); }
       for (const id of shopStock(this.shopId)) {
         const g = gearById(id);
@@ -68,7 +69,7 @@ export class ShopPanel {
     return (meta?.buyback || []).map((b, i) => {
       const g = b.kind === 'gear' ? gearById(b.id) : null, m = b.kind === 'mat' ? matById(b.id) : null;
       if (!g && !m) return null;
-      return { key: `b${i}`, kind: b.kind, item: g, mat: m, bb: b, bbIndex: i, name: (g || m).name + (b.n > 1 ? ` x${b.n}` : ''), price: buybackCost(b), sub: 'Sold earlier. Buy back for +25%.', desc: (g || m).desc };
+      return { key: `b${i}`, kind: b.kind, item: g, mat: m, bb: b, bbIndex: i, name: (g || m).name + (b.n > 1 ? ` x${b.n}` : ''), price: buybackCost(b), sub: 'Sold earlier. Undo within 60s at the sell price, then +25%.', desc: (g || m).desc };
     }).filter(Boolean);
   }
 
@@ -173,7 +174,8 @@ export class ShopPanel {
     }
     if (sel) {
       const ok = buying ? p.gold >= sel.price : true;
-      const verb = buying ? (this.tab === 'back' ? 'BUY BACK' : 'BUY') : 'SELL';
+      const armed = !buying && this.tab === 'sell' && this.sellArmed(sel.item);
+      const verb = buying ? (this.tab === 'back' ? 'BUY BACK' : 'BUY') : armed ? 'CONFIRM SELL' : 'SELL';
       const btn = label(s, ox + dw - 26, dy + (this.tab === 'mats' && (sel.n || 0) > 1 ? 28 : detH / 2), `${verb}  ${buying ? '' : '+'}${sel.price}g`, 11, ok ? '#fff6c8' : '#ffb0a0', { backgroundColor: ok ? '#35451c' : '#5a2a26', padding: { x: 12, y: 8 }, fontStyle: 'bold' }).setOrigin(1, 0.5).setInteractive({ useHandCursor: true });
       btn.on('pointerdown', () => this.trade(sel, 1));
       c.add(btn);
@@ -204,6 +206,8 @@ export class ShopPanel {
     this.hooks.changed(); this.build();
   }
 
+  sellArmed(item) { return !!item && !!this.sellArm && this.sellArm.id === item.id && Date.now() - this.sellArm.at < 5000; }
+
   trade(e, qty = 1) {
     const p = this.hooks.player(), w = this.world;
     if (!p || !w) return;
@@ -223,6 +227,15 @@ export class ShopPanel {
       const item = e.item;
       const i = p.inventory.indexOf(item.id);
       if (i < 0) return;
+      // Rare / epic gear needs a second click (arms for 5s): the classic "sold my best drop by mistake".
+      if ((item.rarity === 'rare' || item.rarity === 'epic') && !this.sellArmed(item)) {
+        this.sellArm = { id: item.id, at: Date.now() };
+        audio.play('error', 0.4);
+        this.hooks.say(`Sell ${item.name} (${item.rarity})? Click CONFIRM SELL within 5s. A sale can be undone for 60s in Buy back.`);
+        this.build();
+        return;
+      }
+      this.sellArm = null;
       p.inventory.splice(i, 1);
       p.gold += e.price;
       pushBuyback(meta, { kind: 'gear', id: item.id, n: 1, price: e.price });

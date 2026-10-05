@@ -53,7 +53,12 @@ export class OnboardingHint {
     this.scene.events.once('shutdown', () => this.destroy());
   }
 
+  // The hint lives in WorldScene, whose camera is zoomed (integer zoom 1-4).
+  // A scrollFactor-0 object is still scaled about the camera centre, so lay the
+  // card out in SCREEN pixels and counter-scale the container: screen = (o - c)*Z + c
+  // with o = c*(1 - 1/Z) puts container-local (0,0) on screen (0,0) at 1:1.
   layout() {
+    if (!this.active) return;
     // This card lives in the (zoomed) world camera but must sit on the HUD grid: convert the HUD slot
     // (logical px, UI zoom) to world-camera coordinates (zoom is about the viewport centre), and
     // counter-scale so it is 1x on screen.
@@ -114,7 +119,7 @@ export class OnboardingHint {
 
   showDone() {
     this.title.setText('Ready!');
-    this.sub.setText('Quests await at the notice board.');
+    this.sub.setText('Q potion  |  C stats  |  L journal  |  H all controls');
     this.skipBtn.setVisible(false);
     for (const d of this.dots) d.setFillStyle(GREEN, 1);
     this.layout();

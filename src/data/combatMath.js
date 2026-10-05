@@ -31,6 +31,14 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 export function heroDmgMul(playerLv, mobLv) { return clamp(1 - 0.06 * (mobLv - playerLv), 0.55, 1.3); }
 // Incoming mob damage vs the hero.
 export function mobDmgMul(playerLv, mobLv) { return clamp(1 + 0.08 * (mobLv - playerLv), 0.6, 1.6); }
+// DEF is proportional mitigation (flat `raw - DEF/2` made every normal mob deal 1 damage once a hero wore a
+// starter vest + cap, so potions, armour and the death penalty never mattered before the crypt).
+// mit = DEF / (DEF + 50 + 5 * Lv), capped at 60%: ~4% at Lv1 naked, ~20% Lv5 geared, ~25% Lv10, ~28% Lv20.
+export const MOB_DMG_SCALE = 1.7; // normal-mob contact / shot damage multiplier (bosses use hitPlayerFrom, unchanged)
+export function defMitigation(def, playerLv) { return clamp(def / (def + 50 + 5 * playerLv), 0, 0.6); }
+export function mobHitDamage(hitDmg, playerLv, mobLv, def) {
+  return Math.max(1, Math.round(hitDmg * MOB_DMG_SCALE * mobDmgMul(playerLv, mobLv) * (1 - defMitigation(def, playerLv))));
+}
 // Chance for the hero's hit to miss a higher-level mob.  Even-level fights
 // should feel reliable; the meaningful accuracy pressure starts once a foe
 // outlevels the hero, then caps before a red enemy becomes untouchable.

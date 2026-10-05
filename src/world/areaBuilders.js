@@ -3,6 +3,7 @@ import { CONFIG } from '../config.js';
 import { bus, Events } from '../core/events.js';
 import { audio } from '../systems/audio.js';
 import { SHOP_STOCK } from '../data/gear.js';
+import { potionPrice } from '../systems/economy.js';
 
 // One builder per AREAS[*].builder. Each receives ctx = { scene, mgr, def, b, o,
 // P (props), solid(x,y,w,h), wall(x,y,w,h), px(tx,ty) } and lays out ground,
@@ -100,7 +101,7 @@ function buildInn(ctx) {
       scene.uiLock = true;
       mgr.say('Hester (Innkeeper)', 'Welcome to the Sleepy Lantern! A bed and a hot bowl of stew, 10 gold, and you will wake good as new.', [
         { label: 'Rest (10g) - full HP/MP', cb: () => mgr.rest(10) },
-        { label: 'Buy potion (3g)', cb: () => { const p = scene.player; if (p.gold < 3) { audio.play('error', 0.7); bus.emit(Events.SYSTEM, 'Hester: Not enough gold, dear.'); } else { p.gold -= 3; p.potions += 1; audio.play('gold'); bus.emit(Events.PLAYER_HP, scene.hpPayload()); bus.emit(Events.SYSTEM, 'Bought a potion from Hester (3g).'); } } },
+        { label: `Buy potion (${potionPrice(scene.player.level)}g)`, cb: () => { const p = scene.player, pr = potionPrice(p.level); if (p.gold < pr) { audio.play('error', 0.7); bus.emit(Events.SYSTEM, 'Hester: Not enough gold, dear.'); } else { p.gold -= pr; p.potions += 1; audio.play('gold'); bus.emit(Events.PLAYER_HP, scene.hpPayload()); bus.emit(Events.SYSTEM, `Bought a potion from Hester (${pr}g).`); } } },
         { label: 'Leave', cb: () => {} },
       ]);
     },

@@ -10,7 +10,7 @@ import { SHORTCUT_Y } from '../ui/hudLayout.js';
 import { calmMotion } from '../ui/theme.js';
 import {
   STAT_IDS, STAT_INFO, MAX_LEVEL, MAX_STAT, SKILL_MAX, CLASS_CHANGE_LEVEL,
-  computeDerived, statCost, skillDmgMul, skillCdMul,
+  computeDerived, statCost, skillDmgMul, skillCdMul, recommendStage, recommendSkill, RECOMMENDED_WEIGHTS,
 } from '../data/stats.js';
 
 // RPG overlay: Character panel (C), Skills tab (K), level-up toast, HUD
@@ -318,11 +318,17 @@ export class CharacterScene extends Phaser.Scene {
     // buttons
     const by = ph / 2 - 24;
     const any = STAT_IDS.some((s) => this.stage[s] > 0);
-    this.putAll(this.btn(null, -62, by, 116, 24, 'APPLY', () => {
+    const rec = recommendStage(p.job.id, p.prog.adv, p.job.base, p.prog.alloc, p.prog.statPoints);
+    const canRec = STAT_IDS.some((s) => rec[s] > 0);
+    const wts = RECOMMENDED_WEIGHTS[p.prog.adv] || RECOMMENDED_WEIGHTS[p.job.id] || {};
+    const focus = Object.keys(wts).slice(0, 3).map((s) => STAT_INFO[s].name).join('/');
+    if (p.prog.statPoints > 0) this.put(this.add.text(0, by - 22, `Not sure? RECOMMENDED fills ${focus} for your class. Tweak it before APPLY if you like.`, T(8, '#c8e8a0', { align: 'center', wordWrap: { width: pw - 28 } })).setOrigin(0.5));
+    this.putAll(this.btn(null, -118, by, 108, 24, 'RECOMMENDED', () => { this.stage = rec; audio.play('ui', 0.5); this.render(); }, { enabled: canRec && !any, size: 8, color: 0x58a04a, hover: 0x7ac85e }));
+    this.putAll(this.btn(null, 0, by, 100, 24, 'APPLY', () => {
       if (p.applyStats(this.stage)) { this.stage = this.emptyStage(); audio.play('quest', 0.6); this.world().saveNow(); bus.emit(Events.PLAYER_HP, this.world().hpPayload()); }
       this.render();
     }, { enabled: any, size: 11 }));
-    this.putAll(this.btn(null, 62, by, 116, 24, 'RESET', () => { this.stage = this.emptyStage(); this.render(); }, { enabled: any, size: 11, color: 0xc0705a, hover: 0xe08a70 }));
+    this.putAll(this.btn(null, 118, by, 100, 24, 'RESET', () => { this.stage = this.emptyStage(); this.render(); }, { enabled: any, size: 11, color: 0xc0705a, hover: 0xe08a70 }));
   }
 
   renderSkills(p, pw, ph) {
@@ -332,6 +338,7 @@ export class CharacterScene extends Phaser.Scene {
     this.put(this.add.text(R - 14, y + 2, `Skills Lv 1-${SKILL_MAX}: +15% power, -6% cooldown`, T(8, '#8a7a5a')).setOrigin(1, 0));
     y += 20;
     const list = p.skillList();
+    const recId = p.prog.skillPoints > 0 ? recommendSkill(list.map((a) => a.id), (id) => p.skillLv(id), p.job.id) : null;
     const rh = this.small ? 54 : 52;
     const rowsToShow = [...list];
     rowsToShow.forEach((ab, i) => {
@@ -341,7 +348,7 @@ export class CharacterScene extends Phaser.Scene {
       this.put(this.add.rectangle(0, ry, pw - 20, rh, 0x000000, 0.3).setStrokeStyle(1, isAdv ? 0xf4c542 : 0x3a2a14));
       const icon = hudIconKey(ab.id) || ab.icon || this.iconFor(ab.id);
       if (icon && this.textures.exists(icon)) this.put(this.add.image(L + 36, ry, icon).setScale(2));
-      this.put(this.add.text(L + 62, ry - rh / 2 + 6, `[${ab.key}] ${ab.name}`, T(10, isAdv ? '#ffe07a' : '#fff8e0', { fontStyle: 'bold' })));
+      this.put(this.add.text(L + 62, ry - rh / 2 + 6, `[${ab.key}] ${ab.name}${ab.id === recId ? '  * RECOMMENDED' : ''}`, T(10, ab.id === recId ? '#9bf06b' : isAdv ? '#ffe07a' : '#fff8e0', { fontStyle: 'bold' })));
       this.put(this.add.text(L + 62, ry - rh / 2 + 20, ab.desc, T(8, '#b8c890', { wordWrap: { width: pw - 150 } })));
       const cdNow = ab.cd * skillCdMul(Math.max(1, lv));
       const eff = lv ? `Lv${lv}: power +${Math.round((skillDmgMul(lv) - 1) * 100)}%  cd ${cdNow.toFixed(1)}s` : 'Not learned';
