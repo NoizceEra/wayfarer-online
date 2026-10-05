@@ -1,17 +1,13 @@
 import Phaser from 'phaser';
 import { BootScene } from './scenes/BootScene.js';
 import { TitleScene } from './scenes/TitleScene.js';
-import { CreatorScene } from './scenes/CreatorScene.js';
-import GuildHallScene from './scenes/GuildHallScene.js';
-import HomeIslandScene from './scenes/HomeIslandScene.js';
-import { SKILL_TREES, ADV_TREE_GATES } from './data/skillTrees.js';
 import { input } from './core/input.js';
 import { installLazyScenes } from './scenes/lazy.js';
 import { installMobile } from './core/mobile.js';
 import { installPwa } from './core/pwa.js';
 import { installPerf } from './core/perf.js';
-import { injectPolishCss } from './ui/hudPolish.js';
 import { installTheme } from './ui/theme.js';
+import { installTrailer } from './core/trailer.js';
 
 // Mobile hardening: no pinch-zoom gestures, no long-press menu, no dblclick zoom.
 document.addEventListener('gesturestart', (e) => e.preventDefault());
@@ -42,7 +38,7 @@ const game = new Phaser.Game({
   fps: { target: 60, smoothStep: true },
   render: { antialias: false, roundPixels: true, transparent: true },
   physics: { default: 'arcade', arcade: { gravity: { y: 0 }, debug: false, fps: 60 } },
-  scene: [BootScene, TitleScene, CreatorScene, GuildHallScene, HomeIslandScene], // world/ui/character/overlay are lazy (scenes/lazy.js)
+  scene: [BootScene, TitleScene], // creator/world/ui/character/overlay/home/guild hall are lazy (scenes/lazy.js + gameplay.js)
   backgroundColor: 0x00000000,
   // RESIZE: canvas always fills the window; scenes pick integer zooms (core/display.js)
   scale: { mode: Phaser.Scale.RESIZE, width: window.innerWidth, height: window.innerHeight, autoCenter: Phaser.Scale.NO_CENTER },
@@ -57,9 +53,6 @@ input.install(game);
 installMobile();
 installPwa();
 installPerf(game);
-installTheme(); // shared tokens, focus rings, font floor, reduce-motion / large-text classes (ui/theme.js)
-injectPolishCss(); // additive HUD readability/mobile floors (ui/hudPolish.js; id-guarded, safe to call once)
-// Specialization catalogue (skill trees + adv gates) for the spec runtime.
-// Global (not import) so game code and UI panels share one catalogue object,
-// including remote-player puppets sanitized on older shapes.
-globalThis.__WAYFARER_SKILL_TREES__ = { ...SKILL_TREES, advGates: ADV_TREE_GATES };
+import { installTheme } from './ui/theme.js';
+installTrailer(game); // lazy, desktop/good-connection only; poster-only otherwise
+// (HUD polish CSS + the specialization catalogue global are installed by scenes/gameplay.js when that chunk loads)

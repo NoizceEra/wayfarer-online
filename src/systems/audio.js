@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { settings } from '../core/settings.js';
+import { whenWorldReady } from '../assets/worldLoad.js';
 
 // Hybrid sound: procedural WebAudio blips (always available, used by
 // Title/Creator) + real CC0 ogg files via Phaser Sound once a scene with
@@ -44,7 +45,17 @@ const MUSIC_FOR_ZONE = {
   caverns: 'mus_tension', caverns_camp: 'mus_village_alt', hollow: 'mus_crypt',
 };
 
-const AUDIO_DIR = { mus: 'music', amb: 'ambient', jng: 'jingles', sfx: 'sfx' };
+// The title track is only fetched once the world preload has finished (so it never competes with first-load assets
+// for bandwidth) or on the player's first gesture, whichever comes first. Browsers block autoplay before a gesture anyway.
+let gate = null;
+const titleMusicGate = () => (gate ||= new Promise((resolve) => {
+  const evs = ['pointerdown', 'keydown', 'touchstart'];
+  const go = () => { evs.forEach((e) => window.removeEventListener(e, go)); resolve(); };
+  evs.forEach((e) => window.addEventListener(e, go, { passive: true }));
+  whenWorldReady().then(go);
+}));
+
+const AUDIO_DIR ={ mus: 'music', amb: 'ambient', jng: 'jingles', sfx: 'sfx' };
 
 class AudioBus {
   constructor() {
@@ -99,7 +110,11 @@ class AudioBus {
     const key = MUSIC_FOR_ZONE[zoneId] || (String(zoneId).startsWith('mus_') ? zoneId : 'mus_forest');
     if (key === this.musicKey || !this.enabled) return;
     this.wantMusic = key;
-    if (!this.canPlay(key)) { this.fetch(key, () => { if (this.wantMusic === key && this.musicKey !== key) this.musicFor(key); }); return; }
+    if (!this.canPlay(key)) {
+      const go = () => this.fetch(key, () => { if (this.wantMusic === key && this.musicKey !== key) this.musicFor(key); });
+      if (key === 'mus_title') titleMusicGate().then(go); else go(); // ~1 MB: never compete with the first-load world assets
+      return;
+    }
     try {
       this.musicObj?.stop();
       this.musicObj = this.scene.sound.add(key, { volume: 0.35 * this.musicVol(), loop: true });

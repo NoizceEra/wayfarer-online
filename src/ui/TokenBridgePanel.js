@@ -1,4 +1,3 @@
-import bs58 from 'bs58';
 import { econ } from '../net/economyNet.js';
 import { bus, Events } from '../core/events.js';
 import { el, panel, escapeHtml } from './econDom.js';
@@ -263,6 +262,7 @@ export class TokenBridgePanel {
       const encoded = new TextEncoder().encode(m.message);
       const resp = await provider.signMessage(encoded, 'utf8');
       const sigBytes = resp?.signature || resp;
+      const { default: bs58 } = await import('bs58');
       const signature = bs58.encode(sigBytes instanceof Uint8Array ? sigBytes : Uint8Array.from(sigBytes));
       econ.walletBind(m.address, signature);
     } catch (e) {
