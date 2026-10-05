@@ -28,11 +28,11 @@ export class RevivePanel {
     const c = this.c = s.add.container(W / 2, H / 2).setDepth(3000).setScrollFactor(0);
 
     const pw = Math.min(W - 24, 320), ph = 150;
-    const panel = s.add.rectangle(0, 0, pw, ph, 0x0a0e1a, 0.97).setStrokeStyle(2, 0x14f195);
+    const panel = s.add.rectangle(0, 0, pw, ph, 0x1a1008, 0.97).setStrokeStyle(2, 0x9bbc0f);
     c.add(panel);
 
     const title = s.add.text(0, -ph / 2 + 22, 'YOU HAVE FALLEN', {
-      fontFamily: '"Silkscreen", monospace', fontSize: '13px', color: '#14f195', fontStyle: 'bold',
+      fontFamily: '"Silkscreen", monospace', fontSize: '13px', color: '#9bbc0f', fontStyle: 'bold',
     }).setOrigin(0.5);
     c.add(title);
 
@@ -41,23 +41,23 @@ export class RevivePanel {
     const canPay = tokens >= cost;
 
     const sub = s.add.text(0, -12, `Premium revive: ${cost} Wayfarer Tokens\n(You have ${tokens})`, {
-      fontFamily: '"Silkscreen", monospace', fontSize: '9px', color: '#e1e8f0', align: 'center', lineSpacing: 5,
+      fontFamily: '"Silkscreen", monospace', fontSize: '9px', color: '#f4f0dc', align: 'center', lineSpacing: 5,
     }).setOrigin(0.5);
     c.add(sub);
 
     const mkBtn = (x, y, w, label, color, border, cb, disabled = false) => {
       const r = s.add.rectangle(x, y, w, 28, color).setStrokeStyle(2, border).setInteractive({ useHandCursor: !disabled }).setAlpha(disabled ? 0.5 : 1);
-      const t = s.add.text(x, y, label, { fontFamily: '"Silkscreen", monospace', fontSize: '9px', color: disabled ? '#6b7a99' : '#0a0e1a' }).setOrigin(0.5);
+      const t = s.add.text(x, y, label, { fontFamily: '"Silkscreen", monospace', fontSize: '9px', color: disabled ? '#a89a7e' : '#1a1008' }).setOrigin(0.5);
       if (!disabled) r.on('pointerdown', cb);
       c.add([r, t]);
       return r;
     };
 
-    mkBtn(-78, ph / 2 - 30, 140, `Revive (${cost})`, 0x14f195, 0x03e1ff, () => {
+    mkBtn(-78, ph / 2 - 30, 140, `Revive (${cost})`, 0x9bbc0f, 0xa0c4f0, () => {
       if (!canPay) { bus.emit(Events.SYSTEM, 'Not enough Wayfarer Tokens.'); return; }
       econ.spendTokens('revive', cost);
     }, !canPay);
-    mkBtn(78, ph / 2 - 30, 140, 'Respawn (-5% gold)', 0x1a103c, 0x9945ff, () => {
+    mkBtn(78, ph / 2 - 30, 140, 'Respawn (-5% gold)', 0x2a1d10, 0xc8a840, () => {
       this.destroy();
       // normal respawn is handled by combat.onPlayerDeath / update loop
       bus.emit(Events.SYSTEM, 'Respawning with the usual penalty...');

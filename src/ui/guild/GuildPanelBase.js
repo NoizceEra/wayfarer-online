@@ -3,16 +3,16 @@
  */
 
 export const COLORS = Object.freeze({
-  bg: 0x0A0E1A,
+  bg: 0x1a1008,
   panel: 0x161b22,
-  green: '#14F195',
-  greenHex: 0x14F195,
-  purple: '#9945FF',
-  purpleHex: 0x9945FF,
-  cyan: '#03E1FF',
-  magenta: '#DC1FFF',
-  white: '#E1E8F0',
-  muted: '#6B7A99',
+  green: '#9bbc0f',
+  greenHex: 0x9bbc0f,
+  purple: '#c8a840',
+  purpleHex: 0xc8a840,
+  cyan: '#a0c4f0',
+  magenta: '#ff7a6a',
+  white: '#f4f0dc',
+  muted: '#a89a7e',
   red: '#ff4444',
 });
 

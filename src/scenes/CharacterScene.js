@@ -6,6 +6,8 @@ import { hudIconKey } from '../systems/hudIcons.js';
 import { input } from '../core/input.js';
 import { HUD_ABILITY_ICON } from '../systems/hudIcons.js';
 import { settings, uiZoomFor } from '../core/settings.js';
+import { SHORTCUT_Y } from '../ui/hudLayout.js';
+import { calmMotion } from '../ui/theme.js';
 import {
   STAT_IDS, STAT_INFO, MAX_LEVEL, MAX_STAT, SKILL_MAX, CLASS_CHANGE_LEVEL,
   computeDerived, statCost, skillDmgMul, skillCdMul,
@@ -90,7 +92,7 @@ export class CharacterScene extends Phaser.Scene {
   buildHud() {
     for (const o of this.hudObjs) o.destroy();
     this.hudObjs = [];
-    const y = this.small ? 144 : 124;
+    const y = SHORTCUT_Y;
     const p = this.player();
     const mk = (x, label, cb, opts) => { const o = this.btn(null, x, y, 62, 20, label, cb, { size: 9, ...opts }); this.hudObjs.push(...o); o.forEach((e) => e.setDepth(120)); return o; };
     mk(8 + 31, `CHAR ${input.labelFor('character')}`, () => this.toggle('char'));
@@ -98,7 +100,7 @@ export class CharacterScene extends Phaser.Scene {
     const badge = (x, n) => {
       const c = this.add.circle(x, y - 10, 8, 0xd63c2f).setStrokeStyle(1, 0xffffff).setDepth(121);
       const t = this.add.text(x, y - 10, String(n), T(9, '#ffffff')).setOrigin(0.5).setDepth(122);
-      this.tweens.add({ targets: [c, t], scale: 1.18, duration: 520, yoyo: true, repeat: -1 });
+      if (!calmMotion()) this.tweens.add({ targets: [c, t], scale: 1.18, duration: 520, yoyo: true, repeat: -1 });
       this.hudObjs.push(c, t);
     };
     if (p) {
@@ -107,7 +109,7 @@ export class CharacterScene extends Phaser.Scene {
       if (p.canChooseClass()) {
         const o = this.btn(null, 8 + 62, y + 26, 124, 20, 'CLASS CHANGE!', () => this.showClassModal(), { color: 0xf4c542, hover: 0xffe07a, size: 9 });
         o.forEach((e) => e.setDepth(120)); this.hudObjs.push(...o);
-        this.tweens.add({ targets: o, alpha: 0.65, duration: 600, yoyo: true, repeat: -1 });
+        if (!calmMotion()) this.tweens.add({ targets: o, alpha: 0.65, duration: 600, yoyo: true, repeat: -1 });
       }
     }
     this.refreshAdvHint();

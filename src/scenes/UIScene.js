@@ -37,6 +37,8 @@ import GuildSystem from '../systems/guildSystem.js';
 import { DailyRewards } from '../systems/dailyRewards.js';
 import { econ } from '../net/economyNet.js';
 import { fullscreenSupported, isFullscreen, toggleFullscreen } from '../core/mobile.js';
+import { hudLayout, layoutDock, makePill, dockTip } from '../ui/hudLayout.js';
+import { calmMotion } from '../ui/theme.js';
 
 // HUD: HP/MP/XP bars, hotbar with cooldown sweep (clickable), minimap,
 // quest tracker, chat, party, pause (palette + mute), GB tint + scanlines,
@@ -137,6 +139,7 @@ export class UIScene extends Phaser.Scene {
     this.offs.push(() => this.scale.off('resize', onResize));
     this.lastHp = null;
     this.small = W < 560;
+    this.L = hudLayout(W, H); // zone anchors shared with CharacterScene / EventHud / CombatHud (ui/hudLayout.js)
 
     // ── GB palette tint + scanlines ─────────────────────────────────────────
     const pal = PALETTES[this.hero.palette] || PALETTES.classic;
@@ -155,10 +158,10 @@ export class UIScene extends Phaser.Scene {
     const barX = 34;               // x of bar fill (after glyph icon)
     const pbw  = pw - barX - 12;   // bar fill width
     this.hpBarW = pbw;
-    this.barH = { hp: 14, mp: 11, xp: 7 };
+    this.barH = { hp: 14, mp: 11, xp: 8 };
     // Small-screen legibility floor: canvas stat numbers never render below
     // 8px on phones; desktop sizes pass through untouched so layout is stable.
-    const statPx = (px) => (this.small ? Math.max(px, 8) : px);
+    const statPx = (px) => Math.max(px, this.small ? 9 : 8);
 
     this._ns(8, 8, pw, 106);       // wood frame panel
     this.nameT = this.add.text(18, 15, `${this.pname} · ${this.job.name} Lv 1`, F(this.small ? 10 : 11, '#fff8e0', { fontStyle: 'bold' })).setDepth(101);
@@ -170,13 +173,13 @@ export class UIScene extends Phaser.Scene {
       return this.add.rectangle(barX, y, pbw, h, fc).setOrigin(0).setDepth(103);
     };
     this.hpBar = mkBar('heart', 32, 14, 0x3a1014, 0x4cc060);
-    this.hpT   = this.add.text(barX + pbw / 2, 39, '', F(statPx(9), '#ffffff', { stroke: '#1a1024', strokeThickness: 3 })).setOrigin(0.5).setDepth(104);
+    this.hpT   = this.add.text(barX + pbw / 2, 39, '', F(statPx(10), '#ffffff', { stroke: '#1a1024', strokeThickness: 3 })).setOrigin(0.5).setDepth(104);
     this.mpBar = mkBar('mana', 52, 11, 0x0c1a3a, 0x3a9cf0);
-    this.mpT   = this.add.text(barX + pbw / 2, 57.5, '', F(statPx(8), '#ffffff', { stroke: '#1a1024', strokeThickness: 3 })).setOrigin(0.5).setDepth(104);
-    this.xpBar = mkBar('xp', 69, 7, 0x2a2008, 0xffd84a);
+    this.mpT   = this.add.text(barX + pbw / 2, 57.5, '', F(statPx(9), '#ffffff', { stroke: '#1a1024', strokeThickness: 3 })).setOrigin(0.5).setDepth(104);
+    this.xpBar = mkBar('xp', 69, 8, 0x2a2008, 0xffd84a);
     // A percentage makes the thin XP bar useful at a glance, especially on a
     // phone where exact XP totals would compete with the resource readout.
-    this.xpT = this.add.text(barX + pbw, 72.5, '0%', F(statPx(7), '#2a1d10', { fontStyle: 'bold' }))
+    this.xpT = this.add.text(barX + pbw - 2, 73, '0%', F(statPx(8), '#2a1d10', { fontStyle: 'bold' }))
       .setOrigin(1, 0.5).setDepth(104);
 
     // gold / potions / atk+def as glyph + number
@@ -192,19 +195,22 @@ export class UIScene extends Phaser.Scene {
     // ── Zone label (top-centre; on phones: below status panel + party line) ──
     // phones: status panel bottom = 8+82=90, party line ~104; zone label y=90+4=94
     // desktop: y=14 to align with status panel top
-    const zoneY = this.small ? 118 : 14;
-    this._ns(W / 2, zoneY, 160, 22, 'ui.panelBg', 4, 4, 4, 4, 0.5, 0, 101);
+    // phones: the top row is full, so the label rides in the right column (layoutRight())
+    this.zoneW = this.small ? 136 : 160;
+    const zoneY = this.small ? this.L.quest.y + 60 : 14;
+    this.zonePanel = this._ns(W / 2, zoneY, this.zoneW, 22, 'ui.panelBg', 4, 4, 4, 4, 0.5, 0, 101);
     this.zoneT = this.add.text(W / 2, zoneY + 11, 'Thistle Town', {
       fontFamily: '"Silkscreen", monospace', fontSize: this.small ? '10px' : '11px', color: '#ffe8a0',
     }).setOrigin(0.5).setDepth(102);
 
     // ── Quest tracker (top-right): framed panel, capped width, word wrap ─────
-    this.questW = this.small ? 158 : 214;
-    this.questPanel = this._ns(W - 8, 8, this.questW, 52, 'ui.panel', 4, 4, 4, 4, 1, 0, 100);
-    this.questHead = this.add.text(W - 8 - this.questW + 10, 14, 'QUEST', {
-      fontFamily: '"Silkscreen", monospace', fontSize: '8px', color: '#ffd84a',
+    this.questW = this.L.quest.w;
+    const qy = this.L.quest.y;
+    this.questPanel = this._ns(W - 8, qy, this.questW, 52, 'ui.panel', 4, 4, 4, 4, 1, 0, 100);
+    this.questHead = this.add.text(W - 8 - this.questW + 10, qy + 6, 'QUEST', {
+      fontFamily: '"Silkscreen", monospace', fontSize: '9px', color: '#ffd84a',
     }).setDepth(101);
-    this.questT = this.add.text(W - 8 - this.questW + 10, 26, '', {
+    this.questT = this.add.text(W - 8 - this.questW + 10, qy + 18, '', {
       fontFamily: '"Silkscreen", monospace', fontSize: this.small ? '9px' : '10px',
       color: '#f4e0b0', lineSpacing: 2,
       wordWrap: { width: this.questW - 20, useAdvancedWrap: true },
@@ -299,7 +305,7 @@ export class UIScene extends Phaser.Scene {
         const w = this.world();
         return w?.combat?.statuses?.list(w?.time?.now ?? 0) || [];
       },
-      anchor: this.small ? { x: 10, y: hotY - cellH / 2 - 42 } : { x: 8 + pw + 12, y: 12 },
+      anchor: { x: 10, y: this.L.stripY }, // left column, under the CombatHud buff row (no collisions with zone label / hotbar)
     });
 
     // ── Chat / system log (bottom-left) ─────────────────────────────────────
@@ -312,7 +318,7 @@ export class UIScene extends Phaser.Scene {
     this.buildMinimap();
 
     // Party line: only shown when actually in a party (solo hint lives in pause menu)
-    this.partyT = this.add.text(18, this.small ? 122 : 120, net.connected ? `Party ${net.code}` : '', {
+    this.partyT = this.add.text(18, this.L.partyLabelY, net.connected ? `Party ${net.code}` : '', {
       fontFamily: '"Silkscreen", monospace', fontSize: '9px', color: '#a0c4f0',
       stroke: '#1a1024', strokeThickness: 3,
     }).setDepth(101);
@@ -322,6 +328,7 @@ export class UIScene extends Phaser.Scene {
     this.menu = new PauseMenu(this, {
       onOpenChange: (open) => {
         this.paused = open;
+        document.getElementById('wf-social')?.classList.toggle('wf-dimmed', open || !!this.help?.isOpen); // pause is a modal above DOM panels
         if (open) this.help?.close();
         const w = this.world();
         if (w) w.physics.world.isPaused = open;
@@ -391,7 +398,7 @@ export class UIScene extends Phaser.Scene {
     sub(Events.PLAYER_HP, (p) => this.drawStatus(p));
     sub(Events.PLAYER_XP, (p) => this.drawXp(p));
     sub(Events.QUEST,     (q) => this.setQuest(q));
-    sub(Events.ZONE,      (z) => this.zoneT.setText(z.name));
+    sub(Events.ZONE,      (z) => this.setZone(z.name));
     sub(Events.SYSTEM,    (s) => {
       if (s === 'toggle-minimap') { this.mapLarge = !this.mapLarge; this.layoutMinimap(); }
     });
@@ -417,33 +424,35 @@ export class UIScene extends Phaser.Scene {
     );
 
     // ── HUD menu + help buttons (touch has no Esc/H) ─────────────────────────
+    const hbW = this.L.menu.size, hbH = this.small ? 26 : 20, hbStep = hbW + this.L.menu.gap; // 28x26 on phones (touch target)
     const hb = (x, label, cb) => {
-      const r = this.add.rectangle(x, 8, 22, 20, 0x2a1d10, 0.92).setOrigin(0).setStrokeStyle(2, 0x8d5a2b).setDepth(120).setInteractive({ useHandCursor: true });
-      const t = this.add.text(x + 11, 18, label, F(10, '#ffe8a0', { fontStyle: 'bold' })).setOrigin(0.5).setDepth(121);
+      const r = this.add.rectangle(x, this.L.menu.y, hbW, hbH, 0x2a1d10, 0.92).setOrigin(0).setStrokeStyle(2, 0x8d5a2b).setDepth(120).setInteractive({ useHandCursor: true });
+      const t = this.add.text(x + hbW / 2, this.L.menu.y + hbH / 2, label, F(this.small ? 12 : 10, '#ffe8a0', { fontStyle: 'bold' })).setOrigin(0.5).setDepth(121);
       r.on('pointerover', () => r.setStrokeStyle(2, 0xffe07a));
       r.on('pointerout', () => r.setStrokeStyle(2, 0x8d5a2b));
       r.on('pointerdown', () => { audio.play('ui', 0.6); cb(); });
       return [r, t];
     };
-    const hbX = W - 8 - this.questW - 30;
+    const hbX = this.L.menu.right - hbW;
     this.menuBtn = hb(hbX, 'II', () => (this.menu.isOpen ? this.menu.close() : this.menu.open('main')));
-    this.helpBtn = hb(hbX - 26, '?', () => this.help.toggle());
+    this.helpBtn = hb(hbX - hbStep, '?', () => this.help.toggle());
     // touch: fullscreen toggle next to the menu / help buttons (hidden where the API is missing, e.g. iPhone Safari, or already installed)
     if (('ontouchstart' in window || navigator.maxTouchPoints > 0) && fullscreenSupported() && !document.documentElement.classList.contains('wf-standalone')) {
-      this.fsBtn = hb(hbX - 52, isFullscreen() ? '><' : '[]', () => {});
+      this.fsBtn = hb(hbX - 2 * hbStep, isFullscreen() ? '><' : '[]', () => {});
       // fullscreen needs a *user activation*: on touch that is granted at touchend (pointerup), not touchstart
       this.fsBtn[0].removeAllListeners('pointerdown');
       this.fsBtn[0].on('pointerup', () => { audio.play('ui', 0.6); toggleFullscreen(); setTimeout(() => this.fsBtn?.[1]?.setText(isFullscreen() ? '><' : '[]'), 400); });
     }
-    this.fpsT = this.add.text(hbX - (this.fsBtn ? 58 : 32), 12, '', F(9, '#9bf06b', { stroke: '#1a1024', strokeThickness: 3 })).setOrigin(1, 0).setDepth(121).setVisible(settings.get('showFps'));
+    this.fpsT = this.add.text(hbX - (this.fsBtn ? 2 : 1) * hbStep - 6, 12, '', F(9, '#9bf06b', { stroke: '#1a1024', strokeThickness: 3 })).setOrigin(1, 0).setDepth(121).setVisible(settings.get('showFps'));
     this.offs.push(bus.on(Events.TOAST, (t) => this.toast?.push(t)));
 
     this.buildTouch();
     this.buildPanels();
     this.buildWalletRewards();
     this.buildDailyReward();
+    this.buildDock();
     // Social UI: chat window, party frames, players/friends, emote wheel (src/ui/socialUI.js)
-    this.social = installSocialUI(this, { name: this.pname, job: this.job.id, framesY: this.small ? 136 : 134 });
+    this.social = installSocialUI(this, { name: this.pname, job: this.job.id, framesY: this.L.framesY });
     this.economy = installEconomyUI(this); // trade / market board / mail / guild tab (src/ui/economyUI.js)
 
     // ── Feature panels: LFG, season pass, guild, world boss alert ─────────────
@@ -523,7 +532,7 @@ export class UIScene extends Phaser.Scene {
       this.drawStatus(w0.hpPayload());
       this.drawXp(w0.xpPayload());
       this.setQuest(w0.questText());
-      this.zoneT.setText(w0.zoneId ? (ZONES.find((z) => z.id === w0.zoneId)?.name || '') : '');
+      this.setZone(w0.zoneId ? (ZONES.find((z) => z.id === w0.zoneId)?.name || '') : '');
     }
     if (data.menuPage) this.menu.open(data.menuPage); // relaunch while paused
     { const ov = this.scene.get('overlay'); if (ov?.sys.isActive() && ov.mapBtn) ov.relayout(); } // UI scale moved the minimap / map button
@@ -576,6 +585,28 @@ export class UIScene extends Phaser.Scene {
     const h = Math.ceil(this.questT.height) + 26 + 8;
     this.questPanel.setSize(this.questW, h);
     this.questPanel.fallbackRect.setSize(this.questW, h);
+    this.layoutRight();
+  }
+
+  // Zone label text, shrunk to fit its plate (long names never spill out).
+  setZone(name) {
+    this.zoneT.setText(name || '').setScale(1);
+    const max = this.zoneW - 12;
+    if (this.zoneT.width > max) this.zoneT.setScale(max / this.zoneT.width);
+  }
+
+  // Top-right zone: quest panel height is dynamic, so the dock of icon pills (and, on phones, the zone
+  // label) re-anchor under it. The dock is a row on wide screens and a vertical rail on phones.
+  layoutRight() {
+    if (!this.dock || !this.questPanel?.active) return;
+    const { w: W } = this.view();
+    const qBottom = this.L.quest.y + this.questPanel.height;
+    const res = layoutDock(this, this.dock, W, qBottom + (this.small ? 6 : 4));
+    this.dockBottom = res.bottom;
+    if (this.small && this.zonePanel?.active) {
+      const cx = Math.round((this.L.colX + res.left - 4) / 2), zy = qBottom + 6;
+      this.zonePanel.setPosition(cx, zy); this.zonePanel.fallbackRect.setPosition(cx, zy); this.zoneT.setPosition(cx, zy + 11);
+    }
   }
   drawXp(p) {
     const frac = Math.max(0, Math.min(1, p.xp / Math.max(1, p.xpNext)));
@@ -677,6 +708,39 @@ export class UIScene extends Phaser.Scene {
     this.walletPanel = new WalletPanel(this);
   }
 
+  // Top-right dock: the emoji text buttons above become uniform 28px icon pills (hudIcons `menu*`,
+  // same pixel style as the hotbar) with a hover/focus label, laid out by hudLayout.layoutDock().
+  buildDock() {
+    const defs = [
+      ['dailyBtn', 'menuGift', 'Daily reward'], ['walletBtn', 'menuLock', 'Wallet'], ['rewardsBtn', 'menuChest', 'Claim rewards'],
+      ['partyFinderBtn', 'menuPeople', 'Party finder'], ['lfgBtn', 'menuSwords', 'Dungeon finder'], ['seasonBtn', 'menuCup', 'Season pass'],
+      ['guildBtn', 'menuBanner', 'Guild'], ['arenaBtn', 'menuBolt', 'Arena'], ['specBtn', 'menuStar', 'Skill tree [T]'],
+    ];
+    this.dock = [];
+    this.dockTip = dockTip(this);
+    const { w: W } = this.view();
+    for (const [prop, icon, label] of defs) {
+      const btn = this[prop];
+      if (!btn?.active) continue;
+      const it = makePill(this, btn, `hud.${icon}`, label);
+      btn.on('pointerover', () => this.dockTip.show(it, this.view().w));
+      btn.on('pointerout', () => this.dockTip.hide());
+      btn.on('pointerup', () => this.time.delayedCall(1400, () => this.dockTip.hide())); // touch: label lingers after a tap
+      this.dock.push(it);
+    }
+    // "claimable" badge on the daily gift: a gold dot WITH a "!" (shape + glyph, not colour alone)
+    const di = this.dock.find((d) => d.btn === this.dailyBtn);
+    if (di) {
+      const dot = this.add.circle(0, 0, 6, 0xffd84a).setStrokeStyle(1, 0x1a1024).setDepth(113).setVisible(false);
+      const bang = this.add.text(0, 0, '!', { fontFamily: '"Silkscreen", monospace', fontSize: '9px', color: '#1a1024', fontStyle: 'bold' }).setOrigin(0.5).setDepth(114).setVisible(false);
+      this.dailyBadge = { dot, bang, setVisible: (v) => { dot.setVisible(v); bang.setVisible(v); } };
+      di.badge = { setPosition: (x, y) => { dot.setPosition(x, y); bang.setPosition(x, y); } };
+      this.events.once('shutdown', () => { dot.destroy(); bang.destroy(); });
+    }
+    this.layoutRight();
+    this.updateDailyRewardBtn();
+  }
+
   // —— Daily login reward HUD icon + panel
   buildDailyReward() {
     const { w: W } = this.view();
@@ -723,11 +787,10 @@ export class UIScene extends Phaser.Scene {
   updateDailyRewardBtn() {
     if (!this.dailyBtn?.active) return;
     const claimable = this.dailyRewards?.isClaimableToday();
-    if (claimable) {
-      this.dailyBtn.setColor('#03e1ff');
+    this.dailyBadge?.setVisible(!!claimable);
+    if (claimable && !calmMotion()) {
       this.dailyPulse?.resume();
     } else {
-      this.dailyBtn.setColor('#6b7a99');
       this.dailyPulse?.pause();
       this.dailyBtn.setAlpha(1);
     }
@@ -854,7 +917,7 @@ export class UIScene extends Phaser.Scene {
 
   // Small HUD buttons next to CHAR / SKILL (keyboard L / U also work)
   buildContentButtons() {
-    const y = this.small ? 144 : 124;
+    const y = this.L.shortcutY;
     const mk = (x, txt, cb) => {
       const fill = this.add.rectangle(x, y, 62, 20, 0x9bbc0f).setStrokeStyle(1, 0x1a1a22).setDepth(120).setInteractive({ useHandCursor: true });
       const t = this.add.text(x, y, txt, { fontFamily: '"Silkscreen", monospace', fontSize: '9px', color: '#3a1f00' }).setOrigin(0.5).setDepth(121);
@@ -940,7 +1003,7 @@ export class UIScene extends Phaser.Scene {
     this.mapImg = this.add.image(0, 0, 'hud.mapTerrain').setOrigin(0).setDepth(101);
     this.fogImg = this.add.image(0, 0, 'hud.mapFog').setOrigin(0).setDepth(102);
     this.mapG = this.add.graphics().setDepth(103);
-    this.mapLbl = this.add.text(0, 0, input.labelFor('minimap'), { fontFamily: '"Silkscreen", monospace', fontSize: '8px', color: '#ffd84a',
+    this.mapLbl = this.add.text(0, 0, input.labelFor('minimap'), { fontFamily: '"Silkscreen", monospace', fontSize: '9px', color: '#ffd84a',
       stroke: '#1a1024', strokeThickness: 3 }).setOrigin(1, 0).setDepth(104);
     this.mapHit = this.add.zone(0, 0, 10, 10).setOrigin(0).setInteractive({ useHandCursor: true }).setDepth(105);
     this.mapHit.on('pointerdown', () => { this.mapLarge = !this.mapLarge; this.layoutMinimap(); });
@@ -993,7 +1056,7 @@ export class UIScene extends Phaser.Scene {
     // other players: party green (bigger), friends pink, guild gold, else blue; grey = peer inside an interior/dungeon
     const REL = { party: 0x7dff9a, friend: 0xff9ad5, guild: 0xffd84a, other: 0x5ad0ff };
     w.sync?.remotes?.forEach((r, id) => { const m = r.mapPos ? r.mapPos() : r; if (!m) return; const rel = social.relation(id); dot(x + (m.x / T) * k, y + (m.y / T) * k, rel === 'party' ? 2.6 : 2, m.grey ? 0x7a7a88 : REL[rel]); });
-    const blink = 0.5 + 0.5 * Math.sin(this.time.now / 250);
+    const blink = calmMotion() ? 1 : 0.5 + 0.5 * Math.sin(this.time.now / 250);
     const px = x + tx * k, py = y + ty * k;
     g.fillStyle(0xffffff, 0.25 + 0.3 * blink).fillCircle(px, py, 4.5);
     dot(px, py, 2.4, 0xffffff);

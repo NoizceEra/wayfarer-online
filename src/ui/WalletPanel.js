@@ -51,25 +51,25 @@ export class WalletPanel {
     this.c.add(bg); this.c.add(ns);
 
     this.titleT = s.add.text(0, -ph / 2 + 24, '\uD83D\uDD10 CONNECT WALLET', {
-      fontFamily: FONT, fontSize: '13px', color: '#14f195', fontStyle: 'bold',
+      fontFamily: FONT, fontSize: '13px', color: '#9bbc0f', fontStyle: 'bold',
     }).setOrigin(0.5).setDepth(212);
     this.c.add(this.titleT);
 
     this.netT = s.add.text(pw / 2 - 12, -ph / 2 + 24, this.network.toUpperCase(), {
-      fontFamily: FONT, fontSize: '9px', color: '#9945ff',
+      fontFamily: FONT, fontSize: '9px', color: '#c8a840',
     }).setOrigin(1, 0.5).setDepth(212).setInteractive({ useHandCursor: true });
     this.netT.on('pointerdown', () => this.toggleNetwork());
     this.c.add(this.netT);
 
     this.statusT = s.add.text(0, -18, 'No wallet connected', {
-      fontFamily: FONT, fontSize: '10px', color: '#6b7a99', align: 'center', lineSpacing: 6,
+      fontFamily: FONT, fontSize: '10px', color: '#a89a7e', align: 'center', lineSpacing: 6,
     }).setOrigin(0.5).setDepth(212);
     this.c.add(this.statusT);
 
-    const mkBtn = (y, label, cb, color = 0x14f195, stroke = 0x03e1ff) => {
+    const mkBtn = (y, label, cb, color = 0x9bbc0f, stroke = 0xa0c4f0) => {
       const r = s.add.rectangle(0, y, 200, 30, color).setStrokeStyle(2, stroke).setInteractive({ useHandCursor: true }).setDepth(212);
-      const t = s.add.text(0, y, label, { fontFamily: FONT, fontSize: '11px', color: '#0a0e1a' }).setOrigin(0.5).setDepth(213);
-      r.on('pointerover', () => r.setFillStyle(0x0db87a));
+      const t = s.add.text(0, y, label, { fontFamily: FONT, fontSize: '11px', color: '#1a1008' }).setOrigin(0.5).setDepth(213);
+      r.on('pointerover', () => r.setFillStyle(0x7a9a0a));
       r.on('pointerout', () => r.setFillStyle(color));
       r.on('pointerdown', () => { r.setFillStyle(0x0a8f5c); cb(); });
       r.on('pointerup', () => r.setFillStyle(color));
@@ -77,15 +77,15 @@ export class WalletPanel {
       return r;
     };
 
-    this.connectBtn = mkBtn(44, 'Connect Phantom / Solflare', () => this.connect(), 0x14f195, 0x03e1ff);
-    this.disconnectBtn = mkBtn(44, 'Disconnect', () => this.disconnect(), 0xdc1fff, 0x9945ff);
+    this.connectBtn = mkBtn(44, 'Connect Phantom / Solflare', () => this.connect(), 0x9bbc0f, 0xa0c4f0);
+    this.disconnectBtn = mkBtn(44, 'Disconnect', () => this.disconnect(), 0xff7a6a, 0xc8a840);
     this.disconnectBtn.setVisible(!!this.wallet);
     this.connectBtn.setVisible(!this.wallet);
 
     this.copyBtn = mkBtn(84, 'Copy Address', () => {
       if (this.wallet?.addr) navigator.clipboard?.writeText(this.wallet.addr);
       this.say('Address copied!');
-    }, 0x1a103c, 0x03e1ff);
+    }, 0x2a1d10, 0xa0c4f0);
     this.copyBtn.setVisible(!!this.wallet);
 
     // Link the connected wallet to the game account (opens the token bridge
@@ -96,13 +96,13 @@ export class WalletPanel {
       if (!bridge) { this.say('Token bridge UI not available.'); return; }
       bridge.open({ link: true });
       this.close();
-    }, 0x14f195, 0x03e1ff);
+    }, 0x9bbc0f, 0xa0c4f0);
     this.linkBtn.setVisible(!!this.wallet);
 
-    mkBtn(164, 'CLOSE', () => this.close(), 0x0a0e1a, 0x6b7a99);
+    mkBtn(164, 'CLOSE', () => this.close(), 0x1a1008, 0xa89a7e);
 
     this.toastT = s.add.text(0, ph / 2 - 20, '', {
-      fontFamily: FONT, fontSize: '9px', color: '#14f195', align: 'center',
+      fontFamily: FONT, fontSize: '9px', color: '#9bbc0f', align: 'center',
     }).setOrigin(0.5).setDepth(212);
     this.c.add(this.toastT);
 
@@ -130,11 +130,11 @@ export class WalletPanel {
     const provider = getProvider();
     if (!provider) {
       this.statusT.setText('Phantom / Solflare not found\nInstall a Solana wallet');
-      this.statusT.setColor('#dc1fff');
+      this.statusT.setColor('#ff7a6a');
       return;
     }
     try {
-      this.statusT.setText('Connecting...'); this.statusT.setColor('#03e1ff');
+      this.statusT.setText('Connecting...'); this.statusT.setColor('#a0c4f0');
       const resp = await provider.connect();
       const addr = resp.publicKey.toString();
       this.wallet = { addr, provider: provider.isPhantom ? 'phantom' : 'solflare', network: this.network };
@@ -146,7 +146,7 @@ export class WalletPanel {
       this.say('Wallet connected!');
     } catch (e) {
       this.statusT.setText('Failed: ' + (e.message || 'rejected'));
-      this.statusT.setColor('#dc1fff');
+      this.statusT.setColor('#ff7a6a');
     }
   }
 
@@ -209,11 +209,11 @@ export class WalletPanel {
       const stake = this.activeStake();
       const stakeLine = stake ? `Stake: ${stake.tier.toUpperCase()} (+${Math.round(stake.dropRate * 100)}% drops)` : '';
       this.statusT.setText(`${short}\nBalance: ${bal}\nNetwork: ${NETWORKS[this.network]?.name || this.network}${stakeLine ? '\n' + stakeLine : ''}`);
-      this.statusT.setColor('#14f195');
+      this.statusT.setColor('#9bbc0f');
       this.titleT.setText('\uD83D\uDD10 WALLET CONNECTED');
     } else {
       this.statusT.setText('No wallet connected');
-      this.statusT.setColor('#6b7a99');
+      this.statusT.setColor('#a89a7e');
       this.titleT.setText('\uD83D\uDD10 CONNECT WALLET');
     }
     this.connectBtn?.setVisible(!this.wallet);

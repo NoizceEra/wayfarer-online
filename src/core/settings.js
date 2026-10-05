@@ -3,6 +3,9 @@
 // with settings.onChange((key, value) => ...).
 const LS = 'wayfarer.settings.v1';
 
+function osPrefersReducedMotion() {
+  try { return !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
+}
 export const DEFAULT_SETTINGS = {
   master: 1,          // 0..1
   music: 0.7,         // 0..1
@@ -10,7 +13,8 @@ export const DEFAULT_SETTINGS = {
   showFps: false,
   haptics: true,      // navigator.vibrate on hits / level-up (touch devices)
   shake: true,        // camera shake
-  reduceMotion: false, // no shake, no flashing vignette / pulses
+  reduceMotion: osPrefersReducedMotion(), // no shake, no flashing vignette / pulses (defaults to the OS preference)
+  largeText: false,   // DOM panels 20% larger (ui/theme.js)
   uiScale: 1,         // HUD + panels zoom (0.75..2)
 };
 export const UI_SCALES = [0.75, 1, 1.25, 1.5, 2];

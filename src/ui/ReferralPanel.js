@@ -11,32 +11,32 @@ import { el, escapeHtml, panel } from './econDom.js';
 // stats (invited / gold earned), an APPLY box for a friend's code while the
 // player is level <= 2 and not yet bound, and REFRESH. Payouts land via
 // econ-sync {why:'referral'} and pop a toast via Events.REFERRAL_PAID.
-const PAL = { bg: '#0A0E1A', green: '#14F195', purple: '#9945FF', cyan: '#03E1FF', white: '#E1E8F0', muted: '#6B7A99' };
+const PAL = { bg: '#1a1008', green: '#9bbc0f', purple: '#c8a840', cyan: '#a0c4f0', white: '#f4f0dc', muted: '#a89a7e' };
 
 let cssDone = false;
 function injectCss() {
   if (cssDone) return; cssDone = true;
   const s = el('style');
   s.textContent = `
-#ref-cta{position:fixed;left:8px;bottom:44px;z-index:51;pointer-events:auto;cursor:pointer;font:9px "Silkscreen",monospace;color:${PAL.cyan};background:#0A0E1Acc;border:1px solid #1c2c44;padding:2px 6px;border-radius:2px;display:none}
+#ref-cta{position:fixed;left:8px;bottom:44px;z-index:51;pointer-events:auto;cursor:pointer;font:9px "Silkscreen",monospace;color:${PAL.cyan};background:#0A0E1Acc;border:1px solid #3a2410;padding:2px 6px;border-radius:2px;display:none}
 #ref-cta:hover{border-color:${PAL.cyan}}
-#ref-cta.on{color:#0A0E1A;background:${PAL.cyan};border-color:${PAL.cyan}}
-#wf-social .ec-ref{background:rgba(10,14,26,.94);border-color:#1c2c44;box-shadow:inset 0 0 0 1px #0d1420,0 0 18px #9945FF33;width:min(460px,calc(100vw - 16px))}
-#wf-social .ec-ref .wf-title{color:${PAL.white};border-bottom-color:#1c2c44}
+#ref-cta.on{color:#1a1008;background:${PAL.cyan};border-color:${PAL.cyan}}
+#wf-social .ec-ref{background:rgba(26,16,8,.94);border-color:#3a2410;box-shadow:inset 0 0 0 1px #120c06,0 0 18px #9945FF33;width:min(460px,calc(100vw - 16px))}
+#wf-social .ec-ref .wf-title{color:${PAL.white};border-bottom-color:#3a2410}
 #wf-social .ec-ref .wf-x{color:${PAL.muted}}
 #wf-social .ref-big{display:flex;flex-direction:column;align-items:center;gap:5px;padding:14px 8px 8px}
-#wf-social .ref-code{font-size:26px;letter-spacing:6px;color:${PAL.white};background:#0d1420;border:2px solid ${PAL.green};box-shadow:0 0 12px #14F19555;padding:6px 14px 4px 18px}
+#wf-social .ref-code{font-size:26px;letter-spacing:6px;color:${PAL.white};background:#120c06;border:2px solid ${PAL.green};box-shadow:0 0 12px #14F19555;padding:6px 14px 4px 18px}
 #wf-social .ref-lbl{font-size:9px;color:${PAL.muted};letter-spacing:1px}
 #wf-social .ref-stats{display:flex;gap:8px;padding:6px 8px}
-#wf-social .ref-stat{flex:1;text-align:center;padding:6px 4px;background:#0d1420;border:1px solid #1c2c44}
+#wf-social .ref-stat{flex:1;text-align:center;padding:6px 4px;background:#120c06;border:1px solid #3a2410}
 #wf-social .ref-stat b{display:block;font-size:16px;color:${PAL.green};margin-bottom:3px}
 #wf-social .ref-stat span{font-size:8px;color:${PAL.muted}}
 #wf-social .ref-stat.pu b{color:${PAL.purple}}
-#wf-social .ref-apply{margin:4px 8px 2px;padding:8px;background:#0d1420;border:1px solid #1c2c44}
+#wf-social .ref-apply{margin:4px 8px 2px;padding:8px;background:#120c06;border:1px solid #3a2410}
 #wf-social .ref-apply .ref-row{display:flex;gap:4px;margin:4px 0}
-#wf-social .ref-apply .ref-row input{flex:1;min-width:0;font-size:14px;letter-spacing:3px;text-align:center;color:${PAL.white};background:#0A0E1A;border-color:#1c2c44;text-transform:uppercase}
+#wf-social .ref-apply .ref-row input{flex:1;min-width:0;font-size:14px;letter-spacing:3px;text-align:center;color:${PAL.white};background:#1a1008;border-color:#3a2410;text-transform:uppercase}
 #wf-social .ref-apply .ref-row input:focus{border-color:${PAL.cyan}}
-#wf-social .ref-apply button{background:transparent;color:${PAL.cyan};box-shadow:none;border:1px solid #1c2c44}
+#wf-social .ref-apply button{background:transparent;color:${PAL.cyan};box-shadow:none;border:1px solid #3a2410}
 #wf-social .ref-apply button:hover{background:#14F19522;color:${PAL.white};border-color:${PAL.green}}
 #wf-social .ref-apply button:active{background:#14F19544}
 #wf-social .ref-status{font-size:9px;color:${PAL.muted};padding:2px 10px 6px;min-height:14px}
@@ -45,13 +45,13 @@ function injectCss() {
 #wf-social .ref-status .ref-dim{color:#4a5a7a}
 #wf-social .ref-note{font-size:8px;color:${PAL.muted};line-height:1.6;padding:0 12px 8px;text-align:center}
 #wf-social .ref-lev{color:${PAL.cyan}}
-#wf-social .ref-hold{margin:4px 8px 2px;padding:8px;background:#0d1420;border:1px solid #1c2c44;text-align:center}
+#wf-social .ref-hold{margin:4px 8px 2px;padding:8px;background:#120c06;border:1px solid #3a2410;text-align:center}
 #wf-social .ref-hold button{background:${PAL.purple};color:${PAL.white};border:1px solid ${PAL.purple};font-size:9px;padding:4px 10px}
 #wf-social .ref-hold button:hover{background:${PAL.green};border-color:${PAL.green}}
 #wf-social .ref-token-bonus{color:${PAL.green};font-weight:bold}
 #wf-social .holder-modal{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:100;background:${PAL.bg};border:2px solid ${PAL.purple};box-shadow:0 0 24px #9945FF55;padding:12px;width:min(360px,calc(100vw - 24px));font:9px "Silkscreen",monospace;color:${PAL.white}}
 #wf-social .holder-modal h3{color:${PAL.green};margin:0 0 8px;font-size:11px}
-#wf-social .holder-modal .tier{display:flex;justify-content:space-between;align-items:center;padding:6px;margin:4px 0;background:#0d1420;border:1px solid #1c2c44}
+#wf-social .holder-modal .tier{display:flex;justify-content:space-between;align-items:center;padding:6px;margin:4px 0;background:#120c06;border:1px solid #3a2410}
 #wf-social .holder-modal .tier b{color:${PAL.cyan}}
 #wf-social .holder-modal .active{border-color:${PAL.green};box-shadow:0 0 8px #14F19533}
 #wf-social .holder-modal .x{float:right;color:${PAL.muted};cursor:pointer}

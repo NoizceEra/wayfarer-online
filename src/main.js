@@ -11,6 +11,7 @@ import { installMobile } from './core/mobile.js';
 import { installPwa } from './core/pwa.js';
 import { installPerf } from './core/perf.js';
 import { injectPolishCss } from './ui/hudPolish.js';
+import { installTheme } from './ui/theme.js';
 
 // Mobile hardening: no pinch-zoom gestures, no long-press menu, no dblclick zoom.
 document.addEventListener('gesturestart', (e) => e.preventDefault());
@@ -56,6 +57,7 @@ input.install(game);
 installMobile();
 installPwa();
 installPerf(game);
+installTheme(); // shared tokens, focus rings, font floor, reduce-motion / large-text classes (ui/theme.js)
 injectPolishCss(); // additive HUD readability/mobile floors (ui/hudPolish.js; id-guarded, safe to call once)
 // Specialization catalogue (skill trees + adv gates) for the spec runtime.
 // Global (not import) so game code and UI panels share one catalogue object,

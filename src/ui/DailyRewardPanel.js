@@ -5,12 +5,12 @@ import { audio } from '../systems/audio.js';
 import { socialRoot, el, escapeHtml } from './socialDom.js';
 
 const PALETTE = {
-  bg: '#0a0e1a',
-  green: '#14f195',
-  purple: '#9945ff',
-  cyan: '#03e1ff',
-  white: '#e1e8f0',
-  muted: '#6b7a99',
+  bg: '#1a1008',
+  green: '#9bbc0f',
+  purple: '#c8a840',
+  cyan: '#a0c4f0',
+  white: '#f4f0dc',
+  muted: '#a89a7e',
   gold: '#ffd84a',
 };
 
@@ -19,29 +19,29 @@ function injectCss() {
   if (cssDone) return; cssDone = true;
   const s = el('style');
   s.textContent = `
-#wf-social .dr-panel{left:50%;top:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;width:min(400px,calc(100vw - 16px));max-height:86vh;background:rgba(10,14,26,.96);border:2px solid #9945ff;box-shadow:0 0 12px rgba(153,69,255,.35),inset 0 0 0 1px #03e1ff}
-#wf-social .dr-title{color:#e1e8f0;font-size:12px;padding:6px 10px;border-bottom:1px solid #9945ff;display:flex;align-items:center;gap:8px;background:#0a0e1a}
-#wf-social .dr-title span{color:#14f195}
-#wf-social .dr-x{margin-left:auto;background:transparent;border:0;color:#e1e8f0;font-size:12px;cursor:pointer}
-#wf-social .dr-x:hover{color:#03e1ff}
+#wf-social .dr-panel{left:50%;top:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;width:min(400px,calc(100vw - 16px));max-height:86vh;background:rgba(26,16,8,.96);border:2px solid #c8a840;box-shadow:0 0 12px rgba(141,90,43,.35),inset 0 0 0 1px #a0c4f0}
+#wf-social .dr-title{color:#f4f0dc;font-size:12px;padding:6px 10px;border-bottom:1px solid #c8a840;display:flex;align-items:center;gap:8px;background:#1a1008}
+#wf-social .dr-title span{color:#9bbc0f}
+#wf-social .dr-x{margin-left:auto;background:transparent;border:0;color:#f4f0dc;font-size:12px;cursor:pointer}
+#wf-social .dr-x:hover{color:#a0c4f0}
 #wf-social .dr-body{padding:10px;overflow-y:auto;flex:1}
 #wf-social .dr-streak{text-align:center;margin:8px 0 14px}
-#wf-social .dr-streak-n{font-size:42px;color:#14f195;text-shadow:0 0 8px rgba(20,241,149,.45);line-height:1}
-#wf-social .dr-streak-l{font-size:10px;color:#6b7a99;margin-top:2px}
+#wf-social .dr-streak-n{font-size:42px;color:#9bbc0f;text-shadow:0 0 8px rgba(155,188,15,.45);line-height:1}
+#wf-social .dr-streak-l{font-size:10px;color:#a89a7e;margin-top:2px}
 #wf-social .dr-strip{display:flex;gap:4px;justify-content:center;margin-bottom:12px}
 #wf-social .dr-day{flex:1;min-width:0;border:1px solid #3a3f55;background:#0f1320;padding:6px 2px;text-align:center;position:relative}
-#wf-social .dr-day.today{border-color:#9945ff;box-shadow:0 0 8px rgba(153,69,255,.35)}
-#wf-social .dr-day.claimed{border-color:#14f195}
-#wf-social .dr-day .dr-d{font-size:9px;color:#6b7a99}
-#wf-social .dr-day.today .dr-d{color:#03e1ff}
+#wf-social .dr-day.today{border-color:#c8a840;box-shadow:0 0 8px rgba(141,90,43,.35)}
+#wf-social .dr-day.claimed{border-color:#9bbc0f}
+#wf-social .dr-day .dr-d{font-size:9px;color:#a89a7e}
+#wf-social .dr-day.today .dr-d{color:#a0c4f0}
 #wf-social .dr-day .dr-g{font-size:11px;color:#ffd84a;margin:4px 0}
-#wf-social .dr-day .dr-t{font-size:8px;color:#9945ff}
-#wf-social .dr-day .dr-check{font-size:12px;color:#14f195;margin-top:2px}
+#wf-social .dr-day .dr-t{font-size:8px;color:#c8a840}
+#wf-social .dr-day .dr-check{font-size:12px;color:#9bbc0f;margin-top:2px}
 #wf-social .dr-foot{display:flex;gap:8px;padding:10px;border-top:1px solid #3a3f55;align-items:center;justify-content:center}
-#wf-social .dr-foot button{font-size:11px;padding:6px 18px;background:#14f195;color:#0a0e1a;border:1px solid #03e1ff;cursor:pointer}
-#wf-social .dr-foot button:hover{background:#03e1ff}
-#wf-social .dr-foot button:disabled{background:#1a1f33;color:#6b7a99;border-color:#3a3f55;cursor:default}
-#wf-social .dr-note{text-align:center;font-size:9px;color:#6b7a99;margin-top:6px}
+#wf-social .dr-foot button{font-size:11px;padding:6px 18px;background:#9bbc0f;color:#1a1008;border:1px solid #a0c4f0;cursor:pointer}
+#wf-social .dr-foot button:hover{background:#a0c4f0}
+#wf-social .dr-foot button:disabled{background:#1a1f33;color:#a89a7e;border-color:#3a3f55;cursor:default}
+#wf-social .dr-note{text-align:center;font-size:9px;color:#a89a7e;margin-top:6px}
 @media (max-width:560px){#wf-social .dr-panel{max-height:78vh}#wf-social .dr-strip{gap:2px}#wf-social .dr-day{padding:5px 1px}#wf-social .dr-day .dr-g{font-size:9px}}
 `;
   document.head.appendChild(s);
