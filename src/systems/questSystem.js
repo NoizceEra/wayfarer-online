@@ -239,7 +239,8 @@ export class QuestSystem {
     for (const qid of this.activeIds()) {
       const q = this.def(qid), st = this.s.active[qid];
       q.obj.forEach((o, i) => {
-        if (o.t !== type || o.id !== id) return;
+        if (o.t !== type) return;
+        if (Array.isArray(o.id) ? !o.id.includes(id) : o.id !== id) return;
         const before = this.prog(qid, i).done;
         st.p[i] = Math.min(needOf(o), (st.p[i] || 0) + n);
         any = true;

@@ -87,6 +87,12 @@ class Townfolk {
     }
     if (n.shop) opts.push({ label: 'Browse gear', cb: () => bus.emit(Events.GEAR, { open: 'shop', shop: n.shop }) });
     if (n.market) opts.push({ label: 'Open the market board', cb: () => bus.emit('econ-ui', { panel: 'market' }) }, { label: 'Check my mail', cb: () => bus.emit('econ-ui', { panel: 'mail' }) });
+    if (n.id === 'housing_steward') opts.push({ label: 'Visit your home island', cb: () => {
+      const lvl = scene.player?.level || 1;
+      if (lvl < 3) { audio.play('error', 0.7); return reopen('The crossing is not ready for you yet - reach level 3 first.'); }
+      const payload = { name: scene.pname, hero: scene.heroData, mode: scene.mode, returnTo: { name: scene.pname, hero: scene.heroData, mode: scene.mode } };
+      scene.scene.start('home', payload);
+    } });
     opts.push({ label: 'Goodbye', cb: () => {} });
     return opts.length === 1 ? [] : opts.slice(0, 5);
   }

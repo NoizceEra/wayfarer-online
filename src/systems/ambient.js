@@ -1,6 +1,7 @@
 import { settings } from './fxSettings.js';
 import { AREAS } from '../data/zones.js';
 import { CONFIG } from '../config.js';
+import { settings as coreSettings } from '../core/settings.js';
 
 // Ambient particles, all drawn from the shared pool (see particles.js):
 //   dust puffs / grass rustle / snow + sand puffs while the hero moves,
@@ -155,6 +156,31 @@ export class Ambient {
         if (this.iceT <= 0) {
           this.iceT = 0.2 / Math.max(0.4, amb);
           pool.spawn({ frame: 'spark', x: pd.x0 + 6 + rnd() * (pd.w - 12), y: pd.y0 + 6 + rnd() * (pd.h - 12), life: 0.8, s0: 0.3 + rnd() * 0.5, s1: 0.1, a0: 1, a1: 0, fadeIn: 0.2, add: true, tint: 0xeaf8ff, depth: -9 }, RES);
+        }
+      }
+    }
+
+    // ---------- biome ambient drifts ----------
+    if (!coreSettings.get('reduceMotion') && amb > 0.1 && p && !this.scene.transitioning) {
+      this.biomeT = (this.biomeT || 0) - dt;
+      if (this.biomeT <= 0) {
+        this.biomeT = 0.2 / amb;
+        if (reg.id === 'town' || reg.id === 'meadow') { // cherry blossom petals
+          if (rnd() < 0.6) {
+            pool.spawn({ frame: 'leaf', x: v.x + rnd() * v.width, y: v.y - 10 - rnd() * 20, vx: -10 - wd * 25 - rnd() * 10, vy: 12 + rnd() * 10, life: 6 + rnd() * 3, s0: 0.5 + rnd() * 0.3, a0: 1, a1: 0, fadeIn: 0.3, swx: 12, swy: 5, swf: 2 + rnd() * 2, rot: rnd() * 6, vr: (rnd() - 0.5) * 8, tint: 0xffb7c5, depth: p.y + 100 }, RES);
+          }
+        } else if (reg.id === 'woods' && night > 0.3) { // glowing fireflies in forest
+          if (rnd() < 0.8) {
+            pool.spawn({ frame: 'spark', x: v.x + rnd() * v.width, y: v.y + rnd() * v.height, vx: (rnd() - 0.5) * 8, vy: (rnd() - 0.5) * 8, life: 4 + rnd() * 4, s0: 0.3 + rnd() * 0.3, s1: 0.1, a0: 0.9, a1: 0, fadeIn: 1.0, swx: 10, swy: 10, swf: 1.5, add: true, tint: 0xaaff88, depth: p.y + 50 }, RES);
+          }
+        } else if (reg.id === 'ruins' || reg.id === 'crypt') { // dust motes
+          if (rnd() < 0.8) {
+            pool.spawn({ frame: 'px', x: v.x + rnd() * v.width, y: v.y + rnd() * v.height, vx: wd * 6 + (rnd() - 0.5) * 4, vy: -3 - rnd() * 4, life: 3 + rnd() * 3, s0: 1, a0: 0.4, a1: 0, fadeIn: 0.5, tint: 0xaa9988, depth: p.y + 30 }, RES);
+          }
+        } else if (reg.id === 'frost') { // subtle snow flakes
+          if (rnd() < 0.9) {
+            pool.spawn({ frame: 'px', x: v.x + rnd() * v.width, y: v.y - 10 - rnd() * 20, vx: wd * 20 + (rnd() - 0.5) * 10, vy: 15 + rnd() * 10, life: 5 + rnd() * 3, s0: 1.2, a0: 0.6, a1: 0, fadeIn: 0.5, swx: 8, swf: 1.5, tint: 0xffffff, depth: p.y + 80 }, RES);
+          }
         }
       }
     }

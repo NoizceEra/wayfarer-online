@@ -493,6 +493,7 @@ const SK = {
     burst(scene, p.x, p.y - 6, { n: 14, key: 'vfx.star', speed: [15, 50], up: 50, life: [600, 1000], color: [0xffffff, 0xffe880], g: -30, size: [0.6, 1.1], jx: 12 });
     aura(scene, p, 0xffe880, 2.4, { r: 20 });
     flashScreen(scene, 0xfff6c0, 0.12, 200);
+    healingBloomVfx(scene, p.x, p.y);
   },
   sunburst(scene, p, a, c) {
     setEl(scene, 'holy');
@@ -618,6 +619,7 @@ const SK = {
     anim(scene, p.x + Math.cos(a) * 12, p.y - 10 + Math.sin(a) * 12, 'fx.thunder', { scale: 1.6, angle: Phaser.Math.RadToDeg(a), blend: ADD });
     for (let i = -2; i <= 2; i++) muzzle(scene, p, a + i * 0.14, i % 2 ? 0xff9a30 : 0xffe040, 0.8);
     burst(scene, p.x, p.y - 8, { n: 8, key: 'vfx.star', color: [0xffe040, 0xffffff], speed: [40, 110], angle: a, spread: 1.6, life: [200, 380] });
+    thunderStrikeVfx(scene, p.x, p.y);
   },
   // — Tidecaller —
   tidal(scene, p, a, c) {
@@ -679,6 +681,8 @@ const SK = {
     sweepRing(scene, p.x, p.y, R + 10, 0xffc0c0, 300);
     burst(scene, p.x, p.y - 8, { n: 12, speed: [60, 130], life: [180, 340], color: [0xffffff, 0xff8080], key: 'vfx.streak', len: 0.8 });
     shakeScreen(scene, 80, 0.0022);
+    whirlwindVfx(scene, p.x, p.y);
+    voidCleaveVfx(scene, p.x, p.y);
   },
   // — Trickster —
   caltrops(scene, p, a, c) {
@@ -1036,3 +1040,223 @@ export function healingBloomVfx(scene, x, y) {
   setEl(scene, 'holy');
   anim(scene, x, y - 8, 'fx.healingBloom', { scale: 1.5, blend: ADD });
 }
+
+// ── Periodic Status Effect Visuals ─────────────────────────────────────────
+export function clearStatusVfx(scene, entity) {
+  if (!entity) return;
+  if (entity.__stunCleanup) {
+    entity.__stunCleanup.remove(false);
+    entity.__stunCleanup = null;
+  }
+  if (entity.__stunStars) {
+    const s = scene || entity.scene;
+    for (const st of entity.__stunStars) {
+      if (st && st.scene && st.active && s) {
+        release(s, st);
+      }
+    }
+    entity.__stunStars = null;
+  }
+}
+
+export function renderStatusVfx(scene, entity, statusId) {
+  if (!scene || !entity || !entity.active) return;
+  if (entity.hp != null && entity.hp <= 0) {
+    clearStatusVfx(scene, entity);
+    return;
+  }
+  if (entity.dead || entity.dying) {
+    clearStatusVfx(scene, entity);
+    return;
+  }
+
+  // Camera viewport culling: avoid creating particles for offscreen entities
+  const cam = scene.cameras?.main;
+  if (cam?.worldView) {
+    const wv = cam.worldView;
+    if (entity.x < wv.x - 60 || entity.x > wv.right + 60 || entity.y < wv.y - 60 || entity.y > wv.bottom + 60) {
+      return;
+    }
+  }
+
+  ensureTex(scene);
+  const sc = entity.vscale || 1;
+  const now = scene.time?.now || Date.now();
+
+  if (statusId === 'stun') {
+    // Rotating halo of 3 yellow stars orbiting over the entity's head
+    if (!entity.__stunStars) {
+      const s0 = grab(scene, 'vfx.star');
+      const s1 = grab(scene, 'vfx.star');
+      const s2 = grab(scene, 'vfx.star');
+      if (!s0 || !s1 || !s2) {
+        if (s0) release(scene, s0);
+        if (s1) release(scene, s1);
+        if (s2) release(scene, s2);
+        return;
+      }
+      entity.__stunStars = [s0, s1, s2];
+      const STUN_COLORS = [0xffe14a, 0xfff0a0, 0xffd700];
+      entity.__stunStars.forEach((star, idx) => {
+        star.setTint(STUN_COLORS[idx % STUN_COLORS.length]).setBlendMode(ADD).setOrigin(0.5);
+      });
+      if (entity.once) {
+        entity.once('destroy', () => clearStatusVfx(scene, entity));
+      }
+    }
+
+    const headX = entity.x;
+    const headY = entity.hpBarY != null ? (entity.y + entity.hpBarY - 2) : (entity.y - 25 * sc);
+    const baseAngle = calm() ? 0 : now / 220;
+    const rx = 8.5 * sc;
+    const ry = 3 * sc;
+
+    for (let i = 0; i < 3; i++) {
+      const star = entity.__stunStars[i];
+      if (!star || !star.scene) continue;
+      const a = baseAngle + i * ((Math.PI * 2) / 3);
+      star.setPosition(headX + Math.cos(a) * rx, headY + Math.sin(a) * ry);
+      star.setDepth((entity.depth || 10) + 50);
+      star.setScale(0.85 * sc);
+      star.setAlpha(0.85 + 0.15 * Math.sin(now / 110 + i * 2));
+    }
+
+    // Auto-cleanup timer if stun status ceases to update
+    if (entity.__stunCleanup) entity.__stunCleanup.remove(false);
+    entity.__stunCleanup = scene.time.delayedCall(120, () => clearStatusVfx(scene, entity));
+    return;
+  }
+
+  // Throttle periodic emission for burn, poison, slow, bleed to prevent screen clutter
+  if (!entity.__statusVfxTimers) entity.__statusVfxTimers = {};
+  const nextTime = entity.__statusVfxTimers[statusId] || 0;
+  if (now < nextTime) return;
+
+  const density = dens();
+  const throttleInterval = (rnd(200, 260) / density) * (calm() ? 1.5 : 1);
+  entity.__statusVfxTimers[statusId] = now + throttleInterval;
+
+  // Particle count: 1-2 particles, respecting quality density
+  const count = (Math.random() < 0.45 * density && !calm()) ? 2 : 1;
+  const torsoY = entity.y - 4 * sc;
+
+  switch (statusId) {
+    case 'burn': {
+      // 1-2 floating ember sparks (vfx.dot, fire orange/yellow, rising with negative gravity)
+      const colors = [0xff4500, 0xff7a2a, 0xffa500, 0xffd700];
+      for (let i = 0; i < count; i++) {
+        const c = colors[(Math.random() * colors.length) | 0];
+        fly(scene, entity.x + rnd(-6 * sc, 6 * sc), torsoY + rnd(-4, 4), {
+          key: 'vfx.dot',
+          color: c,
+          blend: ADD,
+          vx: rnd(-16, 16),
+          vy: rnd(-24, -45),
+          g: rnd(-50, -85),
+          life: rnd(350, 550),
+          s0: rnd(0.35, 0.6) * sc,
+          s1: 0,
+          a0: rnd(0.85, 1),
+          a1: 0,
+          depth: (entity.depth || 10) + 5,
+        });
+      }
+      break;
+    }
+
+    case 'poison': {
+      // 1-2 bubbling venom motes (vfx.bubble / vfx.chip, lime/acid green)
+      const colors = [0x7bd84a, 0x55ee33, 0xa3e635, 0x44bb22];
+      for (let i = 0; i < count; i++) {
+        const useBubble = Math.random() < 0.55;
+        const c = colors[(Math.random() * colors.length) | 0];
+        if (useBubble) {
+          fly(scene, entity.x + rnd(-7 * sc, 7 * sc), torsoY + rnd(-2, 5), {
+            key: 'vfx.bubble',
+            color: c,
+            blend: ADD,
+            vx: rnd(-8, 8),
+            vy: rnd(-12, -26),
+            g: rnd(-15, -30),
+            life: rnd(450, 700),
+            s0: rnd(0.08, 0.14) * sc,
+            s1: rnd(0.16, 0.22) * sc,
+            a0: 0.85,
+            a1: 0,
+            depth: (entity.depth || 10) + 5,
+          });
+        } else {
+          fly(scene, entity.x + rnd(-6 * sc, 6 * sc), torsoY + rnd(-2, 5), {
+            key: 'vfx.chip',
+            color: c,
+            blend: ADD,
+            vx: rnd(-12, 12),
+            vy: rnd(-16, -32),
+            g: rnd(-25, -45),
+            life: rnd(400, 650),
+            s0: rnd(0.9, 1.4) * sc,
+            s1: 0.2 * sc,
+            a0: 0.95,
+            a1: 0,
+            rot: rnd(-180, 180),
+            depth: (entity.depth || 10) + 5,
+          });
+        }
+      }
+      break;
+    }
+
+    case 'slow': {
+      // 1-2 falling frost flakes (vfx.chip / vfx.dot, ice cyan/white)
+      const colors = [0x9fe0ff, 0x7ac8ff, 0xddf4ff, 0xffffff];
+      for (let i = 0; i < count; i++) {
+        const useChip = Math.random() < 0.6;
+        const c = colors[(Math.random() * colors.length) | 0];
+        const key = useChip ? 'vfx.chip' : 'vfx.dot';
+        const s0 = useChip ? rnd(0.8, 1.3) * sc : rnd(0.35, 0.55) * sc;
+        fly(scene, entity.x + rnd(-8 * sc, 8 * sc), (entity.y - 10 * sc) + rnd(-3, 4), {
+          key,
+          color: c,
+          blend: ADD,
+          vx: rnd(-12, 12),
+          vy: rnd(14, 28),
+          g: rnd(25, 50),
+          rot: rnd(-150, 150),
+          life: rnd(400, 650),
+          s0,
+          s1: 0,
+          a0: rnd(0.85, 1),
+          a1: 0,
+          depth: (entity.depth || 10) + 5,
+        });
+      }
+      break;
+    }
+
+    case 'bleed': {
+      // 1-2 dripping crimson droplets (vfx.dot, deep red, falling with gravity)
+      const colors = [0xd02a3a, 0x9b111e, 0xb81828, 0x820000];
+      for (let i = 0; i < count; i++) {
+        const c = colors[(Math.random() * colors.length) | 0];
+        fly(scene, entity.x + rnd(-5 * sc, 5 * sc), (entity.y - 3 * sc) + rnd(-3, 3), {
+          key: 'vfx.dot',
+          color: c,
+          blend: 0,
+          vx: rnd(-5, 5),
+          vy: rnd(12, 32),
+          g: rnd(130, 220),
+          life: rnd(300, 480),
+          s0: rnd(0.35, 0.55) * sc,
+          s1: 0.1 * sc,
+          sx: 0.75,
+          sy: 1.35,
+          a0: 0.95,
+          a1: 0,
+          depth: (entity.depth || 10) + 5,
+        });
+      }
+      break;
+    }
+  }
+}
+

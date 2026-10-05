@@ -227,6 +227,83 @@ const ICONS = {
     g.line(3, 8, 8, 3, 'gold'); g.line(8, 3, 13, 8, 'gold'); g.line(3, 12, 8, 7, 'red'); g.line(8, 7, 13, 12, 'red');
     g.px(8, 2, 'white'); g.px(8, 6, 'white'); g.rect(2, 14, 12, 1, 'purple'); g.px(5, 14, 'purpleHi'); g.px(10, 14, 'purpleHi');
   },
+  // Wave 2 expanded abilities
+  whirlwind(g) { // swirling dual curved wind arcs with center spark
+    g.line(4, 3, 8, 2, 'steelHi'); g.line(8, 2, 12, 3, 'white'); g.line(12, 3, 13, 6, 'blueHi'); g.line(13, 6, 11, 8, 'blue'); g.line(11, 8, 9, 8, 'blueHi');
+    g.line(5, 4, 8, 3, 'blue'); g.line(8, 3, 11, 4, 'blueHi'); g.line(11, 4, 12, 6, 'steelLo');
+    g.line(11, 12, 7, 13, 'steelHi'); g.line(7, 13, 3, 12, 'white'); g.line(3, 12, 2, 9, 'blueHi'); g.line(2, 9, 4, 7, 'blue'); g.line(4, 7, 6, 7, 'blueHi');
+    g.line(10, 11, 7, 12, 'blue'); g.line(7, 12, 4, 11, 'blueHi'); g.line(4, 11, 3, 9, 'steelLo');
+    g.disc(7, 8, 1, 'yellow'); g.px(7, 8, 'white'); g.px(8, 7, 'white');
+    g.px(6, 8, 'white'); g.px(9, 7, 'white'); g.px(7, 6, 'yellow'); g.px(8, 9, 'yellow');
+    g.px(2, 5, 'steelHi'); g.px(13, 10, 'steelHi'); g.px(13, 2, 'blueHi'); g.px(2, 13, 'blueHi');
+  },
+  earthshatter(g) { // jagged cracked ground fissure with rising brown rock spikes
+    g.rect(1, 13, 14, 2, 'woodLo'); g.line(2, 12, 13, 12, 'wood');
+    g.line(3, 12, 5, 14, 'orange'); g.line(5, 14, 8, 13, 'yellow'); g.line(8, 13, 10, 14, 'white'); g.line(10, 14, 13, 12, 'orange'); g.px(9, 13, 'gold');
+    g.line(6, 12, 8, 2, 'wood'); g.line(8, 2, 10, 12, 'woodLo'); g.line(7, 4, 8, 12, 'steelHi'); g.line(8, 3, 9, 11, 'gold'); g.px(8, 2, 'steelHi');
+    g.line(2, 12, 3, 5, 'woodLo'); g.line(3, 5, 5, 12, 'wood'); g.line(3, 6, 4, 11, 'gold'); g.px(3, 5, 'steel');
+    g.line(10, 12, 12, 6, 'wood'); g.line(12, 6, 14, 12, 'woodLo'); g.line(12, 7, 13, 11, 'gold'); g.px(12, 6, 'steel');
+    g.line(5, 8, 6, 11, 'wood'); g.px(5, 7, 'steelHi');
+    g.line(10, 8, 11, 11, 'woodLo'); g.px(10, 7, 'steelHi');
+    g.px(4, 3, 'orange'); g.px(12, 4, 'yellow'); g.px(7, 1, 'yellow');
+  },
+  arcanebeam(g) { // vertical prismatic beam with celestial diamond star
+    g.rect(6, 1, 4, 14, 'purple'); g.rect(7, 1, 2, 14, 'blueHi'); g.line(7, 1, 7, 14, 'white'); g.line(8, 1, 8, 14, 'purpleHi');
+    g.line(5, 3, 5, 12, 'blue'); g.line(10, 3, 10, 12, 'purpleHi'); g.line(4, 6, 4, 9, 'blueLo'); g.line(11, 6, 11, 9, 'purple');
+    g.disc(7, 7, 2, 'yellow'); g.rect(6, 6, 4, 4, 'white');
+    g.line(7, 2, 7, 5, 'white'); g.line(8, 2, 8, 5, 'white'); g.px(7, 1, 'yellow'); g.px(8, 1, 'yellow');
+    g.line(7, 10, 7, 13, 'white'); g.line(8, 10, 8, 13, 'white'); g.px(7, 14, 'yellow'); g.px(8, 14, 'yellow');
+    g.line(2, 7, 5, 7, 'white'); g.line(2, 8, 5, 8, 'white'); g.px(1, 7, 'yellow'); g.px(1, 8, 'yellow');
+    g.line(10, 7, 13, 7, 'white'); g.line(10, 8, 13, 8, 'white'); g.px(14, 7, 'yellow'); g.px(14, 8, 'yellow');
+    g.px(5, 5, 'yellow'); g.px(10, 5, 'yellow'); g.px(5, 10, 'yellow'); g.px(10, 10, 'yellow');
+    g.px(7, 7, 'white'); g.px(8, 8, 'white');
+    g.px(3, 4, 'purpleHi'); g.px(12, 4, 'blueHi'); g.px(3, 11, 'blueHi'); g.px(12, 11, 'purpleHi');
+  },
+  voidcleave(g) { // dark shadow crescent cutting through purple void aura
+    g.disc(8, 8, 5, 'purple'); g.disc(8, 8, 3, 'purpleHi');
+    g.px(3, 3, 'purple'); g.px(4, 2, 'purpleHi'); g.px(12, 12, 'purple'); g.px(13, 13, 'purpleHi');
+    g.px(13, 4, 'purple'); g.px(2, 11, 'purple');
+    g.line(13, 2, 9, 5, 'white'); g.line(9, 5, 5, 9, 'white'); g.line(5, 9, 2, 13, 'white');
+    g.line(12, 3, 9, 6, 'steelLo'); g.line(9, 6, 6, 9, 'steelLo'); g.line(6, 9, 3, 12, 'steelLo');
+    g.line(11, 4, 8, 7, 'grayLo'); g.line(8, 7, 7, 8, 'grayLo'); g.line(7, 8, 4, 11, 'grayLo');
+    g.line(10, 5, 8, 8, 'outline'); g.line(8, 8, 5, 10, 'outline'); g.px(7, 7, 'outline');
+    g.px(14, 1, 'purpleHi'); g.px(1, 14, 'purpleHi'); g.px(5, 4, 'blueHi'); g.px(11, 10, 'blueHi');
+    g.px(7, 3, 'white'); g.px(3, 8, 'white');
+  },
+  healingbloom(g) { // opening radiant lotus flower with green sepals and white core
+    g.line(4, 13, 11, 13, 'greenLo'); g.line(3, 12, 12, 12, 'green'); g.line(5, 14, 10, 14, 'greenLo');
+    g.px(2, 10, 'greenHi'); g.px(2, 11, 'green'); g.px(13, 10, 'greenHi'); g.px(13, 11, 'green');
+    g.line(3, 9, 2, 5, 'purpleHi'); g.line(2, 5, 4, 4, 'white'); g.line(4, 4, 6, 8, 'purpleHi'); g.px(3, 6, 'redHi');
+    g.line(12, 9, 13, 5, 'purpleHi'); g.line(13, 5, 11, 4, 'white'); g.line(11, 4, 9, 8, 'purpleHi'); g.px(12, 6, 'redHi');
+    g.line(6, 8, 8, 2, 'white'); g.line(8, 2, 9, 8, 'white'); g.px(8, 2, 'yellow'); g.px(8, 1, 'white');
+    g.disc(7, 8, 2, 'white'); g.disc(8, 8, 2, 'white');
+    g.px(7, 8, 'yellow'); g.px(8, 8, 'yellow'); g.px(7, 7, 'yellow'); g.px(8, 7, 'yellow');
+    g.px(4, 2, 'greenHi'); g.px(11, 2, 'greenHi'); g.px(1, 7, 'yellow'); g.px(14, 7, 'yellow');
+    g.px(7, 4, 'white'); g.px(8, 4, 'white');
+  },
+  thunderlance(g) { // charged electric spear surrounded by lightning rings
+    g.line(2, 13, 7, 8, 'gold'); g.line(3, 14, 8, 9, 'woodLo'); g.px(1, 14, 'steel');
+    g.line(7, 8, 13, 2, 'steelHi'); g.line(8, 7, 14, 1, 'white'); g.line(8, 9, 14, 3, 'steel'); g.line(6, 8, 12, 2, 'steelLo');
+    g.px(13, 1, 'white');
+    g.line(2, 10, 5, 13, 'yellow'); g.line(3, 9, 6, 12, 'blueHi'); g.px(4, 10, 'white');
+    g.line(6, 5, 9, 8, 'yellow'); g.line(7, 4, 10, 7, 'blueHi'); g.px(8, 6, 'white');
+    g.line(9, 2, 12, 5, 'yellow'); g.line(10, 1, 13, 4, 'blueHi'); g.px(11, 3, 'white');
+    g.px(5, 3, 'blueHi'); g.px(6, 2, 'yellow'); g.px(12, 8, 'blueHi'); g.px(13, 9, 'yellow');
+    g.px(3, 6, 'yellow'); g.px(11, 12, 'blueHi'); g.px(14, 5, 'yellow'); g.px(8, 12, 'white');
+  },
+  frostnova(g) { // hexagonal ice crystal surrounded by frost shards
+    g.line(8, 4, 12, 6, 'blueHi'); g.line(12, 6, 12, 10, 'blue'); g.line(12, 10, 8, 12, 'blueLo');
+    g.line(8, 12, 4, 10, 'blueLo'); g.line(4, 10, 4, 6, 'blue'); g.line(4, 6, 8, 4, 'blueHi');
+    g.disc(8, 8, 2, 'blue'); g.line(8, 4, 8, 12, 'steelHi'); g.line(4, 6, 12, 10, 'blueHi'); g.line(4, 10, 12, 6, 'blueHi');
+    g.disc(8, 8, 1, 'white'); g.px(8, 8, 'white');
+    g.line(8, 1, 8, 2, 'blueHi'); g.px(8, 1, 'white');
+    g.line(8, 13, 8, 14, 'blueLo'); g.px(8, 13, 'blueHi');
+    g.line(2, 3, 3, 4, 'blueHi'); g.px(2, 3, 'white');
+    g.line(13, 3, 14, 4, 'blueHi'); g.px(14, 3, 'white');
+    g.line(2, 12, 3, 11, 'blueLo'); g.px(2, 12, 'blueHi');
+    g.line(13, 12, 14, 11, 'blueLo'); g.px(13, 12, 'blueHi');
+    g.px(1, 8, 'blueHi'); g.px(14, 8, 'blueHi'); g.px(7, 7, 'white'); g.px(9, 9, 'white');
+  },
 };
 
 export const HUD_ABILITY_ICON = {
@@ -239,6 +316,10 @@ export const HUD_ABILITY_ICON = {
   pierce: 'pierce', arrowrain: 'arrowrain', thornwall: 'thornwall', wildmend: 'wildmend',
   meteor: 'meteor', chain: 'chain', tidal: 'tidal', mist: 'mist',
   shadowstep: 'shadowstep', fangdance: 'fangdance', caltrops: 'caltrops', feint: 'feint',
+  // Wave 2 expanded abilities
+  whirlwind: 'whirlwind', earthshatter: 'earthshatter', arcanebeam: 'arcanebeam',
+  voidcleave: 'voidcleave', healingbloom: 'healingbloom', thunderlance: 'thunderlance',
+  frostnova: 'frostnova',
 };
 // texture key for an ability id (null when unknown)
 export const hudIconKey = (id) => (HUD_ABILITY_ICON[id] ? `hud.${HUD_ABILITY_ICON[id]}` : null);

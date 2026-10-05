@@ -52,6 +52,50 @@ const PAINT = {
   letter(g, a, b) { g.r(2, 4, 12, 9, a.mid); g.r(2, 4, 12, 1, a.hi); g.line(2, 5, 8, 9, a.lo); g.line(13, 5, 8, 9, a.lo); g.r(2, 12, 12, 1, a.lo); g.disc(8, 9, 2, b.mid); g.px(7, 8, b.hi); },
   shell(g, a, b) { g.rows([[3, 6, 9], [4, 4, 11], [5, 3, 12], [6, 2, 13], [7, 2, 13], [8, 3, 12], [9, 4, 11], [10, 5, 10]], a.mid); g.r(4, 4, 3, 2, a.hi); for (const x of [5, 8, 10]) g.line(8, 10, x, 4, a.lo); g.r(3, 9, 3, 1, b.mid); g.px(5, 4, W); g.px(11, 8, a.lo); },
   cloth(g, a, b) { g.rows([[3, 3, 12], [4, 2, 13], [5, 2, 13], [6, 3, 13], [7, 3, 12], [8, 2, 12], [9, 3, 13], [10, 4, 13], [11, 5, 12], [12, 5, 10]], a.mid); g.r(3, 4, 4, 2, a.hi); g.line(4, 8, 11, 8, a.lo); g.px(3, 6, b.mid); g.px(12, 9, b.mid); g.px(8, 12, b.mid); g.px(6, 11, a.lo); },
+  // Wave 2 expanded materials / relics
+  rune_slab(g, a, b) {
+    g.rows([[2, 4, 11], [3, 3, 12], [4, 3, 12], [5, 3, 12], [6, 3, 12], [7, 3, 12], [8, 3, 12], [9, 3, 12], [10, 3, 12], [11, 3, 12], [12, 3, 12], [13, 4, 11]], a.mid);
+    g.line(4, 2, 11, 2, a.hi); g.line(3, 3, 3, 12, a.hi);
+    g.line(12, 3, 12, 12, a.lo); g.line(4, 13, 11, 13, a.lo);
+    g.px(5, 4, a.lo); g.px(10, 11, a.lo); g.px(4, 8, a.lo2);
+    g.line(7, 4, 7, 10, b.mid); g.line(8, 4, 8, 10, b.hi);
+    g.px(7, 4, W); g.px(8, 4, W); g.px(7, 10, W); g.px(8, 10, W);
+    g.line(5, 5, 7, 7, b.hi); g.line(10, 5, 8, 7, b.hi);
+    g.px(5, 5, W); g.px(10, 5, W);
+    g.line(5, 9, 7, 7, b.mid); g.line(10, 9, 8, 7, b.mid);
+    g.px(7, 7, W); g.px(8, 7, W);
+    g.px(6, 6, b.lo); g.px(9, 6, b.lo); g.px(6, 8, b.lo); g.px(9, 8, b.lo);
+  },
+  elemental_core(g, a, b) {
+    g.disc(8, 8, 3, a.mid); g.disc(8, 8, 2, a.hi);
+    g.px(7, 6, W); g.px(8, 6, W); g.px(7, 7, W);
+    g.disc(9, 10, 1, a.lo);
+    g.r(7, 1, 2, 2, b.hi); g.px(6, 2, b.mid); g.px(9, 2, b.mid);
+    g.r(7, 13, 2, 2, b.lo); g.px(6, 13, b.mid); g.px(9, 13, b.mid);
+    g.line(6, 2, 3, 5, b.hi); g.line(3, 5, 2, 8, b.hi); g.line(2, 8, 3, 11, b.mid); g.line(3, 11, 6, 13, b.lo);
+    g.line(9, 2, 12, 5, b.hi); g.line(12, 5, 13, 8, b.mid); g.line(13, 8, 12, 11, b.lo); g.line(12, 11, 9, 13, b.lo);
+    g.px(2, 8, W); g.px(13, 8, b.hi);
+    g.px(8, 8, W); g.px(5, 7, a.hi); g.px(11, 9, a.hi);
+  },
+  phoenix_feather(g, a, b) {
+    g.line(3, 13, 11, 3, b.hi); g.line(3, 14, 5, 12, b.mid); g.px(12, 2, W);
+    g.rows([[3, 9, 11], [4, 7, 11], [5, 5, 10], [6, 4, 9], [7, 3, 8], [8, 3, 7], [9, 2, 6], [10, 3, 5], [11, 3, 4]], a.mid);
+    g.line(6, 7, 10, 4, a.hi); g.line(5, 8, 8, 6, a.hi); g.px(8, 5, W); g.px(9, 4, W);
+    g.rows([[4, 11, 12], [5, 10, 13], [6, 9, 12], [7, 8, 11], [8, 8, 10], [9, 7, 9], [10, 6, 8]], a.lo);
+    g.line(9, 5, 12, 5, a.hi); g.px(12, 6, a.hi); g.px(11, 7, a.mid);
+    g.px(13, 1, W); g.px(14, 3, b.hi); g.px(1, 9, a.hi); g.px(1, 8, b.hi); g.px(6, 2, b.mid); g.px(10, 11, a.hi); g.px(13, 9, b.hi);
+  },
+  void_shard(g, a, b) {
+    g.rows([[2, 7, 8], [3, 6, 10], [4, 5, 11], [5, 4, 12], [6, 4, 12], [7, 3, 13], [8, 3, 12], [9, 4, 11], [10, 5, 10], [11, 5, 9], [12, 6, 8], [13, 7, 7]], a.mid);
+    g.line(4, 5, 7, 13, a.lo2); g.line(5, 5, 6, 11, a.lo);
+    g.line(7, 2, 7, 9, a.lo); g.line(7, 9, 9, 11, a.mid); g.line(8, 3, 11, 7, a.lo2);
+    g.line(7, 2, 10, 4, b.hi); g.px(7, 2, W); g.px(8, 2, W);
+    g.line(10, 4, 13, 7, b.hi); g.line(13, 7, 11, 10, b.mid); g.px(12, 6, W);
+    g.line(6, 3, 4, 6, b.mid); g.px(4, 6, b.hi);
+    g.line(7, 5, 9, 7, b.hi); g.px(8, 6, W);
+    g.px(2, 4, b.mid); g.px(2, 3, b.hi); g.px(13, 11, b.mid); g.px(14, 10, b.hi); g.px(4, 13, b.lo);
+    g.px(12, 3, W); g.px(3, 8, b.hi);
+  },
 };
 
 export function matCanvas(m) {

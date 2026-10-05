@@ -27,6 +27,8 @@ import SeasonPanel from '../ui/SeasonPanel.js';
 import GuildPanel from '../ui/GuildPanel.js';
 import { WorldBossAlert } from '../ui/WorldBossAlert.js';
 import { ArenaPanel } from '../ui/ArenaPanel.js';
+import { ArenaChallengeModal } from '../ui/ArenaChallengeModal.js';
+import { arenaNet } from '../net/arenaNet.js';
 import DungeonSystem from '../systems/dungeonSystem.js';
 import SeasonSystem from '../systems/seasonSystem.js';
 import GuildSystem from '../systems/guildSystem.js';
@@ -350,6 +352,7 @@ export class UIScene extends Phaser.Scene {
     this.offs.push(
       input.addCloser({ id: 'social', priority: 950, isOpen: () => !!this.social?.anyOpen?.(), close: () => social.act('closeAll') }),
       input.addCloser({ id: 'pet-duel-request', priority: 960, isOpen: () => !!this.social?.petDuelReq?.container, close: () => this.social?.petDuelReq?.hide?.() }),
+      input.addCloser({ id: 'arena-challenge', priority: 965, isOpen: () => !!this.arenaChallenge?.container, close: () => this.arenaChallenge?._decline?.() }),
       input.addCloser({ id: 'fishing', priority: 700, isOpen: () => !!this.fishing?.isOpen, close: () => this.fishing.end('cancel') }),
       input.addCloser({ id: 'journal', priority: 470, isOpen: () => !!this.journal?.isOpen, close: () => this.journal.close() }),
       input.addCloser({ id: 'craft', priority: 460, isOpen: () => !!this.craftPanel?.isOpen, close: () => this.craftPanel.close() }),
@@ -379,7 +382,7 @@ export class UIScene extends Phaser.Scene {
       this.equip?.destroy(); this.shop?.destroy(); this.journal?.destroy(); this.craftPanel?.destroy(); this.fishing?.destroy(); this.toast?.destroy(); this.walletPanel?.destroy();
       this.dailyPanel?.destroy(); this.dailyRewards?.destroy();
       this.partyFinderBtn?.destroy(); this.lfgBtn?.destroy(); this.seasonBtn?.destroy(); this.guildBtn?.destroy(); this.arenaBtn?.destroy(); this.worldBossBtn?.destroy();
-      this.lfgPanel?.destroy(); this.seasonPanel?.destroy(); this.guildPanel?.destroy(); this.arenaPanel?.destroy(); this.worldBossAlert?.destroy();
+      this.lfgPanel?.destroy(); this.seasonPanel?.destroy(); this.guildPanel?.destroy(); this.arenaPanel?.destroy(); this.arenaChallenge?.destroy(); this.worldBossAlert?.destroy();
       this.dungeonSystem?.destroy(); this.seasonSystem?.destroy(); this.guildSystem?.destroy();
     });
     // Mail unread indicator for the touch HUD
@@ -433,6 +436,7 @@ export class UIScene extends Phaser.Scene {
       return () => { detach(); off?.(); };
     };
     this.seasonSystem = new SeasonSystem(this, { send: (t, p) => net.send(t, p), onBroadcast: onceAttach });
+    this.seasonSystem.attachGameSources?.({ dungeons: this.dungeonSystem, arena: arenaNet, playerName: this.pname });
     this.guildSystem = new GuildSystem(this, { send: (t, p) => net.send(t, p), onBroadcast: onceAttach });
     const cx = W / 2, cy = H / 2;
     this.lfgPanel = new LFGPanel(this, cx, cy);
@@ -441,6 +445,26 @@ export class UIScene extends Phaser.Scene {
     this.seasonPanel = new SeasonPanel(this, cx, cy, { seasonSystem: this.seasonSystem, onClaim: (tier, track) => this.seasonSystem.claim(tier, track), onUpgrade: () => this.seasonSystem.upgradePremium() });
     this.guildPanel = new GuildPanel(this, cx, cy, this.guildSystem);
     this.arenaPanel = new ArenaPanel(this);
+    this.arenaChallenge = new ArenaChallengeModal(this);
+    // Arena wires: incoming challenge -> modal; result -> toast + system
+    // message, rating refresh, auto-leave-queue state; errors -> system msg.
+    this.offs.push(
+      arenaNet.onChallenge((m) => { this.arenaChallenge?.show(m || {}); }),
+      arenaNet.onDeclined((m) => {
+        this.arenaChallenge?.hide();
+        this.say(`${m?.fromName || 'Opponent'} declined the arena duel.`);
+      }),
+      arenaNet.onResult((m) => {
+        const line = m?.winnerName ? `${m.winnerName} wins the arena duel${m?.reason ? ` (${m.reason})` : ''}!` : 'Arena duel decided.';
+        this.toast?.push({ title: 'Arena result', text: line, color: '#14f195' });
+        this.say(line);
+        this.arenaPanel.queued = false;
+        this.arenaPanel.setStatus('Press queue to fight.');
+        this.arenaPanel.render();
+        arenaNet.refreshRating();
+      }),
+      arenaNet.onError((m) => { this.say(`Arena: ${m?.msg || 'unavailable'}`); }),
+    );
     this.worldBossAlert = new WorldBossAlert(this, W / 2, 110, {
       onTeleport: () => {
         const d = this._worldBossData;

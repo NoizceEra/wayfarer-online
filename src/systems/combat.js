@@ -11,7 +11,7 @@ import { rollDefDrop, rollItemDrops } from '../data/worldEnemies.js';
 import { WAYSTONES } from '../data/zones.js';
 import { iconKey } from './gearArt.js';
 import { CombatHudScene } from '../scenes/CombatHudScene.js';
-import { dodgeVfx, hitSpark } from './skillVfx.js';
+import { dodgeVfx, hitSpark, renderStatusVfx, clearStatusVfx } from './skillVfx.js';
 
 const FONT = '"Silkscreen", monospace';
 const POOL = 48;           // pooled floating combat texts
@@ -29,6 +29,7 @@ export class Combat {
     this.s = scene;
     this.p = scene.player;
     this.statuses = new StatusSet();
+    if (this.p) this.p.statuses = this.statuses;
     this.target = null;
     this.combo = { n: 0, until: 0, best: 0, bumpAt: 0 };
     this.chain = { step: 0, until: 0 };
@@ -231,6 +232,7 @@ export class Combat {
     if (this.target === ed) this.setTarget(null);
     s.spawner?.onDeath(ed);
     ed.die();
+    clearStatusVfx(s, ed);
     bus.emit(Events.PLAYER_HP, s.hpPayload());
     bus.emit(Events.PLAYER_XP, s.xpPayload());
     bus.emit(Events.QUEST, s.questText());
@@ -575,6 +577,7 @@ export class Combat {
     const dest = this.respawnPoint();
     this.death = { at: s.time.now, respawnAt: s.time.now + 3000, xpLoss, goldLoss, dest: dest.name };
     this.statuses.clear(); this.setTarget(null); this.rollUntil = 0; this.combo.n = 0;
+    clearStatusVfx(s, p);
     this.eshots.forEach((b) => { b.core.destroy(); b.glow.destroy(); }); this.eshots = [];
     p.body.setVelocity(0, 0);
     audio.play('hurt');
@@ -599,6 +602,7 @@ export class Combat {
     p.dead = false;
     p.revivePose?.();
     p.invulnUntil = s.time.now + 2500;
+    clearStatusVfx(s, p);
     this.death = null;
     this.lastCombat = -1e9;
     const here = s.areas?.current?.id || null;
@@ -642,6 +646,11 @@ export class Combat {
         if (p.hp <= 0) { p.hp = 0; p.dead = true; s.onDeath(); }
         bus.emit(Events.PLAYER_HP, s.hpPayload());
       });
+      if (!p.dead) {
+        for (const st of this.statuses.list(time)) {
+          renderStatusVfx(s, p, st.id);
+        }
+      }
     }
     // movement overrides (runs after WorldScene's input movement)
     if (!p.dead && !s.transitioning) {
@@ -668,12 +677,6 @@ export class Combat {
       const w = 18, x = p.x - w / 2, y = p.y + 6;
       g.fillStyle(0x000000, 0.6).fillRect(x - 1, y - 1, w + 2, 4);
       g.fillStyle(this.stamina < ROLL_COST ? 0x9a6a2a : 0xf4d03f, 1).fillRect(x, y, w * (this.stamina / STAM_MAX), 2);
-    }
-    if (this.statuses.has('stun', time)) {
-      for (let i = 0; i < 3; i++) {
-        const a = time / 160 + i * 2.09;
-        g.fillStyle(0xffe14a, 1).fillCircle(p.x + Math.cos(a) * 8, p.y - 26 + Math.sin(a) * 2.5, 1.6);
-      }
     }
   }
 
@@ -731,6 +734,11 @@ export class Combat {
       if (s.sync?.driveEnemy?.(e, time, delta)) return true; // co-op: replicas interpolate
       if (e.statuses.size) e.statuses.tick(time, (id, dmg) => this.damageEnemy(e, dmg, false, { dot: id }));
       if (!e.alive) return true;
+      if (e.statuses.size) {
+        for (const st of e.statuses.list(time)) {
+          renderStatusVfx(s, e, st.id);
+        }
+      }
       // AI sleep: idle, off-screen, non-boss enemies only think every 4th frame (accumulated delta); rendering is culled in core/cull.js
       if (e.mode === 'idle' && !e.isBoss && !e.aiUpdate && !e.engaged && (e.aiState === 'idle' || e.aiState === undefined)
         && (e.x < wv.x - 80 || e.x > wv.right + 80 || e.y < wv.y - 80 || e.y > wv.bottom + 80)) {

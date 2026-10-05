@@ -19,6 +19,9 @@ export const NPCS = [
     lines: ['Pin it on the board and the whole world can buy it! Five percent fee, paid up front.', 'Sold goods pay out by mail - press V to check your mailbox.'] },
   { id: 'gull', name: 'Gull', title: 'Market Board', sheet: 'NinjaGray', role: 'merchant', area: 'dock', at: [17.5, 11], face: 'right', night: 'stay', market: true,
     lines: ['Same board as Thistle Town - the gulls carry the notes. Do not ask.', 'Unsold listings float back to your mailbox when they expire.'] },
+  // ——— housing portal steward (next to the market clerks / notice board) ———
+  { id: 'housing_steward', name: 'Steward Odo', title: 'Home Steward', sheet: 'OldMan', role: 'quest', area: 'town', at: [-134, -28], face: 'right', night: 'stay',
+    lines: ['Your home island awaits across the water, Wayfarer. Say the word and I will send you there.', 'The island grows with you - furniture, trophies, and a daily garden harvest.', 'Reach level 3 and the crossing is yours. The portal remembers your way back.'] },
   // ——— Thistle Town ———
   { id: 'varro', name: 'Captain Varro', title: 'Gate Captain', sheet: 'Samurai', role: 'guard', area: 'town', at: [-150, 118], face: 'right', night: 'stay',
     lines: ['Thistle Town is a safe zone - no monster will harm you inside the fence.', 'Slimes in Meadowfield are good practice. Press J to swing, 1-4 for skills.', 'Stay sharp past the signposts: they list the level range of every zone.'] },

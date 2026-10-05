@@ -110,6 +110,13 @@ const PROJ_SHEETS = [
   ['proj.fireball', 'FX/Projectile/Fireball.png', 16, 16, 12],
   ['proj.shuriken', 'FX/Projectile/Shuriken.png', 16, 16, 16],
 ];
+const CUSTOM_PROJ_SHEETS = [
+  ['proj.iceShard', 'assets/custom/fx/proj_ice_shard.png', 24, 16, 12, true],
+  ['proj.lightningSpear', 'assets/custom/fx/proj_lightning_spear.png', 32, 16, 14, true],
+  ['proj.voidArrow', 'assets/custom/fx/proj_void_arrow.png', 24, 16, 12, true],
+  ['proj.natureSeed', 'assets/custom/fx/proj_nature_seed.png', 16, 16, 12, true],
+  ['proj.holyLance', 'assets/custom/fx/proj_holy_lance.png', 32, 16, 14, true],
+];
 const PROJ_IMAGES = [
   ['proj.arrow', 'FX/Projectile/Arrow.png'],
   ['proj.kunai', 'FX/Projectile/Kunai.png'],
@@ -188,6 +195,7 @@ export function preloadWorld(scene) {
   for (const [key, path, fw, fh] of FX) L.spritesheet(key, `${NA}/${path}`, { frameWidth: fw, frameHeight: fh });
   for (const [key, path, fw, fh] of CUSTOM_FX) L.spritesheet(key, path, { frameWidth: fw, frameHeight: fh });
   for (const [key, path, fw, fh] of PROJ_SHEETS) L.spritesheet(key, `${NA}/${path}`, { frameWidth: fw, frameHeight: fh });
+  for (const [key, path, fw, fh] of CUSTOM_PROJ_SHEETS) L.spritesheet(key, path, { frameWidth: fw, frameHeight: fh });
   for (const [key, path] of PROJ_IMAGES) L.image(key, `${NA}/${path}`);
   for (const [key, path] of WEAPONS) L.image(key, `${NA}/${path}`);
   for (const [key, path] of [...ACCESSORIES, ...FLORA]) L.image(key, path);
@@ -266,6 +274,9 @@ export function createAnims(scene) {
   }
   for (const [key, , , , fps] of PROJ_SHEETS) {
     makeAnim(scene, { key, frames: A.generateFrameNumbers(key), frameRate: fps, repeat: -1 });
+  }
+  for (const [key, , , , fps, loop] of CUSTOM_PROJ_SHEETS) {
+    makeAnim(scene, { key, frames: A.generateFrameNumbers(key), frameRate: fps, repeat: loop ? -1 : 0 });
   }
   for (const [key] of ANIMALS) {
     const k = `animal.${key}`;

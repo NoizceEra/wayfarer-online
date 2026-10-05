@@ -333,14 +333,21 @@ export class WorldScene extends Phaser.Scene {
 
   // opts: { status: {id, chance}, scale }
   fireShot(x, y, angle, dmg, kind, opts = {}) {
-    // kind: arrow | kunai | energy | fire | shuriken
     let s;
-    if (kind === 'arrow' && this.textures.exists('proj.arrow')) {
-      s = this.add.image(x, y, 'proj.arrow').setDepth(2600).setRotation(angle);
-    } else if (kind === 'kunai' && this.textures.exists('proj.kunai')) {
-      s = this.add.image(x, y, 'proj.kunai').setDepth(2600).setRotation(angle);
+    const kindMap = {
+      ice: 'proj.iceShard',
+      lightning: 'proj.lightningSpear',
+      void: 'proj.voidArrow',
+      nature: 'proj.natureSeed',
+      holy: 'proj.holyLance',
+      fire: 'proj.fireball',
+      energy: 'proj.energyBall',
+      shuriken: 'proj.shuriken',
+    };
+    if ((kind === 'arrow' || kind === 'kunai') && this.textures.exists(`proj.${kind}`)) {
+      s = this.add.image(x, y, `proj.${kind}`).setDepth(2600).setRotation(angle);
     } else {
-      const key = kind === 'fire' ? 'proj.fireball' : kind === 'shuriken' ? 'proj.shuriken' : 'proj.energyBall';
+      const key = kindMap[kind] || 'proj.energyBall';
       s = this.add.sprite(x, y, key, 0).setDepth(2600).setRotation(angle);
       if (this.anims.exists(key)) s.play(key);
     }
