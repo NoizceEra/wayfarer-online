@@ -17,3 +17,4 @@ programs/**/.anchor/
 test-ledger/
 
 asset-staging/
+__pycache__/
