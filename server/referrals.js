@@ -53,6 +53,15 @@ import { ledger, commit } from './econStore.js';
 const ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 32 unambiguous uppercase alnum chars
 const MILESTONE_GOLD = { welcome: 50, lv5: 150, lv10: 400 };
 const APPLY_MAX_LEVEL = 2;   // a code may only be entered while the invitee is level <= 2
+// Anti-sybil pacing for referrer payouts (gold out of the shared fee pool):
+// a level milestone pays only after the invitee has been bound for a minimum
+// time (a fresh alt cannot be cashed in minutes), and one referrer collects
+// at most REFERRER_DAILY_MAX level milestones per UTC day. Unmet -> pending,
+// retried on later joins/saves (nothing is lost, it is only delayed).
+const MIN_BIND_AGE_MS = { lv5: 60 * 60_000, lv10: 3 * 60 * 60_000 };
+const REFERRER_DAILY_MAX = Number(process.env.REFERRER_DAILY_MAX) > 0 ? Math.floor(Number(process.env.REFERRER_DAILY_MAX)) : 5;
+const dayStartMs = () => { const d = new Date(); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()); };
+const toMs = (t) => { const n = Number(t) || 0; return n > 0 && n < 1e12 ? n * 1000 : n; }; // sqlite stores seconds
 const SWEEP_MAX = 25;        // pending payouts attempted per join/save
 
 const ONLINE = new Map();    // charKey -> { room, sid, token, name }
@@ -114,6 +123,14 @@ function fileStore() {
     tokenBonusTotal(ck) { return doc.tokenBonuses.filter((b) => b.referrer === ck).reduce((s, b) => s + (b.amount | 0), 0); },
     tokenBonusRows(ck) { return doc.tokenBonuses.filter((b) => b.referrer === ck).map((b) => ({ ...b })); },
     addTokenBonus(r, i, amount, sourceClaim) { doc.tokenBonuses.push({ referrer: r, invitee: i, amount: amount | 0, sourceClaim: sourceClaim | 0, paidAt: now() }); write(); },
+    referrerPaidSince(r, sinceMs) {
+      let n = 0;
+      for (const [k, v] of Object.entries(doc.milestones)) {
+        const a = k.split('|');
+        if (a[0] === r && (a[2] === 'lv5' || a[2] === 'lv10') && v.paidAt != null && v.paidAt >= sinceMs && (v.gold | 0) > 0) n++;
+      }
+      return n;
+    },
     counts() {
       let binds = 0, pending = 0;
       for (const [k, v] of Object.entries(doc.milestones)) { if (k.endsWith('|bind')) binds++; else if (v.paidAt == null) pending++; }
@@ -171,6 +188,7 @@ function sqliteStore(dbh) {
     pending: dbh.prepare("SELECT referrer, invitee, milestone FROM referral_milestones WHERE paid_at IS NULL AND milestone <> 'bind' ORDER BY rowid LIMIT " + SWEEP_MAX),
     binds: dbh.prepare("SELECT COUNT(*) AS n FROM referral_milestones WHERE milestone = 'bind'"),
     pendingN: dbh.prepare("SELECT COUNT(*) AS n FROM referral_milestones WHERE paid_at IS NULL AND milestone <> 'bind'"),
+    paidSince: dbh.prepare("SELECT COUNT(*) AS n FROM referral_milestones WHERE referrer = ? AND milestone IN ('lv5','lv10') AND paid_at IS NOT NULL AND paid_at >= ? AND gold > 0"),
     tokenBonusTotal: dbh.prepare('SELECT COALESCE(SUM(amount), 0) AS total FROM referral_token_bonuses WHERE referrer = ?'),
     tokenBonusRows: dbh.prepare('SELECT invitee, amount, source_claim AS sourceClaim, paid_at AS paidAt FROM referral_token_bonuses WHERE referrer = ? ORDER BY paid_at DESC LIMIT 100'),
     addTokenBonus: dbh.prepare('INSERT INTO referral_token_bonuses (referrer, invitee, amount, source_claim, paid_at) VALUES (?, ?, ?, ?, unixepoch())'),
@@ -199,6 +217,7 @@ function sqliteStore(dbh) {
     tokenBonusTotal(ck) { return q.tokenBonusTotal.get(ck)?.total | 0; },
     tokenBonusRows(ck) { return q.tokenBonusRows.all(ck); },
     addTokenBonus(r, i, amount, sourceClaim) { q.addTokenBonus.run(r, i, amount | 0, sourceClaim | 0); },
+    referrerPaidSince(r, sinceMs) { return q.paidSince.get(r, Math.floor(sinceMs / 1000))?.n | 0; },
     counts() { return { codes: q.codes.get().n, binds: q.binds.get().n, pending: q.pendingN.get().n }; },
   };
 }
@@ -264,7 +283,11 @@ export function onLeave(room, client, p) {
 export function beforeSave(room, client, p, m, prev) {
   if (!S) return true;
   const ck = ckOf(p);
-  if (ck && m?.progress && typeof m.progress === 'object') checkLevel(ck, m.progress.level | 0);
+  // The level that counts is the SERVER copy (already rate-clamped by
+  // validateSave on an earlier save) — never the raw upload: beforeSave runs
+  // before validation, so m.progress.level is whatever the client claims
+  // (a fresh alt could claim level 99 and trigger lv5+lv10 payouts at once).
+  if (ck && prev?.progress) checkLevel(ck, prev.progress.level | 0);
   sweepPending();
   return true;
 }
@@ -417,6 +440,12 @@ function settle(referrer, invitee, milestone) {
   if (!amount || !S) return;
   const existing = S.milestoneOf(referrer, invitee, milestone);
   if (existing && existing.paidAt != null) return; // already paid: at-most-once
+  if (MIN_BIND_AGE_MS[milestone]) {
+    const bind = S.bindOf(invitee);
+    if (!bind || bind.referrer !== referrer) return;
+    if (now() - toMs(bind.at) < MIN_BIND_AGE_MS[milestone]) { S.insertPending(referrer, invitee, milestone); return; }
+    if (S.referrerPaidSince(referrer, dayStartMs()) >= REFERRER_DAILY_MAX) { S.insertPending(referrer, invitee, milestone); return; }
+  }
   const receiver = milestone === 'welcome' ? invitee : referrer;
   const on = ONLINE.get(receiver);
   if (!on) { S.insertPending(referrer, invitee, milestone); return; } // pays when they are around (like mail)

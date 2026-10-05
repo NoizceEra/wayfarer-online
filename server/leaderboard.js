@@ -73,17 +73,20 @@ export function routes(app) {
     if (!Number.isFinite(limit)) limit = DEFAULT_LIMIT;
 
     const now = Date.now();
-    const cacheKey = `${type}:${limit}`;
-    const cached = cache.get(cacheKey);
+    // One cache entry per TYPE (top 100), sliced per request: keying by
+    // type+limit let a client force up to 500 full store scans per minute
+    // (limit=1..100), each a synchronous read of every character file.
+    const cached = cache.get(type);
+    const slice = (data) => ({ ...data, entries: data.entries.slice(0, limit) });
     if (cached && now - cached.t < CACHE_TTL_MS) {
-      res.json({ ok: true, ...cached.data, cached: true });
+      res.json({ ok: true, ...slice(cached.data), cached: true });
       return;
     }
 
     try {
-      const data = compute(type, limit);
-      cache.set(cacheKey, { t: now, data });
-      res.json({ ok: true, ...data, cached: false });
+      const data = compute(type, 100);
+      cache.set(type, { t: now, data });
+      res.json({ ok: true, ...slice(data), cached: false });
     } catch (e) {
       log.error('leaderboard compute failed', { err: e.message });
       res.status(500).json({ ok: false, error: 'compute_failed' });

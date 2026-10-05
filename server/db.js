@@ -377,9 +377,19 @@ export function getWalletForToken(token, chain = 'solana') {
 
 export function insertBridgeWithdrawal({ ck, address, amount, fee, net, status, signature = null, reason = null }) {
   if (noDb()) return false;
-  db.prepare(`INSERT INTO bridge_withdrawals (ck, address, amount, fee, net, status, signature, reason, created_at)
+  const info = db.prepare(`INSERT INTO bridge_withdrawals (ck, address, amount, fee, net, status, signature, reason, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, unixepoch())`).run(ck, address, amount | 0, fee | 0, net | 0, status, signature, reason);
-  return true;
+  return Number(info.lastInsertRowid) || true; // row id: callers update this row after the mint
+}
+
+// Net whole tokens withdrawn to `address` since 00:00 UTC today, across every
+// character bound to it (rows in any status except 'failed' count: a pending
+// or in-flight mint may still land).
+export function walletWithdrawnToday(address) {
+  if (noDb() || !address) return 0;
+  const day0 = Math.floor(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate()) / 1000);
+  const row = db.prepare("SELECT COALESCE(SUM(net), 0) AS n FROM bridge_withdrawals WHERE address = ? AND created_at >= ? AND status <> 'failed'").get(address, day0);
+  return row?.n | 0;
 }
 
 export function updateBridgeWithdrawal(id, { status, signature = null, reason = null }) {

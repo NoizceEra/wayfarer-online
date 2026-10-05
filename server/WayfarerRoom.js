@@ -1,7 +1,7 @@
 import { Room } from 'colyseus';
 import { CFG } from './config.js';
 import { log } from './log.js';
-import { loadChar, saveChar, TOKEN_RE } from './store.js';
+import { loadChar, saveChar, TOKEN_RE, RESERVED_NAMES } from './store.js';
 import { validateSave, sanitizeHero } from './validate.js';
 
 // One room class, two flavours:
@@ -47,6 +47,12 @@ class Bucket {
 }
 
 export const LIVE_ROOMS = new Set();
+
+// Client types the generic relay may forward peer-to-peer. Everything else that
+// no handler consumed is DROPPED: a catch-all relay let any client forge
+// server->client types for its peers ('welcome', 'correct', 'snap', 'notice',
+// 'saved', 'whisper', 'party-update', ...). Modules may add peer-only types.
+export const PASSTHROUGH_TYPES = new Set(['pb-cmd']);
 
 let social = null; // optional additive module (server/social.js), see index.js
 export function setSocialModule(m) { social = m; }
@@ -151,6 +157,7 @@ export class WayfarerRoom extends Room {
       if (!p.buckets.misc.take()) { this.flood(client, p); return; }
       if (typeof type !== 'string' || type.length > 32) return;
       if (moduleTypes.has(type)) return; // do not echo module-handled messages
+      if (!PASSTHROUGH_TYPES.has(type)) return; // allowlist: never relay server-shaped types
       let size = 0; try { size = JSON.stringify(m ?? null).length; } catch { return; }
       if (size > 4096) return;
       const payload = m && typeof m === 'object' && !Array.isArray(m) ? { ...m, sessionId: client.sessionId } : { value: m, sessionId: client.sessionId };
@@ -201,7 +208,8 @@ export class WayfarerRoom extends Room {
   // ─── lifecycle ─────────────────────────────────────────────────────
   onJoin(client, options = {}) {
     STATS.joins++;
-    const name = String(options.name || 'Wayfarer').replace(/[^\w \-']/g, '').trim().slice(0, 14) || 'Wayfarer';
+    let name = String(options.name || 'Wayfarer').replace(/[^\w \-']/g, '').trim().slice(0, 14) || 'Wayfarer';
+    if (RESERVED_NAMES.has(name.toLowerCase())) name = 'Wayfarer';
     const token = TOKEN_RE.test(String(options.token || '')) ? String(options.token) : null;
     const stored = token ? loadChar(token, name) : null;
     const hero = sanitizeHero(options.hero) || stored?.hero || {};
@@ -289,6 +297,7 @@ export class WayfarerRoom extends Room {
   }
   onDispose() {
     LIVE_ROOMS.delete(this);
+    hook('onDispose', this);
     for (const p of this.players.values()) this.persist(p);
     log.info('room disposed', { room: this.displayName });
   }
@@ -383,6 +392,7 @@ export class WayfarerRoom extends Room {
     const e = a.enemies.get(m.i);
     if (e && Math.hypot(e.x - p.x, e.y - p.y) > 360) { this.violation(client, p, 'hit-range', { d: Math.round(Math.hypot(e.x - p.x, e.y - p.y)) }); return; }
     const auth = this.clientOf(a.auth);
+    hook('onHit', this, client, p, m);
     if (auth) this.sendTo(auth, 'hit', { i: m.i, d, by: client.sessionId, kx: p.x | 0, ky: p.y | 0 });
   }
   onEnemyHit(client, p, m) {
@@ -391,6 +401,10 @@ export class WayfarerRoom extends Room {
     const e = a.enemies.get(m.i);
     if (e && m.h !== undefined) e.h = m.h | 0;
     const out = { i: m.i, d: m.d | 0, h: m.h | 0, by: typeof m.by === 'string' ? m.by : client.sessionId };
+    // modules (worldBoss.js) observe validated authority hits here instead of
+    // re-registering 'ehit': colyseus keeps ONE handler per type, so a module
+    // onMessage('ehit') silently replaced this one (and its rate bucket).
+    hook('onEnemyHit', this, client, p, m);
     if (e) this.sendNear(p, 'ehit', out, client, e.x, e.y);
     else this.sendNear(p, 'ehit', out, client, p.x, p.y, 1e9);
   }

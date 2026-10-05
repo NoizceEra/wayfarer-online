@@ -13,6 +13,7 @@ const {
 } = require('../../src/data/guilds.cjs');
 
 const GUILD_CREATE_COST = 2000;
+const own = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, k);
 const MAX_MEMBERS = 50;
 
 class GuildCore {
@@ -82,7 +83,7 @@ class GuildCore {
     const guild = this.guilds.get(guildId);
     if (!guild) return { error: 'guild_not_found' };
     if (this.playerGuild.has(playerId)) return { error: 'already_in_guild' };
-    if (!guild.invites[playerId]) return { error: 'no_invite' };
+    if (!own(guild.invites, playerId)) return { error: 'no_invite' };
     if (this.getMemberCount(guild) >= MAX_MEMBERS) return { error: 'guild_full' };
 
     delete guild.invites[playerId];
@@ -100,7 +101,7 @@ class GuildCore {
 
   declineInvite(playerId, guildId) {
     const guild = this.guilds.get(guildId);
-    if (guild && guild.invites[playerId]) {
+    if (guild && own(guild.invites, playerId)) {
       delete guild.invites[playerId];
       this.guilds.set(guild.id, guild);
     }
@@ -108,14 +109,14 @@ class GuildCore {
   }
 
   removeMember(guild, targetId) {
-    if (!guild.members[targetId]) return { error: 'not_a_member' };
+    if (!own(guild.members, targetId)) return { error: 'not_a_member' };
     delete guild.members[targetId];
     this.playerGuild.delete(targetId);
     return { ok: true, guild };
   }
 
   promote(guild, targetId) {
-    const target = guild.members[targetId];
+    const target = own(guild.members, targetId) ? guild.members[targetId] : null;
     if (!target) return { error: 'not_a_member' };
     if (target.rank === GUILD_RANKS.LEADER) return { error: 'cannot_promote_leader' };
     if (target.rank === GUILD_RANKS.OFFICER) return { error: 'already_officer' };
@@ -124,7 +125,7 @@ class GuildCore {
   }
 
   demote(guild, targetId) {
-    const target = guild.members[targetId];
+    const target = own(guild.members, targetId) ? guild.members[targetId] : null;
     if (!target) return { error: 'not_a_member' };
     if (target.rank !== GUILD_RANKS.OFFICER) return { error: 'not_an_officer' };
     target.rank = GUILD_RANKS.MEMBER;

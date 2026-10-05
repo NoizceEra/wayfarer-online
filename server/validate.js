@@ -23,7 +23,18 @@ export const CAPS = {
   // Gathering is client-simulated, so the allowance is a rate bound + anomaly
   // signal, not a proof of legitimate gathering.
   matStack: 99, matGainBase: 30, matGainPerSec: 0.5,
+  // token points (kill/daily rewards, client-simulated) feed token-claim, which
+  // mints Wayfarer Tokens. A save may only add a bounded amount vs the previous
+  // server copy; a fresh character starts at 0. Rate bound, not a proof.
+  tpGainBase: 300, tpGainPerSec: 2,
 };
+
+// progress fields ONLY the server may change (economy.js token-claim/spend/
+// stake/withdraw/deposit, arena.js). A save never sets them: the previous
+// server copy is kept verbatim (fresh character: absent / 0). Without this a
+// client could upload wayfarerTokens: 1e9, reset its daily bridge cap, forge
+// a stake or an arena rating.
+export const SERVER_EXT_KEYS = ['bridgeDailyClaimed', 'stake', 'stashTabs', 'wayfarer_orb_plus', 'golden_orb_plus', 'arena'];
 
 export function sanitizeProgress(p) {
   if (!p || typeof p !== 'object') return null;
@@ -216,6 +227,26 @@ export function validateSave(prev, progress, now = Date.now()) {
     mats = {};
   }
   p.ext.mats = mats;
+  // server-owned value fields (see SERVER_EXT_KEYS): never taken from a save.
+  const prevExt = pp?.ext && typeof pp.ext === 'object' ? pp.ext : {};
+  for (const k of SERVER_EXT_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(prevExt, k)) p.ext[k] = prevExt[k];
+    else delete p.ext[k];
+  }
+  const prevTokens = pp ? Math.max(0, Math.floor(Number(pp.wayfarerTokens)) || 0) : 0;
+  if (p.wayfarerTokens !== prevTokens) {
+    if (p.wayfarerTokens > prevTokens) clamped.push(`tokens ${p.wayfarerTokens}>${prevTokens}`);
+    p.wayfarerTokens = prevTokens;
+  }
+  if (pp) {
+    const had = Math.max(0, Math.floor(Number(pp.tokenPoints)) || 0);
+    const tdt = Math.max(0, (now - (prev.savedAt || now)) / 1000);
+    const maxTp = Math.min(1e9, had + CAPS.tpGainBase + Math.floor(tdt * CAPS.tpGainPerSec));
+    if (p.tokenPoints > maxTp) { clamped.push(`tp ${p.tokenPoints}>${maxTp}`); p.tokenPoints = maxTp; }
+  } else if (p.tokenPoints > 0) {
+    clamped.push(`first-tp ${p.tokenPoints}>0`);
+    p.tokenPoints = 0;
+  }
   return { rec: p, clamped };
 }
 

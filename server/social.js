@@ -41,6 +41,10 @@ function bucket(room, sid) {
 }
 
 const cleanTag = (t) => String(t || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 4).toUpperCase();
+// presence strings are rendered by peers' DOM panels: keep them to a plain
+// identifier alphabet (defence in depth; the client escapes too)
+const cleanIdent = (t, max) => String(typeof t === 'string' ? t : '').replace(/[^\w \-]/g, '').slice(0, max);
+const INVITE_TTL_MS = 60_000;
 const cleanText = (t) => String(t || '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, CHAT_MAX);
 
 function info(room, sid) { return room.social.players.get(sid); }
@@ -113,13 +117,13 @@ function leaveGuild(room, sid, silent = false) {
 }
 
 export function installSocial(room) {
-  room.social = { players: new Map(), parties: new Map(), guilds: new Map(), duels: new Map(), rate: new Map(), nextParty: 1 };
+  room.social = { players: new Map(), parties: new Map(), guilds: new Map(), duels: new Map(), rate: new Map(), invites: new Map(), nextParty: 1 };
 
   room.onMessage('presence', (client, m) => {
     const p = info(room, client.sessionId); if (!p) return;
     if (Number.isFinite(+m?.level)) p.level = Math.max(1, Math.min(99, +m.level | 0));
-    if (typeof m?.job === 'string') p.job = m.job.slice(0, 16);
-    if (typeof m?.zone === 'string') p.zone = m.zone.slice(0, 24);
+    if (typeof m?.job === 'string') p.job = cleanIdent(m.job, 16);
+    if (typeof m?.zone === 'string') p.zone = cleanIdent(m.zone, 24);
     room.broadcast('presence', presenceOf(room, client.sessionId));
   });
   room.onMessage('who', (client) => {
@@ -171,12 +175,21 @@ export function installSocial(room) {
     if (mine && mine.leader !== client.sessionId) { err(client, 'Only the party leader can invite.'); return; }
     if (mine && mine.members.length >= PARTY_MAX) { err(client, 'Party is full.'); return; }
     if (partyOf(room, sid)) { err(client, `${info(room, sid).name} is already in a party.`); return; }
+    // remember the invite: party-accept is only honoured for a live invite
+    room.social.invites.set(`${sid}|${client.sessionId}`, Date.now() + INVITE_TTL_MS);
     clientById(room, sid)?.send('party-invite', { from: client.sessionId, fromName: p.name });
     client.send('party-msg', { text: `Invited ${info(room, sid).name} to your party.` });
   });
   room.onMessage('party-accept', (client, m) => {
     const p = info(room, client.sessionId); if (!p) return;
     const inviter = info(room, m?.from); if (!inviter) { err(client, 'That invite has expired.'); return; }
+    const ikey = `${client.sessionId}|${m.from}`;
+    const until = room.social.invites.get(ikey);
+    room.social.invites.delete(ikey);
+    if (!until || until < Date.now()) { err(client, 'That invite has expired.'); return; }
+    // the inviter must still be allowed to add members (leader or partyless)
+    const ip = partyOf(room, m.from);
+    if (ip && ip.leader !== m.from) { err(client, 'That invite has expired.'); return; }
     if (partyOf(room, client.sessionId)) { err(client, 'Leave your current party first (/leave).'); return; }
     let party = partyOf(room, m.from);
     if (!party) {
@@ -264,6 +277,7 @@ export function installSocial(room) {
     if (!sid || sid === client.sessionId) { err(client, 'No such duelist.'); return; }
     if (inDuel(client.sessionId)) { err(client, 'Finish your current duel first.'); return; }
     if (inDuel(sid)) { err(client, `${info(room, sid)?.name || '???'} is already dueling.`); return; }
+    room.social.invites.set(`duel|${sid}|${client.sessionId}`, Date.now() + INVITE_TTL_MS);
     clientById(room, sid)?.send('duel-challenge', { from: client.sessionId, fromName: p.name });
     client.send('party-msg', { text: `Duel challenge sent to ${info(room, sid)?.name || '???'}.` });
   });
@@ -271,6 +285,12 @@ export function installSocial(room) {
     const p = info(room, client.sessionId); if (!p) return;
     const sid = m?.to;
     if (!sid || !room.social.players.has(sid)) { err(client, 'That challenger is gone.'); return; }
+    // only a live challenge FROM `sid` TO this client can be answered (no
+    // forced duels: accepting an unissued challenge used to start a PvP pair)
+    const dkey = `duel|${client.sessionId}|${sid}`;
+    const until = room.social.invites.get(dkey);
+    room.social.invites.delete(dkey);
+    if (!until || until < Date.now()) { err(client, 'That challenge has expired.'); return; }
     if (!m?.accept) { clientById(room, sid)?.send('duel-decline', { from: client.sessionId, fromName: p.name }); return; }
     if (inDuel(client.sessionId) || inDuel(sid)) { err(client, 'Someone is already dueling.'); return; }
     const d = { a: sid, b: client.sessionId, at: Date.now() };
@@ -327,7 +347,7 @@ export function socialJoin(room, client, options) {
   room.social.players.set(client.sessionId, {
     name: String(options?.name || 'Wayfarer').slice(0, 14),
     level: Math.max(1, +options?.level | 0 || 1),
-    job: String(hero.job || options?.job || 'wayfarer').slice(0, 16),
+    job: cleanIdent(typeof hero.job === 'string' ? hero.job : (typeof options?.job === 'string' ? options.job : 'wayfarer'), 16) || 'wayfarer',
     zone: 'town', guild: '', party: '',
   });
   const me = presenceOf(room, client.sessionId);
@@ -341,6 +361,7 @@ export function socialLeave(room, client) {
   if (room._endDuel) room._endDuel(client.sessionId, 'left');
   room.social.players.delete(client.sessionId);
   room.social.rate.delete(client.sessionId);
+  for (const k of [...room.social.invites.keys()]) if (k.includes(`${client.sessionId}|`) || k.endsWith(`|${client.sessionId}`)) room.social.invites.delete(k);
   room.broadcast('presence-gone', { id: client.sessionId });
 }
 

@@ -77,7 +77,9 @@ export function getRating(playerRec) {
 
 export function setRating(playerRec, next) {
   const r = clean(next);
-  memRatings.set(memKey(playerRec), r);
+  // memory fallback only for unsaved guests (bounded): saved characters live in
+  // the store (ext.arena is server-owned, a client save cannot overwrite it)
+  if (!playerRec?.token) { if (memRatings.size > 5000) memRatings.clear(); memRatings.set(memKey(playerRec), r); }
   try {
     if (playerRec?.token) {
       const rec = loadChar(playerRec.token, playerRec.name);
@@ -141,7 +143,11 @@ function tryMatchQueue(room) {
     const b = q.splice(bIdx, 1)[0];
     // Same-pair rematch cooldown (anti-farm: no instant re-queue farming).
     const pk = pairKey(a, b);
-    const cdUntil = room.arenaPairCd?.get(pk) || 0;
+    // cooldown keyed by session pair AND by character pair (a reconnect gets a
+    // new sessionId but must not reset the rematch cooldown)
+    const pa = room.players.get(a), pb = room.players.get(b);
+    const ck = pa && pb ? pairKey(memKey(pa), memKey(pb)) : pk;
+    const cdUntil = Math.max(room.arenaPairCd?.get(pk) || 0, room.arenaPairCd?.get(ck) || 0);
     if (Date.now() < cdUntil) {
       q.unshift(b); q.unshift(a);
       send(room, a, 'arena:queued', { position: 1 });
@@ -177,6 +183,7 @@ function sweep(room) {
   for (const [id, m] of room.arenaMatches || []) {
     if (now - m.at > MATCH_TTL_MS) room.arenaMatches.delete(id);
   }
+  for (const [k, until] of room.arenaPairCd || []) if (until < now) room.arenaPairCd.delete(k);
 }
 
 // ─── install ─────────────────────────────────────────────────────────────────
@@ -259,9 +266,28 @@ export function install(room) {
     // Anti-spoof: only a participant may report, and the winner must be a participant.
     if (sid !== match.a && sid !== match.b) return err(room, sid, 'You are not in that match.');
     if (m.winner !== match.a && m.winner !== match.b) return err(room, sid, 'Invalid winner.');
+    // Anti-forge: combat is client-simulated, so a lone "I won" is not proof.
+    // A report settles the match only when it is a CONCESSION (the reporter
+    // names the opponent as winner) or when both participants name the same
+    // winner. Conflicting claims void the match (no rating change).
+    match.reports ||= {};
+    match.reports[sid] = m.winner;
+    const other = sid === match.a ? match.b : match.a;
+    const concession = m.winner !== sid;
+    if (!concession) {
+      const theirs = match.reports[other];
+      if (theirs === undefined) { send(room, sid, 'arena:queued', { position: 0 }); return; } // wait for the opponent
+      if (theirs !== m.winner) {
+        room.arenaMatches.delete(m.matchId);
+        for (const s of [match.a, match.b]) err(room, s, 'Conflicting results reported - match voided, no rating change.');
+        return;
+      }
+    }
     const loser = m.winner === match.a ? match.b : match.a;
-    room.arenaMatches.delete(m.matchId); // consume: one report settles a match (no double-claim)
+    room.arenaMatches.delete(m.matchId); // consume: one settlement per match (no double-claim)
     room.arenaPairCd.set(pairKey(match.a, match.b), Date.now() + PAIR_CD_MS);
+    const pa = room.players.get(match.a), pb = room.players.get(match.b);
+    if (pa && pb) room.arenaPairCd.set(pairKey(memKey(pa), memKey(pb)), Date.now() + PAIR_CD_MS);
     const wRec = room.players.get(m.winner);
     const lRec = room.players.get(loser);
     const w = getRating(wRec);

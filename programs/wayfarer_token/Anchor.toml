@@ -4,8 +4,11 @@
 seeds = false
 skip-lint = false
 
+# PLACEHOLDER — not a deployed program. Must equal declare_id!() in
+# programs/programs-wayfarer-token/src/lib.rs; replace both with a freshly
+# generated program keypair before any deploy (docs/SECURITY_AUDIT.md checklist).
 [programs.devnet]
-programs_wayfarer_token = "WayfaRERWayfaRERWayfaRERWayfaRERWayfaRERWayf"
+programs_wayfarer_token = "36MtxdwUM14ZdUjx4ysUjYh2jNsvRRQ2nGooEckCj9Aa"
 
 [registry]
 url = "https://api.apr.dev"

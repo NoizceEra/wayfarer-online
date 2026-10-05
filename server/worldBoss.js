@@ -125,6 +125,7 @@ function spawnBoss() {
   state.hp = BOSS_MAX_HP;
   state.maxHp = BOSS_MAX_HP;
   state.expiresAt = win ? win.end : Date.now() + LIFETIME_MS;
+  state.spawnedAt = Date.now();
   state.contributions.clear();
   state.killerName = null;
   state.lastBroadcast = 0;
@@ -164,10 +165,27 @@ function awardContributors() {
     if (!c.token) continue;
     const rec = loadChar(c.token, c.name);
     if (!rec?.progress) continue;
-    rec.progress.gold = Math.min(9_999_999, (rec.progress.gold | 0) + REWARDS.gold[i]);
-    rec.progress.tokenPoints = (rec.progress.tokenPoints | 0) + REWARDS.tokenPoints[i];
-    rec.savedAt = Date.now();
+    const gold = Math.max(0, Math.min(REWARDS.gold[i], 9_999_999 - (rec.progress.gold | 0)));
+    rec.progress.gold = (rec.progress.gold | 0) + gold;
+    rec.progress.tokenPoints = Math.min(1e9, (rec.progress.tokenPoints | 0) + REWARDS.tokenPoints[i]);
+    // a server mutation: bump the economy rev so a stale client save cannot
+    // overwrite it, and push the new state to the player if online
+    rec.rev = (rec.rev || 0) + 1;
+    rec.savedAt = Date.now(); rec.progress.savedAt = rec.savedAt;
     saveChar(c.token, c.name, rec);
+    for (const r of LIVE_ROOMS) {
+      const cl = r.clients?.find?.((x) => x.sessionId === c.sid);
+      if (!cl) continue;
+      try {
+        cl.send('econ-sync', {
+          why: 'worldboss', rev: rec.rev, gold: rec.progress.gold | 0,
+          inventory: Array.isArray(rec.progress.inventory) ? rec.progress.inventory.slice() : [],
+          tokenPoints: rec.progress.tokenPoints | 0, wayfarerTokens: rec.progress.wayfarerTokens | 0,
+          delta: { gold, tokenPoints: REWARDS.tokenPoints[i] },
+        });
+      } catch { /* closing */ }
+      break;
+    }
   }
   return list.map((c, i) => ({
     rank: i + 1,
@@ -195,47 +213,70 @@ function onBossSlain(killerName) {
 export function init() {
   // If the server starts inside a spawn window, spawn immediately.
   const now = Date.now();
-  if (currentSpawnWindow(now)) spawnBoss();
+  if (currentSpawnWindow(now) || process.env.WORLDBOSS_TEST_SPAWN === '1') spawnBoss();
+}
+
+// Anti-forge bounds for authority-reported boss damage. Combat is simulated by
+// the area authority (a client), so the server bounds what it may claim:
+//  - one ehit may not exceed MAX_HIT; each contributor may not exceed
+//    MAX_DPS sustained (token bucket, burst = MAX_HIT * 3)
+//  - the credited player must be in the boss area and near the boss
+//  - the boss cannot die faster than MIN_FIGHT_MS after it spawned
+const MAX_HIT = 400;
+const MAX_DPS = 220;
+const MIN_FIGHT_MS = 45_000;
+const CREDIT_RANGE = 520;
+
+function dpsAllow(rec, amount) {
+  const now = Date.now();
+  const burst = MAX_HIT * 3;
+  if (rec.dpsT === undefined) { rec.dpsT = now; rec.dpsTok = burst; }
+  rec.dpsTok = Math.min(burst, rec.dpsTok + ((now - rec.dpsT) / 1000) * MAX_DPS);
+  rec.dpsT = now;
+  const ok = Math.max(0, Math.min(amount, Math.floor(rec.dpsTok)));
+  rec.dpsTok -= ok;
+  return ok;
+}
+
+// Called by WayfarerRoom.onEnemyHit (already verified: sender is the area
+// authority of its own area). Never registers its own 'ehit' handler.
+export function onEnemyHit(room, client, p, m) {
+  if (!state.active || m?.i !== state.id) return;
+  if (p.a !== state.area || room.area(state.area).auth !== client.sessionId) return;
+  const by = typeof m.by === 'string' ? m.by : client.sessionId;
+  const who = room.players.get(by);
+  if (!who || who.dc || who.a !== state.area) return;
+  if (Math.hypot(who.x - state.x, who.y - state.y) > CREDIT_RANGE) return;
+  const raw = Math.max(0, Math.min(MAX_HIT, Math.floor(Number(m.d)) || 0));
+  if (!raw) return;
+  const rec = state.contributions.get(by) || { name: who.name, damage: 0, token: who.token };
+  rec.token = who.token;
+  state.contributions.set(by, rec);
+  let dmg = dpsAllow(rec, raw);
+  // never below 1 HP before the minimum fight time
+  if (Date.now() - state.spawnedAt < MIN_FIGHT_MS) dmg = Math.min(dmg, Math.max(0, state.hp - 1));
+  if (!dmg) return;
+  const died = applyDamageToBoss(by, who.name, dmg);
+  if (died) onBossSlain(who.name);
+}
+
+// Called by WayfarerRoom.onHit for a validated non-authority strike: records
+// the striker as present (no damage is credited from the striker's own claim).
+export function onHit(room, client, p, m) {
+  if (!state.active || !m || m.i !== state.id || p.a !== state.area) return;
+  const rec = state.contributions.get(client.sessionId) || { name: p.name, damage: 0, token: p.token };
+  rec.token = p.token;
+  state.contributions.set(client.sessionId, rec);
 }
 
 export function install(room) {
-  // Authority path: when this room's area authority reports an enemy hit, treat
-  // the world-boss id specially and apply server-side contribution tracking.
-  room.onMessage('ehit', (client, m) => {
-    if (!state.active) return;
-    const p = room.players.get(client.sessionId);
-    if (!p || room.area(state.area).auth !== client.sessionId) return;
-    if (m?.i !== state.id) return;
-    const by = typeof m.by === 'string' ? m.by : client.sessionId;
-    const who = room.players.get(by);
-    if (!who) return;
-    // Store token so rewards can be persisted even if the player leaves before slain.
-    const rec = state.contributions.get(by) || { name: who.name, damage: 0, token: who.token };
-    rec.token = who.token;
-    state.contributions.set(by, rec);
-    const died = applyDamageToBoss(by, who.name, m.d | 0);
-    if (died) onBossSlain(who.name);
-  });
-
-  // Non-authority damage routing also contributes: 'hit' arrives from a striker,
-  // authority replies with ehit (handled above), but we also record the striker
-  // here as a fallback for split-authority edge cases.
-  room.onMessage('hit', (client, m) => {
-    if (!state.active || !m || m.i !== state.id) return;
-    const p = room.players.get(client.sessionId);
-    if (!p) return;
-    const rec = state.contributions.get(client.sessionId) || { name: p.name, damage: 0, token: p.token };
-    rec.token = p.token;
-    state.contributions.set(client.sessionId, rec);
-  });
-
   // Start the global timer that drives spawn/despawn on the room that loaded first.
   if (!timer) {
     timer = setInterval(() => {
       const now = Date.now();
       const win = currentSpawnWindow(now);
       if (win && !state.active) spawnBoss();
-      else if (!win && state.active && !state.killerName) despawnBoss('window-ended');
+      else if (!win && state.active && !state.killerName && process.env.WORLDBOSS_TEST_SPAWN !== '1') despawnBoss('window-ended');
       // periodic health/state broadcast while active
       if (state.active && now - state.lastBroadcast > 5000) {
         state.lastBroadcast = now;
@@ -264,3 +305,7 @@ export function routes(app) {
 }
 
 export { setGlobalBroadcaster, BOSS_NAME, nextSpawnTime, currentSpawnWindow };
+
+// Test-only: WORLDBOSS_TEST_SPAWN=1 spawns the boss at boot outside the
+// schedule (tools/security_test.mjs). Never set it in production.
+export const _test = { spawnBoss, state: () => state, MAX_HIT, MAX_DPS, MIN_FIGHT_MS };
