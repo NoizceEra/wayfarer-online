@@ -8,7 +8,7 @@ import { el, panel, escapeHtml } from './econDom.js';
 //   withdraw: in-game Wayfarer Tokens -> on-chain $WAYFARER (7.5% fee)
 //   deposit:  on-chain $WAYFARER       -> in-game Wayfarer Tokens (paste a tx sig)
 // All authority is server-side (server/economy.js). Accessible via /bridge.
-const SOL = { green: '#14f195', purple: '#9945ff', cyan: '#03e1ff', dim: '#6b7a99', text: '#e8e6ff' };
+const SOL = { green: '#9bbc0f', purple: '#c8a840', cyan: '#a0c4f0', dim: '#a89a7e', text: '#f4f0dc' };
 const FONT = '"Silkscreen", monospace';
 
 // window.solana / phantom / solflare provider (mirrors WalletPanel's lookup)
@@ -29,7 +29,7 @@ function injectCss() {
 #wf-social .ec-bridge .wf-title span{color:${SOL.green};font-family:${FONT}}
 #wf-social .ec-banner{padding:6px 8px;margin:4px 0;font-size:8px;line-height:1.5;border:1px solid}
 #wf-social .ec-banner.warn{color:#ffd84a;border-color:#8a5a2b;background:rgba(138,90,43,.16)}
-#wf-social .ec-banner.ok{color:${SOL.green};border-color:${SOL.green};background:rgba(20,241,149,.09)}
+#wf-social .ec-banner.ok{color:${SOL.green};border-color:${SOL.green};background:rgba(155,188,15,.09)}
 #wf-social .ec-banner.bad{color:#ff8f8f;border-color:#7a2a2a;background:rgba(122,42,42,.16)}
 #wf-social .ec-bridge .ec-sol{color:${SOL.green}}
 #wf-social .ec-bridge .ec-addr{color:${SOL.cyan};word-break:break-all}
@@ -41,7 +41,7 @@ function injectCss() {
 #wf-social .ec-bridge td.st-pending{color:#ffd84a}
 #wf-social .ec-bridge td.st-failed{color:#ff8f8f}
 #wf-social .ec-bridge input{color:${SOL.text};background:#0d0a17;border:1px solid ${SOL.purple}}
-#wf-social .ec-bridge button{background:${SOL.purple};color:#0a0e1a;box-shadow:none}
+#wf-social .ec-bridge button{background:${SOL.purple};color:#1a1008;box-shadow:none}
 #wf-social .ec-bridge button:hover{background:${SOL.green}}
 #wf-social .ec-bridge button:disabled{background:#2a2340;color:#7d7794}
 `;

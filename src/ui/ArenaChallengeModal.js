@@ -1,12 +1,12 @@
 import { arenaNet } from '../net/arenaNet.js';
 
-// Solana palette: bg #0A0E1A, panel #10182E, green #14F195, purple #9945FF, cyan #03E1FF.
+// Solana palette: bg #1a1008, panel #2a1d10, green #9bbc0f, purple #c8a840, cyan #a0c4f0.
 const C = {
-  bg: 0x0a0e1a,
-  panel: 0x10182e,
-  green: 0x14f195,
-  purple: 0x9945ff,
-  cyan: 0x03e1ff,
+  bg: 0x1a1008,
+  panel: 0x2a1d10,
+  green: 0x9bbc0f,
+  purple: 0xc8a840,
+  cyan: 0xa0c4f0,
   text: '#e8f4ff',
   dim: '#7d8db0',
 };
@@ -48,7 +48,7 @@ export class ArenaChallengeModal {
       const bg = s.add.rectangle(0, 0, pw, ph, C.bg, 0.97).setStrokeStyle(2, C.purple);
       const bar = s.add.rectangle(0, -ph / 2 + 14, pw - 4, 26, C.panel, 1);
       const title = s.add.text(0, -ph / 2 + 14, 'ARENA CHALLENGE', {
-        fontFamily: FONT, fontSize: '12px', color: '#14f195', fontStyle: 'bold',
+        fontFamily: FONT, fontSize: '12px', color: '#9bbc0f', fontStyle: 'bold',
       }).setOrigin(0.5);
       const ratingLine = Number.isFinite(+rating) ? `  ·  ${Math.round(+rating)}` : '';
       const body = s.add.text(0, -12, `${this.pending.fromName || 'Someone'}${ratingLine}\nchallenges you to a duel!`, {
@@ -86,7 +86,7 @@ export class ArenaChallengeModal {
     const s = this.scene;
     const bg = s.add.rectangle(x, y, w, h, color, 1).setInteractive({ useHandCursor: true });
     const text = s.add.text(x, y, labelText, {
-      fontFamily: FONT, fontSize: '11px', color: '#0a0e1a', fontStyle: 'bold',
+      fontFamily: FONT, fontSize: '11px', color: '#1a1008', fontStyle: 'bold',
     }).setOrigin(0.5);
     bg.on('pointerover', () => bg.setFillStyle(this.lighten(color)));
     bg.on('pointerout', () => bg.setFillStyle(color));

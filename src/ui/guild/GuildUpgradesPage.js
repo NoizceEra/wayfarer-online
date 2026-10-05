@@ -19,13 +19,13 @@ export default class GuildUpgradesPage {
       const level = guild.perks?.[perk.id] || 0;
       const maxed = level >= perk.maxLevel;
       const desc = getPerkDescription(perk.id, level + (maxed ? 0 : 1));
-      p.addText(-180, y, perk.name, { fontSize: '12px', color: '#14F195', origin: [0, 0.5] });
+      p.addText(-180, y, perk.name, { fontSize: '12px', color: '#9bbc0f', origin: [0, 0.5] });
       p.addText(-180, y + 16, `${desc} — Lv.${level}/${perk.maxLevel}`, { fontSize: '10px', origin: [0, 0.5] });
       if (canUpgrade && !maxed) {
         const cost = getPerkCost(perk.id, level);
-        p.addTextButton(160, y, `${cost}g`, () => p.guildSystem.upgradePerk(perk.id), { fontSize: '10px', color: '#03E1FF' });
+        p.addTextButton(160, y, `${cost}g`, () => p.guildSystem.upgradePerk(perk.id), { fontSize: '10px', color: '#a0c4f0' });
       } else if (maxed) {
-        p.addText(160, y, 'MAX', { fontSize: '10px', color: '#6B7A99', origin: [0, 0.5] });
+        p.addText(160, y, 'MAX', { fontSize: '10px', color: '#a89a7e', origin: [0, 0.5] });
       }
       y += 50;
     }

@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { STATUS, RANKS } from '../data/combatMath.js';
+import { hudLayout, stackY, setStackH } from '../ui/hudLayout.js';
 
 const FONT = '"Silkscreen", monospace';
 const MAX_BUFFS = 8;
@@ -16,9 +17,9 @@ export class CombatHudScene extends Phaser.Scene {
     this.tf = this.add.container(0, 0).setDepth(10).setVisible(false);
     this.tfG = this.add.graphics();
     this.tfName = this.add.text(0, 0, '', F(10, '#fff')).setOrigin(0, 0);
-    this.tfRank = this.add.text(0, 0, '', F(8, '#ffd36a')).setOrigin(1, 0);
-    this.tfHp = this.add.text(0, 0, '', F(8, '#ffffff')).setOrigin(0.5, 0.5);
-    this.tfState = this.add.text(0, 0, '', F(8, '#c8c8c8')).setOrigin(1, 0.5);
+    this.tfRank = this.add.text(0, 0, '', F(9, '#ffd36a')).setOrigin(1, 0);
+    this.tfHp = this.add.text(0, 0, '', F(9, '#ffffff')).setOrigin(0.5, 0.5);
+    this.tfState = this.add.text(0, 0, '', F(9, '#c8c8c8')).setOrigin(1, 0.5);
     this.tf.add([this.tfG, this.tfName, this.tfRank, this.tfHp, this.tfState]);
     // — buff bar —
     this.buffs = [];
@@ -26,13 +27,13 @@ export class CombatHudScene extends Phaser.Scene {
       const c = this.add.container(0, 0).setDepth(10).setVisible(false);
       const g = this.add.graphics();
       const glyph = this.add.text(0, -1, '', F(11, '#ffffff', { strokeThickness: 3 })).setOrigin(0.5);
-      const secs = this.add.text(0, 12, '', F(8, '#ffffff', { strokeThickness: 3 })).setOrigin(0.5, 0);
+      const secs = this.add.text(0, 12, '', F(9, '#ffffff', { strokeThickness: 3 })).setOrigin(0.5, 0);
       c.add([g, glyph, secs]);
       this.buffs.push({ c, g, glyph, secs });
     }
     // — combo —
     this.comboT = this.add.text(0, 0, '', F(18, '#ffe14a', { strokeThickness: 4 })).setOrigin(1, 0.5).setDepth(10).setVisible(false);
-    this.comboSub = this.add.text(0, 0, 'COMBO', F(8, '#ffb04a')).setOrigin(1, 0.5).setDepth(10).setVisible(false);
+    this.comboSub = this.add.text(0, 0, 'COMBO', F(9, '#ffb04a')).setOrigin(1, 0.5).setDepth(10).setVisible(false);
     // — death overlay —
     this.deathBg = this.add.rectangle(0, 0, 10, 10, 0x0a0614, 0).setOrigin(0).setDepth(20);
     this.deathT = this.add.text(0, 0, 'YOU HAVE FALLEN', F(20, '#e8d8ff', { strokeThickness: 5 })).setOrigin(0.5).setDepth(21).setVisible(false);
@@ -45,7 +46,7 @@ export class CombatHudScene extends Phaser.Scene {
     const w = this.world();
     const { width: W, height: H } = this.scale;
     const small = W < 560;
-    if (!w) { this.tf.setVisible(false); return; }
+    if (!w) { this.tf.setVisible(false); setStackH('target', 0); return; }
     const cb = w.combat, p = w.player, now = w.time.now;
     this.drawTarget(w, cb, p, W, small);
     this.drawBuffs(cb, p, now, small);
@@ -53,7 +54,8 @@ export class CombatHudScene extends Phaser.Scene {
     const n = cb.combo.n;
     if (n >= 2) {
       const bump = Math.max(0, 1 - (now - cb.combo.bumpAt) / 140);
-      const x = W - 14, y = small ? H * 0.42 : H * 0.36;
+      const dockB = this.scene.get('ui')?.dockBottom || 0; // keep clear of the phone icon rail
+      const x = W - 14, y = small ? Math.max(H * 0.42, dockB + 26) : H * 0.36;
       this.comboT.setText(`${n} HITS`).setPosition(x, y).setScale(1 + 0.35 * bump).setVisible(true)
         .setColor(n >= 20 ? '#ff6a4a' : n >= 10 ? '#ffb04a' : '#ffe14a')
         .setAlpha(Phaser.Math.Clamp((cb.combo.until - now) / 600, 0.25, 1));
@@ -75,12 +77,14 @@ export class CombatHudScene extends Phaser.Scene {
 
   drawTarget(w, cb, p, W, small) {
     const t = cb.target;
-    if (!t || !t.alive) { this.tf.setVisible(false); return; }
+    if (!t || !t.alive) { this.tf.setVisible(false); setStackH('target', 0); return; }
     const boss = w.areas?.boss;
     const bossBar = boss && boss.active && boss.hp > 0;
     const fw = small ? 170 : 200, fh = 34;
     const x = Math.round(W / 2 - fw / 2);
-    const y = small ? (bossBar ? 146 : 144) : (bossBar ? 80 : 42);
+    // shares the top-centre stack with hint / event ticker / boss bar (ui/hudLayout.js): never overlaps them
+    setStackH('target', fh);
+    const y = stackY('target', W) + (bossBar ? 38 : 0);
     this.tf.setPosition(x, y).setVisible(true);
     const c = t.con(p.level);
     const g = this.tfG;
@@ -125,7 +129,7 @@ export class CombatHudScene extends Phaser.Scene {
     }
     if (!cb.rolling && now < p.invulnUntil - 450 && p.invulnUntil - now < 60000 && !p.dead) items.push({ color: 0x5aa0ff, glyph: 'W', left: p.invulnUntil - now, frac: 1 });
     if (!cb.inCombat && !p.dead && (p.hp < p.effMaxHp() || p.mp < p.effMaxMp())) items.push({ color: 0x4cc060, glyph: '+', left: 0, frac: 1 });
-    const x0 = 10, y0 = small ? 168 : 146;
+    const x0 = 10, y0 = hudLayout(this.scale.width, this.scale.height).buffY;
     for (let i = 0; i < MAX_BUFFS; i++) {
       const b = this.buffs[i], it = items[i];
       if (!it) { b.c.setVisible(false); continue; }

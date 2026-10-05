@@ -8,12 +8,12 @@ import { SEASON_TIERS, SEASON_CONFIG, REWARD_TYPES, getProgressToNextTier } from
 const COLORS = Object.freeze({
   bg: 0x0b0d14,
   panel: 0x161b22,
-  green: 0x14f195,
-  purple: 0x9945ff,
-  cyan: 0x03e1ff,
-  magenta: 0xdc1fff,
-  white: 0xe1e8f0,
-  muted: 0x6b7a99,
+  green: 0x9bbc0f,
+  purple: 0xc8a840,
+  cyan: 0xa0c4f0,
+  magenta: 0xff7a6a,
+  white: 0xf4f0dc,
+  muted: 0xa89a7e,
   gold: 0xffb800,
 });
 
@@ -60,7 +60,7 @@ export default class SeasonPanel extends Phaser.GameObjects.Container {
     this.title = this.scene.add.text(0, -h / 2 + 24, SEASON_CONFIG.name.toUpperCase(), {
       fontFamily: FONTS.title,
       fontSize: '24px',
-      color: '#14f195',
+      color: '#9bbc0f',
       fontStyle: 'bold',
     }).setOrigin(0.5);
     this.add(this.title);
@@ -68,14 +68,14 @@ export default class SeasonPanel extends Phaser.GameObjects.Container {
     this.subtitle = this.scene.add.text(0, -h / 2 + 48, `SEASON PASS • ${SEASON_CONFIG.maxTier} TIERS`, {
       fontFamily: FONTS.body,
       fontSize: '10px',
-      color: '#6b7a99',
+      color: '#a89a7e',
     }).setOrigin(0.5);
     this.add(this.subtitle);
 
     this.closeBtn = this.scene.add.text(w / 2 - 14, -h / 2 + 14, '✕', {
       fontFamily: FONTS.button,
       fontSize: '14px',
-      color: '#dc1fff',
+      color: '#ff7a6a',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     this.closeBtn.on('pointerdown', () => this.close());
     this.add(this.closeBtn);
@@ -83,7 +83,7 @@ export default class SeasonPanel extends Phaser.GameObjects.Container {
     this.statusText = this.scene.add.text(0, -h / 2 + 72, '', {
       fontFamily: FONTS.body,
       fontSize: '11px',
-      color: '#03e1ff',
+      color: '#a0c4f0',
     }).setOrigin(0.5);
     this.add(this.statusText);
 
@@ -122,7 +122,7 @@ export default class SeasonPanel extends Phaser.GameObjects.Container {
     const tierText = this.scene.add.text(-rowW / 2 + 12, 0, `T${tierDef.tier}`, {
       fontFamily: FONTS.button,
       fontSize: '12px',
-      color: '#e1e8f0',
+      color: '#f4f0dc',
     }).setOrigin(0, 0.5);
     container.add(tierText);
 
@@ -151,7 +151,7 @@ export default class SeasonPanel extends Phaser.GameObjects.Container {
 
   createRewardLabel(x, y, reward, track) {
     const text = rewardLabel(reward);
-    const color = track === 'premium' ? '#9945ff' : '#14f195';
+    const color = track === 'premium' ? '#c8a840' : '#9bbc0f';
     return this.scene.add.text(x, y, text, {
       fontFamily: FONTS.body,
       fontSize: '10px',

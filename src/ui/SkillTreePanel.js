@@ -1,5 +1,5 @@
 // Skill-tree panel: Might / Ward / Spirit paths, 4 nodes each.
-// Solana palette (#0A0E1A / #14F195 / #9945FF / #03E1FF) + Silkscreen,
+// Solana palette (#1a1008 / #9bbc0f / #c8a840 / #a0c4f0) + Silkscreen,
 // following the ArenaPanel precedent (show/hide/destroy, guarded build,
 // never throws when the scene or engine is missing).
 //
@@ -12,14 +12,14 @@
 import { bus, Events } from '../core/events.js';
 
 const C = {
-  bg: 0x0a0e1a,
-  panel: 0x10182e,
-  green: 0x14f195,
-  purple: 0x9945ff,
-  cyan: 0x03e1ff,
-  text: '#e8f4ff',
-  dim: '#7d8db0',
-  locked: 0x2a3350,
+  bg: 0x1a1008,
+  panel: 0x2a1d10,
+  green: 0x9bbc0f,
+  purple: 0xc8a840,
+  cyan: 0xa0c4f0,
+  text: '#f4f0dc',
+  dim: '#a89a7e',
+  locked: 0x4a3820,
   gold: 0xc8a840,
 };
 const FONT = '"Silkscreen", monospace';
@@ -27,7 +27,7 @@ const FONT = '"Silkscreen", monospace';
 // Built-in static tree (used unless player.getSpecTree() provides one).
 const STATIC_TREE = [
   {
-    id: 'might', name: 'MIGHT', color: C.green, css: '#14f195',
+    id: 'might', name: 'MIGHT', color: C.green, css: '#9bbc0f',
     nodes: [
       { id: 'mighty_blow', name: 'Mighty Blow', desc: '+15% melee damage.', req: 2, cost: 1, requires: null },
       { id: 'cleave', name: 'Cleave', desc: 'Attacks splash 30% to adjacent foes.', req: 5, cost: 1, requires: 'mighty_blow' },
@@ -36,7 +36,7 @@ const STATIC_TREE = [
     ],
   },
   {
-    id: 'ward', name: 'WARD', color: C.cyan, css: '#03e1ff',
+    id: 'ward', name: 'WARD', color: C.cyan, css: '#a0c4f0',
     nodes: [
       { id: 'iron_skin', name: 'Iron Skin', desc: '+12 armor.', req: 2, cost: 1, requires: null },
       { id: 'bulwark', name: 'Bulwark', desc: 'Blocking reflects 20% damage.', req: 5, cost: 1, requires: 'iron_skin' },
@@ -45,7 +45,7 @@ const STATIC_TREE = [
     ],
   },
   {
-    id: 'spirit', name: 'SPIRIT', color: C.purple, css: '#9945ff',
+    id: 'spirit', name: 'SPIRIT', color: 0xe0b8ff, css: '#e0b8ff',
     nodes: [
       { id: 'focus', name: 'Focus', desc: '+20% max MP.', req: 2, cost: 1, requires: null },
       { id: 'surge', name: 'Surge', desc: 'Skills cost 15% less MP.', req: 5, cost: 1, requires: 'focus' },
@@ -170,7 +170,7 @@ export class SkillTreePanel {
       bg.setInteractive(); // swallow clicks so they never reach the world
       const bar = s.add.rectangle(0, -ph / 2 + 16, pw - 4, 30, C.panel, 1);
       const title = s.add.text(-pw / 2 + 12, -ph / 2 + 16, 'SPEC TREE', {
-        fontFamily: FONT, fontSize: '13px', color: '#14f195', fontStyle: 'bold',
+        fontFamily: FONT, fontSize: '13px', color: '#9bbc0f', fontStyle: 'bold',
       }).setOrigin(0, 0.5);
       this.headText = s.add.text(pw / 2 - 40, -ph / 2 + 16, '', {
         fontFamily: FONT, fontSize: '10px', color: C.text,
@@ -210,7 +210,9 @@ export class SkillTreePanel {
     const tree = this._tree();
     const top = -ph / 2 + 52;
     const colW = (pw - 32) / 3;
-    const nodeH = 62, gapY = 10;
+    // fit short viewports (844x390): shrink node cards so the detail bar + buttons stay inside the panel
+    const gapY = ph < 400 ? 6 : 10;
+    const nodeH = Math.max(46, Math.min(62, Math.floor((ph - 52 - 22 - 66 - 3 * gapY) / 4)));
 
     tree.forEach((path, pi) => {
       const cx = -pw / 2 + 16 + colW * (pi + 0.5);
@@ -241,15 +243,16 @@ export class SkillTreePanel {
     // Detail bar: selected node desc + buy/confirm button + status line.
     const dy = ph / 2 - 52;
     this.detailText = s.add.text(0, dy - 8, 'Select a node.', {
-      fontFamily: FONT, fontSize: '10px', color: C.text, align: 'center',
+      fontFamily: FONT, fontSize: '10px', color: C.text, align: 'center', wordWrap: { width: pw - 24 },
     }).setOrigin(0.5);
-    const bb = this.makeBtn(-110, dy + 22, 200, 28, 'BUY', C.green, () => this.buy());
+    const btnW = Math.min(200, Math.floor((pw - 36) / 2));
+    const bb = this.makeBtn(-(btnW / 2 + 6), dy + 22, btnW, 28, 'BUY', C.green, () => this.buy());
     this.buyBtn = bb;
-    const rb = this.makeBtn(110, dy + 22, 200, 28, 'RESPEC', C.gold, () => this.respec());
+    const rb = this.makeBtn(btnW / 2 + 6, dy + 22, btnW, 28, 'RESPEC', C.gold, () => this.respec());
     this.respecBtn = rb;
-    this.statusText = s.add.text(0, ph / 2 - 8, '', {
-      fontFamily: FONT, fontSize: '9px', color: C.dim, align: 'center',
-    }).setOrigin(0.5);
+    this.statusText = s.add.text(0, ph / 2 - 4, '', {
+      fontFamily: FONT, fontSize: '9px', color: C.dim, align: 'center', wordWrap: { width: pw - 24 },
+    }).setOrigin(0.5, 1);
     c.add([this.detailText, bb.bg, bb.text, rb.bg, rb.text, this.statusText]);
   }
 
@@ -257,7 +260,7 @@ export class SkillTreePanel {
     const s = this.scene;
     const bg = s.add.rectangle(x, y, w, h, color, 1).setInteractive({ useHandCursor: true });
     const text = s.add.text(x, y, label, {
-      fontFamily: FONT, fontSize: '11px', color: '#0a0e1a', fontStyle: 'bold',
+      fontFamily: FONT, fontSize: '11px', color: '#1a1008', fontStyle: 'bold',
     }).setOrigin(0.5);
     bg.on('pointerdown', (_p, _lx, _ly, ev) => { ev?.stopPropagation?.(); cb(); });
     return { bg, text, label, color };
@@ -340,8 +343,8 @@ export class SkillTreePanel {
         const st = this._state(o.node, owned, points, level);
         if (st === 'owned') {
           o.box.setFillStyle(o.path.color, 0.9).setStrokeStyle(2, 0xffffff);
-          o.sub.setText(`OWNED`).setColor('#0a0e1a');
-          o.st.setText('★').setColor('#0a0e1a');
+          o.sub.setText(`OWNED`).setColor('#1a1008');
+          o.st.setText('★').setColor('#1a1008');
         } else if (st === 'available') {
           o.box.setFillStyle(C.panel, 1).setStrokeStyle(2, o.path.color);
           o.sub.setText(`${o.node.cost} pt · Lv ${o.node.req}`).setColor(o.path.css);

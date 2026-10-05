@@ -8,12 +8,12 @@ import { DUNGEONS, getDungeonById } from '../data/dungeons.js';
 const COLORS = Object.freeze({
   bg: 0x0b0d14,
   panel: 0x161b22,
-  green: 0x14f195,
-  purple: 0x9945ff,
-  cyan: 0x03e1ff,
-  magenta: 0xdc1fff,
-  white: 0xe1e8f0,
-  muted: 0x6b7a99,
+  green: 0x9bbc0f,
+  purple: 0xc8a840,
+  cyan: 0xa0c4f0,
+  magenta: 0xff7a6a,
+  white: 0xf4f0dc,
+  muted: 0xa89a7e,
   darkText: 0x0b0d14,
 });
 
@@ -61,7 +61,7 @@ export default class LFGPanel extends Phaser.GameObjects.Container {
     this.title = this.scene.add.text(0, -h / 2 + 24, 'DUNGEON FINDER', {
       fontFamily: FONTS.title,
       fontSize: '22px',
-      color: '#14f195',
+      color: '#9bbc0f',
       fontStyle: 'bold',
     }).setOrigin(0.5);
     this.add(this.title);
@@ -70,7 +70,7 @@ export default class LFGPanel extends Phaser.GameObjects.Container {
     this.closeBtn = this.scene.add.text(w / 2 - 14, -h / 2 + 14, '✕', {
       fontFamily: FONTS.button,
       fontSize: '14px',
-      color: '#dc1fff',
+      color: '#ff7a6a',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     this.closeBtn.on('pointerdown', () => this.close());
     this.add(this.closeBtn);
@@ -84,7 +84,7 @@ export default class LFGPanel extends Phaser.GameObjects.Container {
     this.details = this.scene.add.text(110, -h / 2 + 70, '', {
       fontFamily: FONTS.body,
       fontSize: '11px',
-      color: '#e1e8f0',
+      color: '#f4f0dc',
       lineSpacing: 6,
       wordWrap: { width: 180 },
     }).setOrigin(0);
@@ -120,7 +120,7 @@ export default class LFGPanel extends Phaser.GameObjects.Container {
     this.statusText = this.scene.add.text(0, h / 2 - 14, '', {
       fontFamily: FONTS.body,
       fontSize: '10px',
-      color: '#6b7a99',
+      color: '#a89a7e',
     }).setOrigin(0.5);
     this.add(this.statusText);
 
@@ -152,13 +152,13 @@ export default class LFGPanel extends Phaser.GameObjects.Container {
     const nameText = this.scene.add.text(-92, -10, dungeon.name.toUpperCase(), {
       fontFamily: FONTS.button,
       fontSize: '11px',
-      color: selected ? '#14f195' : '#e1e8f0',
+      color: selected ? '#9bbc0f' : '#f4f0dc',
     }).setOrigin(0, 0.5);
 
     const metaText = this.scene.add.text(-92, 8, `Lv.${dungeon.level} • ${dungeon.durationMin}m • ${dungeon.minPlayers}-${dungeon.maxPlayers}p`, {
       fontFamily: FONTS.body,
       fontSize: '9px',
-      color: '#6b7a99',
+      color: '#a89a7e',
     }).setOrigin(0, 0.5);
 
     bg.on('pointerover', () => bg.setFillStyle(COLORS.panel, 0.6));
@@ -178,7 +178,7 @@ export default class LFGPanel extends Phaser.GameObjects.Container {
     const labelText = this.scene.add.text(0, 0, `${label}:`, {
       fontFamily: FONTS.body,
       fontSize: '10px',
-      color: '#6b7a99',
+      color: '#a89a7e',
     }).setOrigin(0, 0.5);
     container.add(labelText);
 
@@ -187,11 +187,11 @@ export default class LFGPanel extends Phaser.GameObjects.Container {
       const btn = this.scene.add.text(offsetX, 0, opt.toUpperCase(), {
         fontFamily: FONTS.button,
         fontSize: '10px',
-        color: current === opt ? '#14f195' : '#e1e8f0',
+        color: current === opt ? '#9bbc0f' : '#f4f0dc',
       }).setOrigin(0, 0.5).setInteractive({ useHandCursor: true });
 
-      btn.on('pointerover', () => btn.setColor('#03e1ff'));
-      btn.on('pointerout', () => btn.setColor(current === opt ? '#14f195' : '#e1e8f0'));
+      btn.on('pointerover', () => btn.setColor('#a0c4f0'));
+      btn.on('pointerout', () => btn.setColor(current === opt ? '#9bbc0f' : '#f4f0dc'));
       btn.on('pointerdown', () => {
         onSelect(opt);
         this.refreshSelectors();
@@ -281,7 +281,7 @@ export default class LFGPanel extends Phaser.GameObjects.Container {
       this.queueState = 'queued';
       this.actionBtn.text.setText('LEAVE QUEUE');
       this.statusText.setText('Searching for party...');
-      this.statusText.setColor('#03e1ff');
+      this.statusText.setColor('#a0c4f0');
       if (this.onQueue) this.onQueue(this.buildQueueRequest());
     } else if (this.queueState === 'queued') {
       this.resetQueueUI();
@@ -307,7 +307,7 @@ export default class LFGPanel extends Phaser.GameObjects.Container {
     this.queueState = 'ready';
     this.actionBtn.text.setText('ENTER DUNGEON');
     this.statusText.setText(`Match ready! ${Math.max(1, Math.ceil(etaMs / 1000))}s`);
-    this.statusText.setColor('#14f195');
+    this.statusText.setColor('#9bbc0f');
   }
 
   resetQueueUI() {

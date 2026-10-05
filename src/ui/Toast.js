@@ -1,37 +1,53 @@
-// Toast queue (top-centre, below the zone label): achievements, quest
-// accepted/complete, recipe learned, lore unlocked. Drawn rects only.
-import { label, box } from './gearUI.js';
+// Toast stack: achievements, quest accepted/complete, recipe learned, lore unlocked, arena results.
+// DOM-based so toasts are ALWAYS above every canvas and DOM panel (z-index 90, see ui/theme.js), sit
+// inside the safe area, wrap long text, and are announced to screen readers (aria-live).
+// Same API as the old canvas Toaster: push({title, text, sub, color, badge}) / destroy().
+import { calmMotion } from './theme.js';
+
+const MAX_VISIBLE = 3;
+const LIFE_MS = 2800;
+
+function host() {
+  let h = document.getElementById('wf-toasts');
+  if (!h) {
+    h = document.createElement('div');
+    h.id = 'wf-toasts';
+    h.setAttribute('role', 'status');
+    h.setAttribute('aria-live', 'polite');
+    document.body.appendChild(h);
+  }
+  return h;
+}
 
 export class Toaster {
   constructor(scene) {
     this.scene = scene;
-    this.q = [];
-    this.cur = null;
+    this.live = new Set();
   }
   push(t) {
-    this.q.push(t);
-    if (this.q.length > 6) this.q.shift();
-    if (!this.cur) this.next();
+    if (!t) return;
+    const h = host();
+    const el = document.createElement('div');
+    el.className = `wf-t${t.badge ? ' wf-badge' : ''}`;
+    const a = document.createElement('span'); a.className = 'a';
+    // glyph + word, never colour alone: badge toasts get a star
+    a.textContent = `${t.badge ? '★ ' : ''}${String(t.title || '')}`;
+    if (t.color) a.style.color = t.color;
+    const b = document.createElement('span'); b.className = 'b'; b.textContent = String(t.text || '');
+    el.append(a, b);
+    if (t.sub) { const c = document.createElement('span'); c.className = 'c'; c.textContent = String(t.sub); el.append(c); }
+    if (calmMotion()) el.style.animation = 'none';
+    h.appendChild(el);
+    this.live.add(el);
+    while (this.live.size > MAX_VISIBLE) this.drop(this.live.values().next().value, true);
+    setTimeout(() => this.drop(el), LIFE_MS);
   }
-  next() {
-    const t = this.q.shift();
-    if (!t) { this.cur = null; return; }
-    const s = this.scene, W = s.scale.width;
-    const w = Math.min(W - 16, 250), h = t.sub ? 50 : 38;
-    const c = s.add.container(W / 2, -h - 4).setDepth(700);
-    c.add(box(s, -w / 2, 0, w, h, 0x1a1408, 0.96, t.badge ? 0xffd84a : 0x8d5a2b, 2));
-    const col = t.color || '#ffd84a';
-    c.add(label(s, -w / 2 + 10, 5, (t.title || '').toUpperCase(), 8, col));
-    c.add(label(s, -w / 2 + 10, 17, t.text || '', 11, '#fff6d8', { fontStyle: 'bold', wordWrap: { width: w - 20 } }));
-    if (t.sub) c.add(label(s, -w / 2 + 10, 33, t.sub, 7, '#b9b39a', { wordWrap: { width: w - 20 } }));
-    this.cur = c;
-    const y = s.small ? Math.max(150, s.scale.height - 210) : 44;
-    s.tweens.add({
-      targets: c, y, duration: 260, ease: 'back.out',
-      onComplete: () => {
-        s.time.delayedCall(2400, () => s.tweens.add({ targets: c, y: -h - 6, alpha: 0, duration: 280, onComplete: () => { c.destroy(); this.cur = null; this.next(); } }));
-      },
-    });
+  drop(el, now = false) {
+    if (!el || !this.live.has(el)) return;
+    this.live.delete(el);
+    if (now || calmMotion()) { el.remove(); return; }
+    el.classList.add('out');
+    setTimeout(() => el.remove(), 260);
   }
-  destroy() { this.cur?.destroy(); this.q = []; }
+  destroy() { for (const el of [...this.live]) this.drop(el, true); }
 }

@@ -361,6 +361,45 @@ const ICONS = {
     g.line(2, 13, 13, 2, 'solMagenta'); g.line(3, 13, 13, 3, 'solMagenta');
     g.px(2, 13, 'solWhite'); g.px(13, 2, 'solWhite');
   },
+  // ── HUD menu-pill glyphs (top-right dock): same 16px flat-fill + outline style as above,
+  // olive/gold family so the dock reads as part of the wood HUD instead of OS emoji. ──
+  menuLock(g) { // wallet
+    g.rect(5, 2, 1, 5, 'steel'); g.rect(10, 2, 1, 5, 'steel'); g.rect(6, 1, 4, 1, 'steel');
+    g.rect(3, 7, 10, 7, 'gold'); g.rect(3, 7, 10, 1, 'yellow'); g.rect(7, 9, 2, 3, 'woodLo');
+  },
+  menuChest(g) { // rewards / claim
+    g.rect(2, 5, 12, 3, 'woodLo'); g.rect(2, 8, 12, 6, 'wood'); g.rect(7, 5, 2, 9, 'gold');
+    g.rect(2, 8, 12, 1, 'woodLo'); g.px(8, 10, 'yellow'); g.px(3, 6, 'wood'); g.px(4, 6, 'wood');
+  },
+  menuPeople(g) { // party finder
+    g.disc(5, 5, 2, 'blueHi'); g.rect(2, 8, 7, 6, 'blue');
+    g.disc(11, 6, 2, 'greenHi'); g.rect(9, 9, 6, 5, 'green'); g.rect(9, 9, 1, 5, 'greenLo');
+  },
+  menuSwords(g) { // LFG
+    g.line(2, 2, 12, 12, 'steel', 2); g.line(13, 2, 3, 12, 'steel', 2);
+    g.rect(10, 11, 4, 1, 'gold'); g.rect(2, 11, 4, 1, 'gold'); g.px(13, 13, 'wood'); g.px(2, 13, 'wood');
+    g.px(2, 2, 'steelHi'); g.px(13, 2, 'steelHi');
+  },
+  menuCup(g) { // season pass
+    g.rect(5, 2, 6, 6, 'gold'); g.rect(3, 3, 2, 3, 'gold'); g.rect(11, 3, 2, 3, 'gold');
+    g.rect(7, 8, 2, 3, 'gold'); g.rect(5, 11, 6, 2, 'gold'); g.rect(6, 3, 1, 4, 'yellow');
+  },
+  menuBanner(g) { // guild
+    g.rect(3, 2, 10, 8, 'purple'); g.rect(4, 10, 8, 2, 'purple'); g.rect(6, 12, 4, 1, 'purple'); g.px(7, 13, 'purple'); g.px(8, 13, 'purple');
+    g.rect(7, 3, 2, 7, 'gold'); g.rect(5, 5, 6, 2, 'gold'); g.rect(4, 3, 1, 5, 'purpleHi');
+  },
+  menuBolt(g) { // arena
+    g.line(10, 1, 4, 8, 'yellow', 2); g.line(4, 8, 11, 8, 'yellow', 2); g.line(11, 8, 5, 15, 'yellow', 2);
+    g.px(10, 2, 'white'); g.px(5, 8, 'white');
+  },
+  menuStar(g) { // specialization tree
+    g.rect(7, 1, 2, 14, 'green'); g.rect(1, 7, 14, 2, 'green'); g.rect(3, 3, 10, 10, 'greenHi');
+    g.rect(5, 1, 6, 14, 'green'); g.rect(1, 5, 14, 6, 'green'); g.rect(6, 6, 4, 4, 'white');
+  },
+  menuGift(g) { // daily reward
+    g.rect(2, 5, 12, 3, 'redHi'); g.rect(3, 8, 10, 6, 'red'); g.rect(7, 5, 2, 9, 'yellow');
+    g.rect(5, 3, 2, 2, 'yellow'); g.rect(9, 3, 2, 2, 'yellow'); g.px(7, 4, 'gold'); g.px(8, 4, 'gold');
+  },
   ready(g) { // green double chevron — skill came off cooldown / ready flash
     g.line(3, 3, 8, 8, 'solGreen'); g.line(8, 8, 3, 13, 'solGreen');
     g.line(7, 3, 12, 8, 'solGreen'); g.line(12, 8, 7, 13, 'solGreen');

@@ -20,8 +20,8 @@ export default class GuildMembersPage {
       const nameText = `${member.name || member.playerId} — ${member.rank}`;
       p.addText(-180, y, nameText, { fontSize: '11px', origin: [0, 0.5] });
       if (isLeader && member.playerId !== p.guildSystem.playerId) {
-        p.addTextButton(80, y, 'PROMOTE', () => p.guildSystem.promote(member.playerId), { fontSize: '9px', color: '#03E1FF' });
-        p.addTextButton(130, y, 'DEMOTE', () => p.guildSystem.demote(member.playerId), { fontSize: '9px', color: '#6B7A99' });
+        p.addTextButton(80, y, 'PROMOTE', () => p.guildSystem.promote(member.playerId), { fontSize: '9px', color: '#a0c4f0' });
+        p.addTextButton(130, y, 'DEMOTE', () => p.guildSystem.demote(member.playerId), { fontSize: '9px', color: '#a89a7e' });
         p.addTextButton(180, y, 'KICK', () => p.guildSystem.kick(member.playerId), { fontSize: '9px', color: '#ff4444' });
       } else if (isOfficer && member.rank === GUILD_RANKS.MEMBER) {
         p.addTextButton(160, y, 'KICK', () => p.guildSystem.kick(member.playerId), { fontSize: '9px', color: '#ff4444' });

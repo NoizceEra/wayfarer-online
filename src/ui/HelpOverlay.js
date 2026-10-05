@@ -14,10 +14,10 @@ import { audio } from '../systems/audio.js';
 //
 // Colour/font rule: Solana palette only; Silkscreen labels, PixelifySans body.
 const SOL = {
-  green: '#14F195', purple: '#9945FF', cyan: '#03E1FF', magenta: '#DC1FFF',
-  white: '#E1E8F0', muted: '#6B7A99',
-  bgN: 0x0a0e1a, greenN: 0x14f195, purpleN: 0x9945ff, cyanN: 0x03e1ff,
-  bar: 0x10182e, line: 0x2a3350,
+  green: '#9bbc0f', purple: '#c8a840', cyan: '#a0c4f0', magenta: '#ff7a6a',
+  white: '#f4f0dc', muted: '#a89a7e',
+  bgN: 0x1a1008, greenN: 0x9bbc0f, purpleN: 0xc8a840, cyanN: 0xa0c4f0,
+  bar: 0x2a1d10, line: 0x2a3350,
 };
 const LABEL = '"Silkscreen", monospace';
 const BODY = '"PixelifySans", "Silkscreen", monospace';
@@ -144,6 +144,7 @@ export class HelpOverlay {
   open() {
     if (this.isOpen) return;
     this.isOpen = true;
+    document.getElementById('wf-social')?.classList.add('wf-dimmed'); // modal above DOM panels
     this.nudge = this.takeFirstRun();
     input.pushModal('help');
     this.prevNav = input.nav; input.nav = null;
@@ -153,6 +154,7 @@ export class HelpOverlay {
   close() {
     if (!this.isOpen) return;
     this.isOpen = false;
+    document.getElementById('wf-social')?.classList.remove('wf-dimmed');
     input.popModal('help');
     if (input.nav === null && this.prevNav) input.nav = this.prevNav;
     this.prevNav = null;
@@ -175,7 +177,7 @@ export class HelpOverlay {
   chip(c, x, y, w, h, label, cb) {
     const s = this.scene;
     const r = s.add.rectangle(x, y, w, h, SOL.purpleN, 1).setStrokeStyle(1, 0x1a1a22).setInteractive({ useHandCursor: true });
-    const t = s.add.text(x, y, label, L(8, '#0a0e1a', { fontStyle: 'bold' })).setOrigin(0.5);
+    const t = s.add.text(x, y, label, L(8, '#1a1008', { fontStyle: 'bold' })).setOrigin(0.5);
     r.on('pointerover', () => r.setStrokeStyle(2, SOL.cyanN));
     r.on('pointerout', () => r.setStrokeStyle(1, 0x1a1a22));
     r.on('pointerdown', (_p, _lx, _ly, ev) => { ev?.stopPropagation?.(); audio.play('ui', 0.6); cb(); });

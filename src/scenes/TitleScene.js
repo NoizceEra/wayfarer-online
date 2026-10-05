@@ -12,19 +12,19 @@ const FOCUS_ORDER = ['name', 'play', 'online'];
 
 // Solana palette
 const SOL = {
-  bg: 0x0A0E1A,
-  bgLight: 0x1A103C,
-  green: '#14F195',
-  greenHex: 0x14F195,
-  purple: '#9945FF',
-  purpleHex: 0x9945FF,
-  cyan: '#03E1FF',
-  cyanHex: 0x03E1FF,
-  magenta: '#DC1FFF',
-  white: '#E1E8F0',
-  muted: '#6B7A99',
-  darkText: '#0A0E1A',
-  panelBg: 0x0A0E1A,
+  bg: 0x1a1008,
+  bgLight: 0x2a1d10,
+  green: '#9bbc0f',
+  greenHex: 0x9bbc0f,
+  purple: '#c8a840',
+  purpleHex: 0xc8a840,
+  cyan: '#a0c4f0',
+  cyanHex: 0xa0c4f0,
+  magenta: '#ff7a6a',
+  white: '#f4f0dc',
+  muted: '#a89a7e',
+  darkText: '#1a1008',
+  panelBg: 0x1a1008,
 };
 
 export class TitleScene extends Phaser.Scene {
@@ -217,7 +217,7 @@ export class TitleScene extends Phaser.Scene {
     g.add([bg, label]);
     this.root.add(g);
     bg.setInteractive({ useHandCursor: true });
-    bg.on('pointerover', () => { bg.setFillStyle(0x0db87a); label.setScale(1.05); });
+    bg.on('pointerover', () => { bg.setFillStyle(0x7a9a0a); label.setScale(1.05); });
     bg.on('pointerout', () => { bg.setFillStyle(SOL.greenHex); label.setScale(1); });
     bg.on('pointerdown', () => { bg.setFillStyle(0x0aa86c); label.setY(1); });
     bg.on('pointerup', async () => {
@@ -239,7 +239,7 @@ export class TitleScene extends Phaser.Scene {
       const hot = this.hover === id;
       if (it.kind === 'btn') {
         const pressed = this.pressed === id;
-        it.bg.setFillStyle(pressed ? 0x0db87a : hot || focused ? SOL.greenHex : 0x0db87a);
+        it.bg.setFillStyle(pressed ? 0x7a9a0a : hot || focused ? SOL.greenHex : 0x7a9a0a);
         it.bg.setStrokeStyle(focused ? 3 : 2, focused ? SOL.cyanHex : SOL.purpleHex);
         it.label.setY(it.y + (pressed ? 1 : 0));
         it.arrowL.setVisible(focused); it.arrowR.setVisible(focused);
@@ -248,7 +248,7 @@ export class TitleScene extends Phaser.Scene {
       } else {
         const editing = this.editing === 'name';
         it.border.setStrokeStyle(focused || editing ? 3 : 2, focused || editing ? SOL.cyanHex : SOL.purpleHex);
-        it.border.setFillStyle(editing || hot ? 0x0db87a : SOL.greenHex);
+        it.border.setFillStyle(editing || hot ? 0x7a9a0a : SOL.greenHex);
         it.nameText.setText(this.nameValue);
         it.cursor.setX(it.nameText.x + it.nameText.displayWidth + 2);
         it.cursor.setVisible(editing || focused);
