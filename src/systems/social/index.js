@@ -296,7 +296,7 @@ class Social {
   onKill(k) {
     if (!k || !this.inParty() || !this.online) return;
     const near = this.membersInRange(k.x, k.y);
-    net.send('party-xp', { xp: k.xp | 0, x: k.x | 0, y: k.y | 0 });
+    net.send('party-xp', { xp: k.xp | 0, x: k.x | 0, y: k.y | 0, typeId: k.typeId || null });
     if (near.length && this.world?.player) {
       const bonus = Math.ceil((k.xp | 0) * 0.1 * near.length);
       if (bonus > 0) { this.grantXp(bonus, `+${bonus} XP party bonus`); }
@@ -309,6 +309,13 @@ class Social {
     const share = Math.ceil(m.xp * (0.5 + 0.1 * this.party.members.length));
     const who = this.member(m.from)?.name || 'a party member';
     this.grantXp(share, `+${share} XP shared from ${who}`);
+    // Shared kill credit: a party-mate's kill also advances our quests, but only
+    // inside the same PARTY_XP_RADIUS gate as the XP share, so quest credit
+    // cannot be farmed from across the map.
+    if (m.typeId) {
+      this.world.creditKill?.(m.typeId, null);
+      bus.emit(Events.QUEST, this.world.questText?.());
+    }
   }
   grantXp(n, why) {
     const w = this.world; const p = w?.player; if (!p || n <= 0) return;

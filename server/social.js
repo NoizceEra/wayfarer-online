@@ -220,7 +220,11 @@ export function installSocial(room) {
   room.onMessage('party-xp', (client, m) => {
     const party = partyOf(room, client.sessionId); if (!party) return;
     const xp = Math.max(0, Math.min(100000, +m?.xp | 0)); if (!xp) return;
-    sendParty(room, party, 'party-xp', { from: client.sessionId, xp, x: +m?.x | 0, y: +m?.y | 0 }, client.sessionId);
+    // typeId rides along so recipients can take shared kill credit for quests,
+    // not just XP. Bounded + type-checked here; the recipient still re-checks
+    // proximity before granting anything.
+    const typeId = typeof m?.typeId === 'string' && m.typeId.length <= 48 ? m.typeId : null;
+    sendParty(room, party, 'party-xp', { from: client.sessionId, xp, x: +m?.x | 0, y: +m?.y | 0, typeId }, client.sessionId);
   });
   room.onMessage('party-status', (client, m) => {
     const party = partyOf(room, client.sessionId); if (!party) return;

@@ -293,7 +293,6 @@ export class UIScene extends Phaser.Scene {
       getNow: () => this.world()?.time?.now ?? 0,
       hpBar: this.hpBar,
       mpBar: this.mpBar,
-      small: this.small,
       isMobile: CONFIG.isMobile,
       statusList: () => {
         const w = this.world();

@@ -102,6 +102,7 @@ export function computeDerived({ job, adv = null, level = 1, alloc, weaponKind =
 // as inert so old saves and missing data never crash.
 export const SPEC_PATHS = ['might', 'ward', 'spirit'];
 export const SPEC_NODES_MAX = 64;
+export const SPEC_NODE_ID_MAX = 96; // mirrors server/validate.js sanitizeProgNodes
 export const SPEC_DERIVED_KEYS = ['hpMul', 'mpMul', 'crit', 'aspd', 'move'];
 
 const clampSpecInt = (v, d = 0) => {
@@ -121,8 +122,12 @@ export function sanitizeSpecNodes(raw) {
   if (!Array.isArray(raw)) return [];
   const seen = new Set(); const out = [];
   for (const id of raw) {
-    if (typeof id !== 'string' || !id || seen.has(id)) continue;
-    seen.add(id); out.push(id);
+    if (typeof id !== 'string' || !id) continue;
+    // Slice BEFORE the dedupe check so two ids that differ only past the cap
+    // collapse instead of both surviving and then colliding on the server.
+    const s = id.slice(0, SPEC_NODE_ID_MAX);
+    if (!s || seen.has(s)) continue;
+    seen.add(s); out.push(s);
     if (out.length >= SPEC_NODES_MAX) break;
   }
   return out;

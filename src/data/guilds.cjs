@@ -10,6 +10,14 @@ const GUILD_RANKS = Object.freeze({
   LEADER: 'leader',
 });
 
+// One-off gold cost to found a guild.
+// MIRROR of the authoritative value in server/guild/guildCore.cjs (the relay
+// deducts it server-side). It is duplicated here only so the create-guild UI can
+// display the price: the UI imported a GUILD_CREATE_COST that was exported by
+// nothing anywhere, so rendering that page threw on undefined.toLocaleString().
+// If the server value changes, change this too.
+const GUILD_CREATE_COST = 2000;
+
 const GUILD_PERMISSIONS = Object.freeze({
   INVITE: 'invite',
   KICK: 'kick',
@@ -237,6 +245,7 @@ function computeDailyGold(baseGold, guild) {
 
 module.exports = {
   GUILD_RANKS,
+  GUILD_CREATE_COST,
   GUILD_PERMISSIONS,
   GUILD_MAX_LEVEL,
   GUILD_PERKS,
