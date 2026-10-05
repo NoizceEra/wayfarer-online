@@ -20,6 +20,7 @@ const C = {
   text: '#e8f4ff',
   dim: '#7d8db0',
   locked: 0x2a3350,
+  gold: 0xc8a840,
 };
 const FONT = '"Silkscreen", monospace';
 
@@ -62,6 +63,8 @@ export class SkillTreePanel {
     this.selected = null;   // selected node id
     this.armed = null;      // confirm-armed node id (two-step buy)
     this.armedAt = 0;
+    this.respecArmed = false; // confirm-armed respec (two-step, same 5s pattern)
+    this.respecArmedAt = 0;
     this.status = '';
   }
 
@@ -104,6 +107,28 @@ export class SkillTreePanel {
   get buyable() {
     try { return typeof this._player()?.buySpecNode === 'function'; }
     catch { return false; }
+  }
+  _gold() {
+    try {
+      const v = this._player()?.gold;
+      return Number.isFinite(+v) ? Math.max(0, Math.floor(+v)) : 0;
+    } catch { return 0; }
+  }
+  _respecCount() {
+    try {
+      const v = this._player()?.prog?.respecs;
+      return Number.isFinite(+v) ? Math.min(999, Math.max(0, Math.floor(+v))) : 0;
+    } catch { return 0; }
+  }
+  _respecCost() {
+    try {
+      const p = this._player();
+      if (typeof p?.respecCost === 'function') {
+        const v = p.respecCost();
+        if (Number.isFinite(+v) && +v > 0) return Math.floor(+v);
+      }
+    } catch { /* fall through to local schedule */ }
+    return 500 * (this._respecCount() + 1);
   }
 
   _state(node, owned, points, level) {
@@ -159,6 +184,7 @@ export class SkillTreePanel {
       this.container = c;
       this._pw = pw; this._ph = ph;
       this.selected = null; this.armed = null; this.status = '';
+      this.respecArmed = false; this.respecArmedAt = 0;
       this.buildNodes();
       this.render();
       try {
@@ -179,7 +205,7 @@ export class SkillTreePanel {
     const c = this.container;
     if (!s || !c) return;
     this.nodeObjs = [];
-    this.detailText = null; this.buyBtn = null; this.statusText = null;
+    this.detailText = null; this.buyBtn = null; this.respecBtn = null; this.statusText = null;
     const pw = this._pw, ph = this._ph;
     const tree = this._tree();
     const top = -ph / 2 + 52;
@@ -217,12 +243,14 @@ export class SkillTreePanel {
     this.detailText = s.add.text(0, dy - 8, 'Select a node.', {
       fontFamily: FONT, fontSize: '10px', color: C.text, align: 'center',
     }).setOrigin(0.5);
-    const bb = this.makeBtn(0, dy + 22, 220, 28, 'BUY', C.green, () => this.buy());
+    const bb = this.makeBtn(-110, dy + 22, 200, 28, 'BUY', C.green, () => this.buy());
     this.buyBtn = bb;
+    const rb = this.makeBtn(110, dy + 22, 200, 28, 'RESPEC', C.gold, () => this.respec());
+    this.respecBtn = rb;
     this.statusText = s.add.text(0, ph / 2 - 8, '', {
       fontFamily: FONT, fontSize: '9px', color: C.dim, align: 'center',
     }).setOrigin(0.5);
-    c.add([this.detailText, bb.bg, bb.text, this.statusText]);
+    c.add([this.detailText, bb.bg, bb.text, rb.bg, rb.text, this.statusText]);
   }
 
   makeBtn(x, y, w, h, label, color, cb) {
@@ -268,6 +296,32 @@ export class SkillTreePanel {
     this.render();
   }
 
+  respec() {
+    const p = this._player();
+    if (typeof p?.resetSpec !== 'function') {
+      this.setStatus('READ-ONLY — spec engine not linked yet.');
+      return;
+    }
+    if (Date.now() - this.respecArmedAt > 5000) this.respecArmed = false; // arm expires
+    const cost = this._respecCost();
+    if (!this.respecArmed) {
+      // First click arms the confirm affordance — no spend yet.
+      this.respecArmed = true;
+      this.respecArmedAt = Date.now();
+      this.setStatus(`Confirm: reset spec for ${cost}g? Click RESPEC again.`);
+      this.render();
+      return;
+    }
+    this.respecArmed = false;
+    try {
+      const ok = p.resetSpec();
+      this.setStatus(ok ? `Spec reset! Next respec ${this._respecCost()}g.` : `Cannot respec (need Lv 10 + ${cost}g).`);
+    } catch {
+      this.setStatus('READ-ONLY — spec engine not linked yet.');
+    }
+    this.render();
+  }
+
   setStatus(t) {
     this.status = String(t || '');
     try { this.statusText?.setText(this.status.slice(0, 80)); } catch { /* gone */ }
@@ -279,7 +333,9 @@ export class SkillTreePanel {
       const owned = this._owned();
       const points = this._points();
       const level = this._level();
-      this.headText?.setText(`Lv ${level} · ${points} pt${points === 1 ? '' : 's'}`);
+      const gold = this._gold();
+      const cost = this._respecCost();
+      this.headText?.setText(`Lv ${level} · ${points} pt${points === 1 ? '' : 's'} · ${gold}g`);
       for (const o of this.nodeObjs || []) {
         const st = this._state(o.node, owned, points, level);
         if (st === 'owned') {
@@ -309,6 +365,13 @@ export class SkillTreePanel {
         this.buyBtn?.text.setText('BUY');
         this.buyBtn?.bg.setFillStyle(C.green);
       }
+      // Respec button: live cost display + two-step confirm affordance.
+      try {
+        const rArmed = this.respecArmed && Date.now() - this.respecArmedAt <= 5000;
+        const afford = this._gold() >= cost && level >= 10 && owned.size > 0;
+        this.respecBtn?.text.setText(rArmed ? `CONFIRM? (${cost}g)` : `RESPEC (${cost}g)`);
+        this.respecBtn?.bg.setFillStyle(rArmed ? C.purple : afford ? C.gold : C.locked);
+      } catch { /* gone */ }
       if (this.status) this.statusText?.setText(this.status.slice(0, 80));
       else if (!this.buyable) this.statusText?.setText('READ-ONLY — spec engine not linked yet.');
       else this.statusText?.setText('');
@@ -329,6 +392,7 @@ export class SkillTreePanel {
     this.headText = this.detailText = this.statusText = null;
     this.buyBtn = null; this.nodeObjs = [];
     this.selected = null; this.armed = null; this.status = '';
+    this.respecArmed = false; this.respecArmedAt = 0; this.respecBtn = null;
   }
 
   destroy() { this.hide(); }

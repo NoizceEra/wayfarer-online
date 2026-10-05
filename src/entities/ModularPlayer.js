@@ -260,6 +260,42 @@ export class ModularPlayer extends Phaser.GameObjects.Container {
       return true;
     } catch { return false; }
   }
+  // Gold-sink respec price: 500g x (times-respecced + 1). Never throws.
+  respecCost() {
+    try {
+      const n = Number.isFinite(+this.prog?.respecs) ? Math.min(999, Math.max(0, Math.floor(+this.prog.respecs))) : 0;
+      return 500 * (n + 1);
+    } catch { return 500; }
+  }
+  // Reset specializations: requires level>=10 (CLASS_CHANGE_LEVEL), costs
+  // respecCost() gold via the same direct `gold -= price` path merchants use
+  // (see world/townfolk.js, world/areaBuilders.js — no spendGold helper exists).
+  // On success clears prog.nodes, zeroes prog.paths, bumps prog.respecs,
+  // recalcs, emits. Spent skill points are NOT refunded (no refund path exists).
+  // Returns true/false, never throws. No-op (false, no charge) when idle
+  // (nothing owned) or when gold/level gates fail.
+  resetSpec() {
+    try {
+      ensureSpecState(this.prog);
+      if (this.level < CLASS_CHANGE_LEVEL) return false;
+      const owned = Array.isArray(this.prog.nodes) ? this.prog.nodes.length : 0;
+      const paths = this.prog.paths || {};
+      const invested = (paths.might | 0) + (paths.ward | 0) + (paths.spirit | 0);
+      if (!owned && !invested) return false;
+      const n = Number.isFinite(+this.prog.respecs) ? Math.min(999, Math.max(0, Math.floor(+this.prog.respecs))) : 0;
+      this.prog.respecs = n;
+      const cost = 500 * (n + 1);
+      const gold = Number.isFinite(+this.gold) ? Math.floor(+this.gold) : 0;
+      if (gold < cost) return false;
+      this.gold = gold - cost;
+      this.prog.nodes = [];
+      this.prog.paths = { might: 0, ward: 0, spirit: 0 };
+      this.prog.respecs = n + 1;
+      this.recalc();
+      this._emitProgress();
+      return true;
+    } catch { return false; }
+  }
   // Commit staged stat increments ({str:+n,...}); validates cost against points.
   applyStats(delta) {
     let cost = 0;

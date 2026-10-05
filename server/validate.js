@@ -42,7 +42,7 @@ export function sanitizeProgress(p) {
     inventory: (Array.isArray(p.inventory) ? p.inventory : []).filter((s) => typeof s === 'string' && s.length <= 48).slice(0, 40),
     equipped: {}, dyes: {},
     quest: p.quest && typeof p.quest === 'object' && jsonSize(p.quest) < 24_000 ? p.quest : { idx: 0, kills: {} },
-    prog: p.prog && typeof p.prog === 'object' && jsonSize(p.prog) < 12_000 ? p.prog : null,
+    prog: sanitizeProgShape(p.prog),
     savedAt: int(p.savedAt, 0, 9e15, Date.now()),
     ext,
   };
@@ -70,7 +70,92 @@ export function sanitizeProgress(p) {
 function sanitizeExtras(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   if (jsonSize(raw) > 48_000) return null;
-  return raw;
+  const out = { ...raw };
+  // Forged-progress clamps: arena + housing arrive client-declared, so bound
+  // them here. Everything else under ext keeps passing through (size-capped);
+  // the client loaders (normalizeExtras/normalizeHousing) re-validate on load.
+  if (out.arena !== undefined) {
+    if (out.arena && typeof out.arena === 'object' && !Array.isArray(out.arena)) out.arena = sanitizeArena(out.arena);
+    else delete out.arena;
+  }
+  if (out.housing !== undefined) {
+    if (out.housing && typeof out.housing === 'object' && !Array.isArray(out.housing)) out.housing = sanitizeHousing(out.housing);
+    else delete out.housing;
+  }
+  return out;
+}
+
+// ─── forged-progress clamps (inline mirrors, no client imports) ─────────
+// Bounds mirror the client loaders so server and client agree on shape:
+//   paths/nodes <- src/data/stats.js sanitizePaths/sanitizeSpecNodes
+//     ({might,ward,spirit} ints 0..999; deduped string ids, SPEC_NODES_MAX 64)
+//   arena <- docs/ARENA.md (start 1000, floor 100, K=32; wins/losses counters)
+//   housing <- src/data/housing.js LAYOUT_RULES (grid 12x9, layout <= 40,
+//     trophies <= 12). Unknown furniture/trophy ids are KEPT (the server has
+//     no catalogue to check against); the client loader drops them on load,
+//     so they are inert but still counted by the length caps.
+const SPEC_PATH_IDS = ['might', 'ward', 'spirit'];
+const SPEC_NODES_MAX = 64;
+const specInt = (v, d = 0) => { const n = Math.floor(Number(v)); return Number.isFinite(n) ? Math.min(999, Math.max(0, n)) : d; };
+function sanitizeProgPaths(raw) {
+  const out = { might: 0, ward: 0, spirit: 0 };
+  if (raw && typeof raw === 'object') for (const k of SPEC_PATH_IDS) out[k] = specInt(raw[k], 0);
+  return out;
+}
+function sanitizeProgNodes(raw) {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set(); const out = [];
+  for (const id of raw) {
+    if (typeof id !== 'string' || !id || seen.has(id)) continue;
+    seen.add(id); out.push(id.slice(0, 96));
+    if (out.length >= SPEC_NODES_MAX) break;
+  }
+  return out;
+}
+function sanitizeProgShape(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  if (jsonSize(raw) >= 12_000) return null;
+  const out = { ...raw };
+  out.paths = sanitizeProgPaths(raw.paths);
+  out.nodes = sanitizeProgNodes(raw.nodes);
+  return out;
+}
+// Arena record: start 1000, floor 100. The cap (3000) is far above any pace
+// reachable with K=32 deltas; wins/losses are plain counters.
+function sanitizeArena(raw) {
+  return {
+    rating: int(raw.rating, 100, 3000, 1000),
+    wins: int(raw.wins, 0, 999_999, 0),
+    losses: int(raw.losses, 0, 999_999, 0),
+  };
+}
+const HOUSE_GRID_W = 12, HOUSE_GRID_H = 9, HOUSE_LAYOUT_MAX = 40, HOUSE_TROPHIES_MAX = 12;
+function sanitizeHousing(raw) {
+  const layout = (Array.isArray(raw.layout) ? raw.layout : [])
+    .filter((e) => e && typeof e === 'object' && typeof e.id === 'string' && e.id && e.id.length <= 64)
+    .slice(0, HOUSE_LAYOUT_MAX)
+    .map((e) => ({
+      id: e.id.slice(0, 64),
+      x: int(e.x, 0, HOUSE_GRID_W - 1, 0), y: int(e.y, 0, HOUSE_GRID_H - 1, 0),
+      rot: int(e.rot, 0, 3, 0),
+    }));
+  const trophies = (Array.isArray(raw.trophies) ? raw.trophies : [])
+    .filter((e) => e && typeof e === 'object' && typeof e.id === 'string' && e.id && e.id.length <= 64)
+    .slice(0, HOUSE_TROPHIES_MAX)
+    .map((e) => ({
+      id: e.id.slice(0, 64),
+      x: int(e.x, 0, HOUSE_GRID_W - 1, 0), y: int(e.y, 0, HOUSE_GRID_H - 1, 0),
+    }));
+  const yc = raw.yieldClaim && typeof raw.yieldClaim === 'object' ? raw.yieldClaim : {};
+  return {
+    unlocked: !!raw.unlocked,
+    plot: typeof raw.plot === 'string' ? raw.plot.slice(0, 32) : null,
+    layout, trophies,
+    yieldClaim: {
+      date: typeof yc.date === 'string' ? yc.date.slice(0, 10) : '',
+      amount: Math.max(0, Math.floor(Number(yc.amount)) || 0),
+    },
+  };
 }
 
 export function sanitizeHero(h) {

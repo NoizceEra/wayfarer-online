@@ -19,6 +19,7 @@ const BY_SPRITE = [
 const BY_ID = {
   rexling: 'beast', frostwisp: 'ice', frostgel: 'ice', icejelly: 'ice', snowspecter: 'ghost', glaciersnail: 'ice',
   bloodheart: 'blood', bloodeye: 'blood', gravemaw: 'boss', redclaw: 'boss', glacierwyrm: 'ice',
+  cavern_magmacrab: 'fire', crypt_voidwisp: 'ghost', forest_briarsapling: 'plant', desert_sandstalker: 'bug', frost_rimebat: 'ice', hollow_abysseye: 'ghost',
 };
 
 for (const [id, def] of Object.entries(ENEMY_TABLE)) {

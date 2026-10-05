@@ -1,4 +1,5 @@
 import { fetchLeaderboard, clearLeaderboardCache } from '../net/leaderboardNet.js';
+import { arenaNet } from '../net/arenaNet.js';
 import { el, escapeHtml, socialRoot } from './socialDom.js';
 
 const TYPES = [
@@ -43,7 +44,23 @@ export class LeaderboardPanel {
 
     this.el.append(t, this.tabs, this.body, this.foot);
     root.appendChild(this.el);
+    // Post-match refresh: reuse the existing refresh path. A settled arena
+    // match changes ext.arena server-side, so drop the 30s client cache and
+    // re-fetch when the arena tab is visible. No-op when offline/hidden.
+    try {
+      this._arenaOff = arenaNet.onResult(() => {
+        if (!this.visible || this.type !== 'arena') return;
+        clearLeaderboardCache();
+        this.refresh();
+      });
+    } catch { this._arenaOff = null; }
     this.render();
+  }
+
+  destroy() {
+    try { this._arenaOff?.(); } catch { /* gone */ }
+    this._arenaOff = null;
+    try { this.el?.remove(); } catch { /* gone */ }
   }
 
   open() { this.visible = true; this.el.style.display = 'flex'; this.refresh(); }
@@ -95,6 +112,12 @@ export class LeaderboardPanel {
           `<span class="lb-level">${e.level}</span>` +
           `<span class="lb-value">${Number(e.value).toLocaleString()}${extra}</span>`;
         this.body.appendChild(row);
+      }
+      // All-default ladder: everyone still at the 1000 start rating with no
+      // recorded games. Ladder is real but unplayed — say so explicitly.
+      if (this.type === 'arena' && this.data.entries.every((e) =>
+        Number(e.value) === 1000 && !((e.extras?.wins || 0) + (e.extras?.losses || 0)))) {
+        this.body.appendChild(el('div', 'lb-empty', 'No arena matches recorded yet — everyone starts at 1000. Win a duel to climb!'));
       }
     }
 

@@ -27,8 +27,8 @@ function readPlayers() {
 function compute(type, limit) {
   const players = readPlayers();
   const entries = players.map((p) => {
-    const prog = p.progress;
-    const ext = prog.ext || {};
+    const prog = p.progress || {};
+    const ext = (prog && typeof prog.ext === 'object' ? prog.ext : null) || {};
     let value = 0;
     let extras = {};
     switch (type) {
@@ -37,9 +37,14 @@ function compute(type, limit) {
       case 'season': value = ext.season?.xp || 0; break;
       case 'pets': value = (ext.pets?.roster?.length || 0) + (ext.pets?.active !== undefined ? 0 : 0); break;
       case 'arena': {
-        const a = ext.arena || { rating: 1000, wins: 0, losses: 0 };
-        value = a.rating || 1000;
-        extras = { wins: a.wins || 0, losses: a.losses || 0 };
+        // Rating sort desc; sanitize so a malformed ext.arena can never
+        // poison the sort (NaN) or the display. Floor 100 matches arena.js.
+        const a = (ext.arena && typeof ext.arena === 'object') ? ext.arena : null;
+        const rating = Number.isFinite(+a?.rating) ? Math.max(100, Math.round(+a.rating)) : 1000;
+        const wins = Math.max(0, +a?.wins | 0);
+        const losses = Math.max(0, +a?.losses | 0);
+        value = rating;
+        extras = { wins, losses, games: wins + losses };
         break;
       }
     }

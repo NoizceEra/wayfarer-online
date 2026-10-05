@@ -1,4 +1,4 @@
-// Achievements-lite: 52 achievements, event-driven counters, toasts.
+// Achievements-lite: 62 achievements, event-driven counters, toasts.
 // State: meta.ach = {id: unlockTimestamp}, meta.counters = {name: n}, meta.visited.
 import { bus, Events } from '../core/events.js';
 import { audio } from './audio.js';
@@ -69,6 +69,19 @@ export const ACHIEVEMENTS = [
   C('pet_hatch', 'New Companion', 'Hatch your first pet.', (x) => x.c.hatches >= 1, (x) => [x.c.hatches || 0, 1], { xp: 150, gold: 75 }),
   C('pet_duel', 'Duel Debut', 'Take part in a pet duel.', (x) => x.c.petduels >= 1, (x) => [x.c.petduels || 0, 1], { xp: 100, gold: 50 }),
   C('pet_duels5', 'Beastmaster', 'Take part in 5 pet duels.', (x) => x.c.petduels >= 5, (x) => [x.c.petduels || 0, 5], { xp: 300, gold: 150 }),
+  // specialization: spec progress mirrors the existing PROGRESS bus payload
+  // (ModularPlayer._emitProgress: { paths: {might,ward,spirit}, nodes }) via
+  // onProgress below — no new emitters, no direct prog reads.
+  C('spec_first', 'First Lesson', 'Buy your first specialization node.', (x) => x.c.spec_nodes >= 1, (x) => [x.c.spec_nodes || 0, 1], { xp: 100, gold: 50 }),
+  C('spec_might1', 'Edge of Might', 'Take your first step down the Might path.', (x) => x.c.spec_might >= 1, (x) => [x.c.spec_might || 0, 1], { xp: 100, gold: 50 }),
+  C('spec_ward1', "Warden's Footing", 'Take your first step down the Ward path.', (x) => x.c.spec_ward >= 1, (x) => [x.c.spec_ward || 0, 1], { xp: 100, gold: 50 }),
+  C('spec_spirit1', 'Kindred Spirit', 'Take your first step down the Spirit path.', (x) => x.c.spec_spirit >= 1, (x) => [x.c.spec_spirit || 0, 1], { xp: 100, gold: 50 }),
+  C('spec_might4', 'Paragon of Might', 'Complete all 4 nodes of the Might path.', (x) => x.c.spec_might >= 4, (x) => [Math.min(x.c.spec_might || 0, 4), 4], { xp: 400, gold: 200 }),
+  C('spec_ward4', 'Bastion Unbroken', 'Complete all 4 nodes of the Ward path.', (x) => x.c.spec_ward >= 4, (x) => [Math.min(x.c.spec_ward || 0, 4), 4], { xp: 400, gold: 200 }),
+  C('spec_spirit4', 'Spirit Ascendant', 'Complete all 4 nodes of the Spirit path.', (x) => x.c.spec_spirit >= 4, (x) => [Math.min(x.c.spec_spirit || 0, 4), 4], { xp: 400, gold: 200 }),
+  C('spec_focus10', 'Focused Path', 'Reach level 10 with 3+ nodes in one path.', (x) => x.level >= 10 && Math.max(x.c.spec_might || 0, x.c.spec_ward || 0, x.c.spec_spirit || 0) >= 3, (x) => [Math.min(Math.max(x.c.spec_might || 0, x.c.spec_ward || 0, x.c.spec_spirit || 0), 3), 3], { xp: 350, gold: 175 }),
+  C('spec_adv', 'New Calling', 'Choose an advanced class (path-gated choice).', (x) => x.c.spec_adv >= 1, (x) => [x.c.spec_adv || 0, 1], { xp: 300, gold: 150 }),
+  C('spec_dabbler', 'Dabbler', 'Buy nodes across all three paths.', (x) => (x.c.spec_might || 0) >= 1 && (x.c.spec_ward || 0) >= 1 && (x.c.spec_spirit || 0) >= 1, (x) => [(x.c.spec_might >= 1 ? 1 : 0) + (x.c.spec_ward >= 1 ? 1 : 0) + (x.c.spec_spirit >= 1 ? 1 : 0), 3], { xp: 250, gold: 125 }),
 ];
 export const ACH_BY_ID = Object.fromEntries(ACHIEVEMENTS.map((a) => [a.id, a]));
 
@@ -97,9 +110,12 @@ export class Achievements {
         this.check();
       }),
     ];
+    // spec: mirror ModularPlayer._emitProgress PROGRESS payloads into counters
+    // (buySpecNode + chooseClass already emit PROGRESS — no new emitters).
+    this.specOff = bus.on(Events.PROGRESS, (p) => this.onProgress(p));
     this.check(true);
   }
-  destroy() { this.off?.(); this.lvOff?.(); for (const off of [...(this.petOffs || []), ...(this.arenaOffs || [])]) { try { off?.(); } catch { /* ignore */ } } }
+  destroy() { this.off?.(); this.lvOff?.(); this.specOff?.(); for (const off of [...(this.petOffs || []), ...(this.arenaOffs || [])]) { try { off?.(); } catch { /* ignore */ } } }
   get meta() { return this.scene.meta; }
   bump(k, n = 1) { this.meta.counters[k] = (this.meta.counters[k] || 0) + n; }
   noteBest(k, v) { if (Number.isFinite(v) && v > (this.meta.counters[k] || 0)) this.meta.counters[k] = v; }
@@ -143,6 +159,23 @@ export class Achievements {
       const t = Number(window.__econUI?.seasonSystem?.getState?.()?.tier);
       if (Number.isFinite(t)) this.noteBest('season_best', t);
     } catch { /* ignore */ }
+  }
+  // spec: PROGRESS carries { paths: {might,ward,spirit}, nodes, adv } from
+  // _emitProgress on every buySpecNode/chooseClass. Mirror best-seen values
+  // (season_best pattern) so tests stay pure counter reads. Guarded: a
+  // missing/older payload simply keeps the last stored best.
+  onProgress(p) {
+    try {
+      if (!p) return;
+      if (Number.isFinite(Number(p.nodes))) this.noteBest('spec_nodes', Number(p.nodes));
+      const paths = p.paths || {};
+      for (const k of ['might', 'ward', 'spirit']) {
+        const v = Number(paths[k]);
+        if (Number.isFinite(v) && v > 0) this.noteBest(`spec_${k}`, v);
+      }
+      if (p.adv) this.noteBest('spec_adv', 1);
+    } catch { /* ignore */ }
+    this.check();
   }
   // wave 3: rewards reuse the existing grant path — questSystem.grant() handles
   // {xp, gold, mats} (questSystem.js). Fallback covers gold/XP directly.

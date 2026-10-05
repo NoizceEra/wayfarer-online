@@ -122,20 +122,23 @@ E('bonehound', 'Bone Hound', 'crypt_bonehound', ['crypt'], 110, 21, 48, [6, 15],
 // Frostpeak Pass
 E('frostfox', 'Arctic Frost Fox', 'frost_frostfox', ['frost'], 105, 21, 50, [7, 16], { items: [{ id: 'feather', chance: 0.2 }, { id: 'gem_yellow', chance: 0.04 }], drops: [{ id: 'ember_charm', chance: 0.04 }] });
 E('icegolem', 'Glacier Brute', 'frost_icegolem', ['frost'], 160, 24, 60, [9, 20], { scale: 1.2, items: [{ id: 'bar_silver', chance: 0.06 }, { id: 'scroll_ice', chance: 0.05 }], drops: [{ id: 'iron_mail', chance: 0.06 }] });
+E('crypt_voidwisp', 'Void Wisp', 'crypt_voidwisp', ['crypt', 'hollow'], 92, 19, 42, [5, 12], { items: [{ id: 'hollow_shard', chance: 0.04 }, { id: 'gem_purple', chance: 0.05 }] });
+E('forest_briarsapling', 'Briar Sapling', 'forest_briarsapling', ['woods'], 62, 11, 20, [3, 8], { items: [{ id: 'fen_lily', chance: 0.05 }, { id: 'branch', chance: 0.15 }] });
+E('frost_rimebat', 'Rime Bat', 'frost_rimebat', ['frost'], 105, 20, 48, [7, 16], { items: [{ id: 'feather', chance: 0.15 }, { id: 'scroll_ice', chance: 0.04 }] });
 
 // Extra overworld spawns [type, count, zone]; WorldScene.spawnEnemies reads this list.
 export const EXTRA_OVERWORLD_SPAWNS = [
   ['fieldmouse', 10, 'meadow'], ['gelgreen', 10, 'meadow'], ['gelblue', 8, 'meadow'], ['gorselizard', 8, 'meadow'], ['burrower', 6, 'meadow'], ['meadowcap', 6, 'meadow'],
   ['dewbeetle', 8, 'meadow'], ['quillkin', 6, 'meadow'],
   ['stinger', 8, 'woods'], ['bramblesnake', 8, 'woods'], ['hootling', 6, 'woods'], ['fernlizard', 6, 'woods'], ['lilykappa', 5, 'woods'], ['pondaxolot', 5, 'woods'], ['bamboolet', 6, 'woods'], ['mossbear', 3, 'woods'],
-  ['brambleboar', 6, 'woods'], ['moss_treant', 4, 'woods'],
+  ['brambleboar', 6, 'woods'], ['moss_treant', 4, 'woods'], ['forest_briarsapling', 5, 'woods'],
   ['mudmollusc', 6, 'ruins'], ['reedoctopus', 5, 'ruins'], ['mirefiend', 5, 'ruins'], ['embercyclops', 4, 'ruins'], ['ruinlantern', 4, 'ruins'], ['rexling', 3, 'ruins'],
 ];
 // Area spawn additions (merged into data/areas.js AREAS[*].enemies / spawnRects).
 AREAS.dock.enemies.push(['sandadder', 3, 'dock_beach'], ['beachsnail', 3, 'dock_beach'], ['tideoctopus', 3, 'dock_beach'], ['bandit_racoon', 2, 'dock_beach'], ['coralcrab', 4, 'dock_beach'], ['reefjelly', 4, 'dock_beach'], ['redclaw', 1, 'beach_boss']);
 AREAS.dock.spawnRects.beach_boss = [50, 15, 4, 6];
-AREAS.crypt.enemies.push(['ashghost', 3, 'w'], ['bloodheart', 3, 'e'], ['gravedigger', 2, 'w'], ['bloodeye', 3, 'hall'], ['cryptadder', 3, 'e'], ['shadehound', 2, 'hall'], ['shadowwraith', 3, 'hall'], ['bonehound', 3, 'w']);
-AREAS.frost.enemies.push(['icejelly', 5, 'field'], ['frostgel', 5, 'field'], ['glaciersnail', 4, 'field'], ['rimelizard', 4, 'field'], ['snowspecter', 4, 'field'], ['yeti', 3, 'field'], ['frostfox', 4, 'field'], ['icegolem', 3, 'field'], ['glacierwyrm', 1, 'wyrm']);
+AREAS.crypt.enemies.push(['ashghost', 3, 'w'], ['bloodheart', 3, 'e'], ['gravedigger', 2, 'w'], ['bloodeye', 3, 'hall'], ['cryptadder', 3, 'e'], ['shadehound', 2, 'hall'], ['shadowwraith', 3, 'hall'], ['bonehound', 3, 'w'], ['crypt_voidwisp', 3, 'hall']);
+AREAS.frost.enemies.push(['icejelly', 5, 'field'], ['frostgel', 5, 'field'], ['glaciersnail', 4, 'field'], ['rimelizard', 4, 'field'], ['snowspecter', 4, 'field'], ['yeti', 3, 'field'], ['frostfox', 4, 'field'], ['icegolem', 3, 'field'], ['glacierwyrm', 1, 'wyrm'], ['frost_rimebat', 4, 'field']);
 AREAS.frost.spawnRects.wyrm = [44, 18, 8, 5];
 
 // Item drops (data/items.js ids) from def.items; plus a small generic food/resource roll.
@@ -185,6 +188,9 @@ const BEHAVIOUR = {
   bonehound:    { lv: 10, ai: 'charger', aggro: 110, social: true,  spd: 1.3,  inflict: { id: 'bleed', chance: 0.35 } },
   frostfox:     { lv: 12, ai: 'swarm',   aggro: 120, social: true,  spd: 1.4,  flee: 0.2, inflict: { id: 'slow', chance: 0.35 } },
   icegolem:     { lv: 13, ai: 'melee',   aggro: 90,  spd: 0.8,      inflict: { id: 'stun', chance: 0.2 } },
+  crypt_voidwisp: { lv: 11, ai: 'ranged', aggro: 120, shot: 0x8a2be2, inflict: { id: 'slow', chance: 0.3 } },
+  forest_briarsapling: { lv: 5, ai: 'melee', aggro: 85, inflict: { id: 'poison', chance: 0.2 } },
+  frost_rimebat: { lv: 12, ai: 'swarm', aggro: 125, spd: 1.4, inflict: { id: 'slow', chance: 0.25 } },
 };
 for (const [id, b] of Object.entries(BEHAVIOUR)) if (ENEMY_TABLE[id]) Object.assign(ENEMY_TABLE[id], b);
 
@@ -197,3 +203,13 @@ export function rollDefDrop(typeId, gearById) {
   }
   return null;
 }
+
+AREAS.desert = AREAS.desert || { enemies: [] };
+AREAS.desert.enemies = AREAS.desert.enemies || [];
+AREAS.desert.enemies.push(['desert_sandstalker', 4, 'any']);
+AREAS.caverns = AREAS.caverns || { enemies: [] };
+AREAS.caverns.enemies = AREAS.caverns.enemies || [];
+AREAS.caverns.enemies.push(['cavern_magmacrab', 4, 'any']);
+AREAS.hollow = AREAS.hollow || { enemies: [] };
+AREAS.hollow.enemies = AREAS.hollow.enemies || [];
+AREAS.hollow.enemies.push(['hollow_abysseye', 4, 'any']);

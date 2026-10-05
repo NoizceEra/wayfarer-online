@@ -82,6 +82,7 @@ export function sanitizeProgression(raw, level, jobId) {
   // Specialization state (skill trees): sanitized but preserved across saves.
   out.paths = sanitizePaths(raw.paths);
   out.nodes = sanitizeSpecNodes(raw.nodes);
+  out.respecs = Math.max(0, Math.min(999, Math.floor(Number(raw.respecs)) || 0));
   return out;
 }
 

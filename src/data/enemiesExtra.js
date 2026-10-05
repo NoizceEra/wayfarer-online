@@ -25,6 +25,8 @@ X('khet', 'Khet, the Sun Colossus', 'Cyclope', ['desert'], 17, 1150, 34, 900, [2
   drops: [{ id: 'sunforged_plate', chance: 0.55 }, { id: 'sun_crown', chance: 0.5 }, { id: 'sun_locket', chance: 0.45 }, { id: 'sunforged_greaves', chance: 0.4 }],
   items: [{ id: 'bar_gold', chance: 1 }, { id: 'chest_big', chance: 0.6 }, { id: 'scroll_fire', chance: 0.7 }],
 });
+X('desert_sandstalker', 'Sand Stalker', 'desert_sandstalker', ['desert'], 14, 130, 27, 65, [9, 19], { ai: 'swarm', aggro: 110, spd: 1.2, inflict: { id: 'bleed', chance: 0.3 }, items: [{ id: 'sunstone', chance: 0.04 }] });
+
 
 // ——— Whisperfen Marsh (Lv 10-14) ———
 X('mtoad', 'Fen Toad', 'Reptile2', ['marsh'], 10, 98, 19, 44, [6, 14], { tint: 0xbfe070, ai: 'hopper', aggro: 80, social: true, spd: 0.9, items: [{ id: 'fish_fresh', chance: 0.12 }] });
@@ -58,6 +60,8 @@ X('forgelord', 'Forgelord Ignar', 'Beast', ['caverns'], 19, 1450, 38, 1100, [320
   drops: [{ id: 'tidebrand', chance: 0.45 }, { id: 'sunforged_plate', chance: 0.4 }, { id: 'tide_aegis', chance: 0.4 }, { id: 'stonemaul', chance: 0.6 }],
   items: [{ id: 'bar_mithril', chance: 1 }, { id: 'chest_big', chance: 0.6 }, { id: 'scroll_fire', chance: 0.8 }],
 });
+X('cavern_magmacrab', 'Magma Crab', 'cavern_magmacrab', ['caverns'], 16, 180, 29, 78, [10, 20], { ai: 'melee', aggro: 90, inflict: { id: 'burn', chance: 0.3 }, items: [{ id: 'fire_crystal', chance: 0.05 }, { id: 'magma_core', chance: 0.03 }] });
+
 
 // ——— Hollow Depths (level is set per floor by world/dungeons.js) ———
 X('hwraith', 'Hollow Wraith', 'Spirit', ['hollow'], 12, 110, 22, 50, [8, 16], { tint: 0xc8a8ff, ai: 'ranged', aggro: 125, shot: 0xb080ff, inflict: { id: 'slow', chance: 0.4 } });
@@ -81,6 +85,8 @@ X('hking', 'The Hollow King', 'SkullBlue', ['hollow'], 18, 1750, 36, 1400, [300,
   drops: [{ id: 'starweaver_hat', chance: 0.4 }, { id: 'sage_vestments', chance: 0.4 }, { id: 'angel_wings', chance: 0.35 }, { id: 'royal_mantle', chance: 0.4 }],
   items: [{ id: 'gem_purple', chance: 1 }, { id: 'bar_purple', chance: 1 }, { id: 'chest_big', chance: 1 }],
 });
+X('hollow_abysseye', 'Abyss Watcher', 'hollow_abysseye', ['hollow'], 13, 140, 24, 58, [9, 18], { ai: 'ranged', aggro: 130, shot: 0x8a2be2, inflict: { id: 'stun', chance: 0.2 }, items: [{ id: 'hollow_shard', chance: 0.05 }] });
+
 
 // ——— World events ———
 X('slimeking', 'Slime King Gloop', 'Slime', ['meadow'], 4, 620, 14, 420, [90, 160], {
