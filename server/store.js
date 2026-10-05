@@ -48,8 +48,14 @@ export function loadChar(token, name) {
   if (!TOKEN_RE.test(String(token || ''))) return null;
   if (_db) { return _dbMod.loadCharDb(token, name); } // (db.js is dynamically imported by initSqlite: require() is not available in ESM)
   const doc = readDoc(deviceKey(token));
-  return doc.chars[String(name || '').toLowerCase()] || null;
+  const lower = String(name || '').toLowerCase();
+  // own keys only: a name like "__proto__"/"constructor" must never resolve to
+  // an inherited Object.prototype member.
+  return Object.prototype.hasOwnProperty.call(doc.chars, lower) ? doc.chars[lower] : null;
 }
+
+// Names that collide with Object.prototype members are refused at join time.
+export const RESERVED_NAMES = new Set(['__proto__', 'constructor', 'prototype', 'hasownproperty', 'tostring', 'valueof', '__definegetter__', '__definesetter__', '__lookupgetter__', '__lookupsetter__', 'isprototypeof', 'propertyisenumerable', 'tolocalestring']);
 
 export function saveChar(token, name, rec) {
   if (!TOKEN_RE.test(String(token || ''))) return false;
@@ -58,7 +64,8 @@ export function saveChar(token, name, rec) {
   const doc = readDoc(key);
   const names = Object.keys(doc.chars);
   const lower = String(name || '').toLowerCase();
-  if (!doc.chars[lower] && names.length >= 12) return false;
+  if (RESERVED_NAMES.has(lower)) return false;
+  if (!Object.prototype.hasOwnProperty.call(doc.chars, lower) && names.length >= 12) return false;
   doc.chars[lower] = rec;
   dirty.add(key);
   return true;

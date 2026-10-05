@@ -8,7 +8,9 @@ import { gearById } from '../data/gear.js';
 // chat, or a row in any list). Exposes open/close through the social action
 // registry: openFriends, openParty, contextMenu, and reports anyOpen/closeAll
 // to the coordinator (src/ui/socialUI.js).
-const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : '');
+// job/zone strings come from peers' presence messages and are interpolated
+// into innerHTML rows: escape here so every caller is safe.
+const cap = (s) => (s ? escapeHtml(String(s)[0].toUpperCase() + String(s).slice(1)) : '');
 const JOB_ICON = { wayfarer: '⚔', ranger: '➶', arcanist: '✦', bandit: '🗡' };
 
 export class SocialPanels {

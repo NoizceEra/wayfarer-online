@@ -102,13 +102,22 @@ if (guilds) {
         }
       },
       deductGold: (sid, amount) => {
+        // strictly a positive whole amount: a negative "contribution" used to
+        // ADD gold (gold -= -N), a string/float produced NaN gold
+        if (typeof amount !== 'number' || !Number.isInteger(amount) || amount <= 0 || amount > 9_999_999) return false;
         for (const r of LIVE_ROOMS) {
           const p = r.players.get(sid);
           if (!p || !p.token) continue;
           const rec = loadChar(p.token, p.name);
-          if (!rec || (rec.progress.gold || 0) < amount) return false;
-          rec.progress.gold -= amount;
+          if (!rec?.progress || (rec.progress.gold | 0) < amount) return false;
+          rec.progress.gold = (rec.progress.gold | 0) - amount;
+          // economy mutation: bump rev so a stale save cannot undo it, and
+          // tell the client its new authoritative state
+          rec.rev = (rec.rev || 0) + 1;
+          rec.savedAt = Date.now(); rec.progress.savedAt = rec.savedAt;
           saveChar(p.token, p.name, rec);
+          const c = r.clients.find((x) => x.sessionId === sid);
+          try { c?.send('econ-sync', { why: 'guild', rev: rec.rev, gold: rec.progress.gold, inventory: (rec.progress.inventory || []).slice(), tokenPoints: rec.progress.tokenPoints | 0, wayfarerTokens: rec.progress.wayfarerTokens | 0, delta: { gold: -amount } }); } catch { /* closing */ }
           return true;
         }
         return false;

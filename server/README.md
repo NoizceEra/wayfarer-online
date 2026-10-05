@@ -127,6 +127,10 @@ online characters.
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error` |
 | `CORS_ORIGIN` | `*` | Comma-separated allowed origins for the HTTP routes |
 | `TRUST_PROXY_HOPS` | `0` | Number of trusted reverse proxies in front of Express. Set to the platform's exact hop count (commonly `1`) so public API limits use each visitor's address. |
+| `BRIDGE_WITHDRAW_ENABLED` / `BRIDGE_DEPOSIT_ENABLED` | off | Kill switches for the token bridge (`1` to enable). Both default OFF, even when the Solana keys are set. See `docs/SECURITY_AUDIT.md` before enabling. |
+| `BRIDGE_WALLET_DAILY_CAP` | `500` | Net tokens per wallet per UTC day, across all characters. |
+| `WALLET_BIND_DOMAIN` | `wayfarer-online` | Domain put into the SIWS-style wallet-link message. |
+| `REFERRER_DAILY_MAX` | `5` | Level-milestone referral payouts per referrer per day. |
 | `MARKET_DURATION_SCALE` | `1` | Multiplies listing durations. It exists for tests: `0.001` turns 2 h into about 7 s. |
 
 Public read-only HTTP routes have in-process rate limits. Room-code lookups share
@@ -150,11 +154,12 @@ back to the socket address when no trusted proxy count is configured.
 
 ## Extending (social and other modules)
 
-- **Unknown message types are passed through.** When a client sends type `T` with
-  payload `{...}`, every other client in the room receives `T` with `{..., sessionId}`.
-  The server caps the payload at 4 KB and rate-limits it. On the client, use
-  `net.on(T, fn)` and `net.send(T, payload)`. Handlers registered with `net.on` survive
-  reconnects.
+- **Peer-to-peer types must be allowlisted.** Only types listed in
+  `PASSTHROUGH_TYPES` (`WayfarerRoom.js`, currently `pb-cmd`) are relayed: every other
+  client in the room receives `T` with `{..., sessionId}` (4 KB cap, rate-limited).
+  Any other unhandled type is dropped, so clients cannot forge server messages for
+  their peers. Modules observe combat through the `onHit` / `onEnemyHit` hooks and
+  must never re-register a core type (colyseus keeps one handler per type).
 - **An optional `server/social.js` is loaded when it exists.** It can export any of these:
   - `install(room)`, called after the built-in handlers. It can register or override
     `room.onMessage(...)` handlers.
@@ -169,3 +174,9 @@ back to the socket address when no trusted proxy count is configured.
   - `peer-leave {sessionId, name, wasHost}`
   - `hero {sessionId, hero}`
   - `result` is passed through unchanged.
+
+## Security
+
+See `docs/SECURITY_AUDIT.md` for the findings table, the residual risks and the
+pre-launch checklist for the token bridge. Run `node tools/econ_test.mjs` as the
+economy regression gate.

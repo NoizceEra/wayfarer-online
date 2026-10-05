@@ -105,6 +105,9 @@ export function install(room) {
     const p = room.players.get(client.sessionId);
     if (!p) return;
     if (!bucket(p)) return; // silent rate limit
+    // turn/hpSync payloads are relayed verbatim to the opponent: bound them
+    let size = 0; try { size = JSON.stringify(m ?? null).length; } catch { return; }
+    if (size > 2048) return;
     const msg = m && typeof m === 'object' ? m : {};
     const action = msg.action;
 

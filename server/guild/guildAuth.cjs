@@ -27,7 +27,7 @@ class GuildAuth {
     if (targetId === actorId) throw new Error('cannot_kick_self');
     if (!hasPermission(getMemberRank(guild, actorId), 'kick')) throw new Error('no_permission');
     const actorRank = getMemberRank(guild, actorId);
-    const target = guild.members[targetId];
+    const target = Object.prototype.hasOwnProperty.call(guild.members, targetId) ? guild.members[targetId] : null;
     if (!target) throw new Error('not_a_member');
     if (target.rank === 'leader') throw new Error('cannot_kick_leader');
     if (actorRank === 'officer' && target.rank === 'officer') {

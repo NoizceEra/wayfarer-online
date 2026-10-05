@@ -128,6 +128,16 @@ function requireRec(client, p, m, { needRev = true } = {}) {
   }
   return rec;
 }
+// Per-character async mutex (promise chain). Exported for tests.
+const CHAR_LOCKS = new Map();
+export function withCharLock(key, fn) {
+  const prev = CHAR_LOCKS.get(key) || Promise.resolve();
+  const run = prev.then(() => fn(), () => fn());
+  const tail = run.then(() => {}, () => {});
+  CHAR_LOCKS.set(key, tail);
+  tail.then(() => { if (CHAR_LOCKS.get(key) === tail) CHAR_LOCKS.delete(key); });
+  return run;
+}
 function suspicious(room, client, p, why, extra) {
   if (room.violation) room.violation(client, p, `econ-${why}`, extra); // logs 'anticheat' + counts
   else log.warn('econ violation', { name: p.name, why, ...extra });
@@ -146,18 +156,39 @@ const BIND_NONCES = new Map(); // ck -> { nonce, message, address, until }
 const BIND_TTL_MS = 5 * 60_000;
 
 // minimal base58 (Bitcoin alphabet) decoder -> Uint8Array | null
-function b58decode(str) {
+export function b58decode(str) {
   if (typeof str !== 'string' || str.length < 1 || str.length > 128) return null;
-  const bytes = [0];
+  const bytes = []; // little-endian magnitude (no implicit leading zero byte)
   for (const ch of str) {
-    const v = B58IDX[ch];
+    const v = Object.prototype.hasOwnProperty.call(B58IDX, ch) ? B58IDX[ch] : undefined;
     if (v === undefined) return null;
     let carry = v;
     for (let i = 0; i < bytes.length; i++) { const x = bytes[i] * 58 + carry; bytes[i] = x & 0xff; carry = x >> 8; }
     while (carry) { bytes.push(carry & 0xff); carry >>= 8; }
   }
+  // each leading '1' encodes one leading zero byte
   for (let i = 0; i < str.length && str[i] === '1'; i++) bytes.push(0);
   return Uint8Array.from(bytes.reverse());
+}
+export function b58encode(buf) {
+  const src = Uint8Array.from(buf || []);
+  const digits = [];
+  for (const byte of src) {
+    let carry = byte;
+    for (let i = 0; i < digits.length; i++) { const x = digits[i] * 256 + carry; digits[i] = x % 58; carry = Math.floor(x / 58); }
+    while (carry) { digits.push(carry % 58); carry = Math.floor(carry / 58); }
+  }
+  let out = '';
+  for (let i = 0; i < src.length && src[i] === 0; i++) out += '1';
+  for (let i = digits.length - 1; i >= 0; i--) out += B58[digits[i]];
+  return out;
+}
+// 32-byte public key whose base58 form is canonical (re-encodes identically),
+// so one key can never be bound under two different address strings.
+export function canonicalAddress(str) {
+  const raw = b58decode(String(str || ''));
+  if (!raw || raw.length !== 32) return null;
+  return b58encode(raw) === str ? str : null;
 }
 
 // verify a base58 ed25519 signature of `message` by the base58 Solana address
@@ -172,9 +203,27 @@ function verifySolanaSignature(address, message, signatureB58) {
   } catch { return false; }
 }
 
-function bindChallenge(address) {
+// Sign-In-With-Solana style message (domain first line, address, statement,
+// chain, nonce, issued/expiry). Wallets that understand SIWS compare the first
+// line with the requesting origin and warn on a mismatch, so a phishing site
+// that relays our challenge to a victim is flagged. The character name and
+// expiry are bound into the signed text as well.
+export function bindChallenge(address, charName, t = Date.now()) {
   const nonce = crypto.randomBytes(16).toString('hex');
-  const message = `Wayfarer Online - link this Solana wallet\n\nAddress: ${address}\nNonce: ${nonce}\nIssued: ${new Date().toISOString()}\n\nSigning proves you own this wallet. It does not authorize any transaction.`;
+  const chain = CFG.SOLANA_NETWORK === 'mainnet-beta' ? 'mainnet' : String(CFG.SOLANA_NETWORK || 'devnet');
+  const message = [
+    `${CFG.WALLET_BIND_DOMAIN} wants you to sign in with your Solana account:`,
+    address,
+    '',
+    `Link this wallet to the Wayfarer Online character "${charName}". This proves you own the wallet. It does not authorize any transaction or transfer.`,
+    '',
+    `URI: ${CFG.WALLET_BIND_DOMAIN}`,
+    'Version: 1',
+    `Chain ID: ${chain}`,
+    `Nonce: ${nonce}`,
+    `Issued At: ${new Date(t).toISOString()}`,
+    `Expiration Time: ${new Date(t + BIND_TTL_MS).toISOString()}`,
+  ].join('\n');
   return { nonce, message };
 }
 function sweepBindNonces() {
@@ -185,8 +234,12 @@ function sweepBindNonces() {
 const short = (a) => (a ? `${String(a).slice(0, 4)}...${String(a).slice(-4)}` : '');
 // Withdraw needs the oracle signer + program + mint + RPC; deposit only needs the
 // RPC + mint (the treasury is read from env or derived from the on-chain config).
-const withdrawConfigured = () => !!(CFG.SOLANA_RPC && CFG.PROGRAM_ID && CFG.MINT_ADDRESS && CFG.ORACLE_KEYPAIR);
-const depositConfigured = () => !!(CFG.SOLANA_RPC && CFG.MINT_ADDRESS);
+// The repo's declare_id!() is a placeholder, never a deployed program: the
+// server refuses to treat it (or the old Anchor.toml filler) as real.
+export const PLACEHOLDER_PROGRAM_IDS = new Set(['36MtxdwUM14ZdUjx4ysUjYh2jNsvRRQ2nGooEckCj9Aa', 'WayfaRERWayfaRERWayfaRERWayfaRERWayfaRERWayf']);
+// Both also require the explicit default-OFF kill switch (config.js).
+const withdrawConfigured = () => !!(CFG.BRIDGE_WITHDRAW_ENABLED && CFG.SOLANA_RPC && CFG.PROGRAM_ID && !PLACEHOLDER_PROGRAM_IDS.has(CFG.PROGRAM_ID) && CFG.MINT_ADDRESS && CFG.ORACLE_KEYPAIR);
+const depositConfigured = () => !!(CFG.BRIDGE_DEPOSIT_ENABLED && CFG.SOLANA_RPC && CFG.MINT_ADDRESS);
 const TOKEN_PROGRAM_ID = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
 const ATA_PROGRAM_ID = 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL';
 
@@ -205,14 +258,29 @@ function boundWalletAddressFor(dbm, p) {
   try { return dbm?.getWalletForToken?.(p.token)?.address || ''; } catch { return ''; }
 }
 
+// BridgeConfig account layout (programs/wayfarer_token lib.rs, Anchor):
+//   0..8 discriminator | admin 8..40 | oracle 40..72 | mint 72..104 |
+//   mint_authority 104..136 | max_per_tx u64 136..144 | daily_cap u64 144..152 |
+//   day_index i64 152..160 | minted_today u64 160..168 | total_minted u64 168..176 |
+//   paused u8 176 | bump 177 | mint_auth_bump 178
+export const CONFIG_LAYOUT = { admin: 8, oracle: 40, mint: 72, mintAuthority: 104, maxPerTx: 136, dailyCap: 144, paused: 176, size: 179 };
+const SPL_MINT_DECIMALS_OFFSET = 44; // SPL Mint: COption<Pubkey>(36) + supply u64(8) -> decimals u8
+const SYSTEM_PROGRAM_ID = '11111111111111111111111111111111';
+
 // Best-effort on-chain mint of `net` whole $WAYFARER to the player's ATA.
 // Returns { signature, reason }; a null signature means the row stays 'pending'.
+// Refuses (no transaction sent) unless the on-chain config matches this
+// server: same mint, this oracle key, not paused, decimals == TOKEN_DECIMALS,
+// amount within the program's per-tx cap.
 async function sendMintWithdraw(address, net) {
   const w = await solanaWeb3();
   if (!w) return { signature: null, reason: 'server is missing @solana/web3.js (add it to server/package.json)' };
   try {
     const { Connection, Keypair, PublicKey, Transaction, TransactionInstruction, sendAndConfirmTransaction } = w;
-    const oracle = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(CFG.ORACLE_KEYPAIR)));
+    let secret;
+    try { secret = JSON.parse(CFG.ORACLE_KEYPAIR); } catch { return { signature: null, reason: 'ORACLE_KEYPAIR is not a JSON byte array' }; }
+    if (!Array.isArray(secret) || secret.length !== 64) return { signature: null, reason: 'ORACLE_KEYPAIR must be a 64-byte secret key array' };
+    const oracle = Keypair.fromSecretKey(Uint8Array.from(secret));
     const programId = new PublicKey(CFG.PROGRAM_ID);
     const mint = new PublicKey(CFG.MINT_ADDRESS);
     const player = new PublicKey(address);
@@ -223,29 +291,53 @@ async function sendMintWithdraw(address, net) {
     const [mintAuth] = PublicKey.findProgramAddressSync([Buffer.from('mint')], programId);
     const cfgInfo = await conn.getAccountInfo(config);
     if (!cfgInfo) return { signature: null, reason: 'bridge config PDA not found on-chain (run the program initialize)' };
-    // Anchor account layout: 8-byte discriminator, then mint(32) + treasury(32)
-    const onMint = new PublicKey(cfgInfo.data.subarray(8, 40));
-    const treasury = new PublicKey(cfgInfo.data.subarray(40, 72));
+    if (!cfgInfo.owner.equals(programId)) return { signature: null, reason: 'bridge config is not owned by PROGRAM_ID' };
+    const d = cfgInfo.data;
+    if (d.length < CONFIG_LAYOUT.size) return { signature: null, reason: 'bridge config layout mismatch (redeploy the hardened program)' };
+    const cfgOracle = new PublicKey(d.subarray(CONFIG_LAYOUT.oracle, CONFIG_LAYOUT.oracle + 32));
+    const onMint = new PublicKey(d.subarray(CONFIG_LAYOUT.mint, CONFIG_LAYOUT.mint + 32));
     if (!onMint.equals(mint)) return { signature: null, reason: 'MINT_ADDRESS does not match the on-chain config' };
+    if (!cfgOracle.equals(oracle.publicKey)) return { signature: null, reason: 'ORACLE_KEYPAIR is not the oracle registered on-chain' };
+    if (d[CONFIG_LAYOUT.paused]) return { signature: null, reason: 'the bridge program is paused' };
+    const mintInfo = await conn.getAccountInfo(mint);
+    if (!mintInfo || !mintInfo.owner.equals(tokenProgram)) return { signature: null, reason: 'MINT_ADDRESS is not an SPL mint' };
+    const decimals = mintInfo.data[SPL_MINT_DECIMALS_OFFSET];
+    if (decimals !== CFG.TOKEN_DECIMALS) return { signature: null, reason: `TOKEN_DECIMALS=${CFG.TOKEN_DECIMALS} but the mint has ${decimals} decimals` };
+    const raw = BigInt(Math.floor(net)) * (10n ** BigInt(decimals));
+    if (raw <= 0n || raw > 0xffffffffffffffffn) return { signature: null, reason: 'amount out of range' };
+    const maxPerTx = d.readBigUInt64LE(CONFIG_LAYOUT.maxPerTx);
+    if (maxPerTx > 0n && raw > maxPerTx) return { signature: null, reason: 'amount exceeds the on-chain per-transaction cap' };
     const [playerAta] = PublicKey.findProgramAddressSync([player.toBuffer(), tokenProgram.toBuffer(), mint.toBuffer()], ataProgram);
-    const raw = BigInt(Math.floor(net)) * (10n ** BigInt(CFG.TOKEN_DECIMALS));
+    // create the player's ATA if missing (idempotent, oracle pays rent)
+    const createAta = new TransactionInstruction({
+      programId: ataProgram,
+      keys: [
+        { pubkey: oracle.publicKey, isSigner: true, isWritable: true },
+        { pubkey: playerAta, isSigner: false, isWritable: true },
+        { pubkey: player, isSigner: false, isWritable: false },
+        { pubkey: mint, isSigner: false, isWritable: false },
+        { pubkey: new PublicKey(SYSTEM_PROGRAM_ID), isSigner: false, isWritable: false },
+        { pubkey: tokenProgram, isSigner: false, isWritable: false },
+      ],
+      data: Buffer.from([1]), // CreateIdempotent
+    });
     const disc = crypto.createHash('sha256').update('global:mint_withdraw').digest().subarray(0, 8);
     const amt = Buffer.alloc(8); amt.writeBigUInt64LE(raw);
+    // account order == programs/wayfarer_token MintWithdraw
     const ix = new TransactionInstruction({
       programId,
       keys: [
         { pubkey: oracle.publicKey, isSigner: true, isWritable: false },
-        { pubkey: config, isSigner: false, isWritable: false },
+        { pubkey: config, isSigner: false, isWritable: true },
         { pubkey: mint, isSigner: false, isWritable: true },
         { pubkey: mintAuth, isSigner: false, isWritable: false },
         { pubkey: player, isSigner: false, isWritable: false },
         { pubkey: playerAta, isSigner: false, isWritable: true },
-        { pubkey: treasury, isSigner: false, isWritable: true },
         { pubkey: tokenProgram, isSigner: false, isWritable: false },
       ],
       data: Buffer.concat([disc, amt]),
     });
-    const sig = await sendAndConfirmTransaction(conn, new Transaction().add(ix), [oracle], { commitment: 'confirmed' });
+    const sig = await sendAndConfirmTransaction(conn, new Transaction().add(createAta, ix), [oracle], { commitment: 'confirmed' });
     return { signature: sig, reason: null };
   } catch (e) {
     return { signature: null, reason: e.message || 'mint transaction failed' };
@@ -260,7 +352,9 @@ async function verifyDeposit(signature, ownerAddress) {
   try {
     const { Connection, PublicKey } = w;
     const conn = new Connection(CFG.SOLANA_RPC, 'confirmed');
-    const tx = await conn.getParsedTransaction(signature, { maxSupportedTransactionVersion: 0, commitment: 'confirmed' });
+    // 'finalized': a merely confirmed transaction can still be dropped by a
+    // fork; crediting redeemable value must wait for finality.
+    const tx = await conn.getParsedTransaction(signature, { maxSupportedTransactionVersion: 0, commitment: 'finalized' });
     if (!tx || !tx.meta) return { ok: false, reason: 'transaction not found or not yet confirmed' };
     if (tx.meta.err) return { ok: false, reason: 'transaction failed on chain' };
     if (!ownerAddress) return { ok: false, reason: 'link a wallet before claiming a deposit' };
@@ -316,12 +410,19 @@ async function verifyDeposit(signature, ownerAddress) {
 let timers = [];
 export function init() {
   initEconStore();
+  if (PLACEHOLDER_PROGRAM_IDS.has(CFG.PROGRAM_ID)) log.warn('PROGRAM_ID is the repo placeholder - token withdrawals stay disabled');
+  if (CFG.BRIDGE_WITHDRAW_ENABLED || CFG.BRIDGE_DEPOSIT_ENABLED) log.warn('token bridge ENABLED', { withdraw: CFG.BRIDGE_WITHDRAW_ENABLED, deposit: CFG.BRIDGE_DEPOSIT_ENABLED, network: CFG.SOLANA_NETWORK });
   sweepMarket().catch((e) => log.error('econ market sweep failed', { err: e.message }));
   timers = [
     setInterval(() => sweepMarket().catch((e) => log.error('econ market sweep failed', { err: e.message })), Math.max(250, Math.min(15_000, 15_000 * SCALE))),
     setInterval(sweepTrades, 5_000),
+    setInterval(sweepBindNonces, 30_000),
   ];
   timers.forEach((t) => t.unref?.());
+}
+export function onDispose(room) {
+  for (const t of room._econTimers || []) clearInterval(t);
+  room._econTimers = [];
 }
 export function flush() { flushEcon(); }
 export function stop() { timers.forEach(clearInterval); stopEcon(); flushEcon(); }
@@ -421,11 +522,14 @@ export function install(room) {
     let size = 0; try { size = JSON.stringify(m ?? null).length; } catch { return; }
     if (size > 2048) { suspicious(room, client, p, 'oversize', { type, size }); return; }
     const msg = m && typeof m === 'object' && !Array.isArray(m) ? m : {};
-    try {
-      const r = fn(client, p, msg);
-      if (r && typeof r.catch === 'function') r.catch((e) => log.warn('econ handler error', { type, err: e.message }));
-    } catch (e) { log.warn('econ handler error', { type, err: e.message }); }
+    // Serialize every economy op of one character (across sessions and rooms):
+    // async handlers (bridge RPC, durable commits) must never interleave on the
+    // same record — in SQLite mode loadChar() returns a fresh copy, so two
+    // in-flight withdrawals would each spend the same balance.
+    withCharLock(ckOf(p) || `sid:${client.sessionId}`, () => fn(client, p, msg))
+      .catch((e) => log.warn('econ handler error', { type, err: e.message }));
   });
+  room._econTimers = [];
 
   const STAKE_TIERS = {
     bronze: { amount: 100, days: 7, dropRate: 0.05 },
@@ -438,8 +542,21 @@ export function install(room) {
     room.onMessage(t, () => {});
   }
 
-  on('econ-hello', (c, p) => {
+  on('econ-hello', async (c, p) => {
     const rec = charRec(p);
+    // matured holder stake: return the locked tokens (there is no other
+    // release path; before this they were held forever)
+    const st = rec?.progress?.ext?.stake;
+    if (st && (st.amount | 0) > 0 && Number(st.lockedUntil) <= now()) {
+      const back = st.amount | 0;
+      rec.progress.wayfarerTokens = Math.min(1e9, (rec.progress.wayfarerTokens | 0) + back);
+      rec.progress.ext.stake = null;
+      rec.rev = (rec.rev || 0) + 1;
+      rec.savedAt = now(); rec.progress.savedAt = rec.savedAt;
+      saveChar(p.token, p.name, rec);
+      ledger({ op: 'token-unstake', ck: ckOf(p), amount: back, rev: rec.rev });
+      if (await commitFor(c, { deviceKeys: [dkOf(p)] })) { sync(c, rec, 'token-unstake', { wayfarerTokens: back }); note(c, `Your stake matured: ${back} Wayfarer Tokens returned.`); }
+    }
     const ck = ckOf(p);
     const box = ck ? db.mail.boxes[ck] || [] : [];
     const ext = rec?.progress?.ext || {};
@@ -673,8 +790,9 @@ export function install(room) {
       else if (t - s.touched > ESCROW_IDLE_MS) closeEscrowSession(s, 'Escrow timed out.');
     }
   }
-  timers.push(setInterval(sweepEscrows, 5_000));
-  timers.push(setInterval(sweepBindNonces, 30_000));
+  // per-room timer, cleared in onDispose (party rooms come and go: a global
+  // push here leaked one interval + this closure per room ever created)
+  room._econTimers.push(setInterval(sweepEscrows, 5_000));
 
   // ── market ──
   on('market-browse', (c, p, m) => {
@@ -1085,12 +1203,11 @@ export function install(room) {
   // Issue a nonce challenge, then verify the ed25519 signature of the challenge
   // message against the claimed address before recording a wallet binding.
   on('wallet-bind-challenge', (c, p, m) => {
-    const address = String(m.address || '').trim();
-    const raw = b58decode(address);
-    if (!raw || raw.length !== 32) { err(c, 'That is not a valid Solana wallet address.', 'invalid'); return; }
+    const address = canonicalAddress(String(m.address || '').trim());
+    if (!address) { err(c, 'That is not a valid Solana wallet address.', 'invalid'); return; }
     const ck = ckOf(p);
     if (!ck) { err(c, 'Your character is not saved on this server yet.', 'nosave'); return; }
-    const { nonce, message } = bindChallenge(address);
+    const { nonce, message } = bindChallenge(address, p.name);
     BIND_NONCES.set(ck, { nonce, message, address, until: now() + BIND_TTL_MS });
     c.send('wallet-bind-challenge', { address, nonce, message });
   });
@@ -1101,14 +1218,15 @@ export function install(room) {
     const ck = ckOf(p);
     const ch = ck && BIND_NONCES.get(ck);
     if (!ch) { err(c, 'Request a fresh link challenge first.', 'nonce'); return; }
-    if (ch.until < now()) { BIND_NONCES.delete(ck); err(c, 'That link challenge expired - request a new one.', 'nonce'); return; }
+    // strictly single-use: any attempt (good or bad) consumes the nonce
+    BIND_NONCES.delete(ck);
+    if (ch.until < now()) { err(c, 'That link challenge expired - request a new one.', 'nonce'); return; }
     if (ch.address !== address) { err(c, 'That is not the address you asked to link.', 'invalid'); return; }
     if (!verifySolanaSignature(address, ch.message, signature)) {
       suspicious(room, c, p, 'bad-wallet-sig', { address });
       err(c, 'Signature check failed - your wallet did not sign the challenge.', 'sig');
       return;
     }
-    BIND_NONCES.delete(ck);
     const dbm = await bridgeDb();
     const res = (await (dbm?.bindWalletForToken?.(p.token, address))) || { ok: false, error: 'db_unavailable' };
     if (!res.ok) {
@@ -1125,39 +1243,56 @@ export function install(room) {
   });
 
   // ── token-withdraw (in-game Wayfarer Tokens -> on-chain devnet $WAYFARER) ──
+  // Ordering (all inside the per-character lock): every await that does not
+  // touch the character happens FIRST; the record is then loaded, checked and
+  // debited synchronously, the debit is committed durably, a 'sending' ledger
+  // row is written, and only then is the irreversible mint attempted. A crash
+  // after the debit leaves a 'sending'/'pending' row for an operator to settle
+  // (never an untracked mint, never a double debit).
   on('token-withdraw', async (c, p, m) => {
-    const rec = requireRec(c, p, m); if (!rec) return;
     const amount = goldAmount(m.amount);
     if (!amount || amount <= 0) { err(c, 'Enter a whole number of Wayfarer Tokens to withdraw.', 'invalid'); return; }
-    const address = boundWalletAddressFor(await bridgeDb(), p);
+    const dbm = await bridgeDb();
+    const address = boundWalletAddressFor(dbm, p);
     if (!address) { err(c, 'Link a Solana wallet before withdrawing.', 'wallet'); return; }
+    const rec = requireRec(c, p, m); if (!rec) return;
     if ((rec.progress.wayfarerTokens | 0) < amount) { err(c, `You only have ${rec.progress.wayfarerTokens | 0} Wayfarer Tokens.`, 'missing'); return; }
     const fee = Math.max(1, Math.floor(amount * ECON.TOKEN_WITHDRAW_FEE));
     const net = amount - fee;
     if (net <= 0) { err(c, 'Amount too small after the withdraw fee.', 'invalid'); return; }
-    // daily cap shares the same fields as token-claim
+    // per-character daily cap (shares the token-claim fields; server-owned, a
+    // save can no longer reset it: validate.js SERVER_EXT_KEYS)
     const today = new Date().toISOString().slice(0, 10);
     const ext = rec.progress.ext || (rec.progress.ext = {});
     const prev = ext.bridgeDailyClaimed || { date: '', amount: 0 };
-    const claimedToday = prev.date === today ? (prev.amount || 0) : 0;
+    const claimedToday = prev.date === today ? (prev.amount | 0) : 0;
     if (claimedToday + net > ECON.TOKEN_WITHDRAW_DAILY_CAP) {
       err(c, `Daily token cap reached: ${claimedToday}/${ECON.TOKEN_WITHDRAW_DAILY_CAP} tokens today.`, 'cap');
       return;
     }
     if (!withdrawConfigured()) {
       // Honest degradation: no mint, no deduction.
-      c.send('token-withdraw-result', { ok: 0, amount, fee, net, status: 'unconfigured', reason: 'The Solana bridge is not configured on this server (SOLANA_RPC / PROGRAM_ID / MINT_ADDRESS / ORACLE_KEYPAIR). Nothing was deducted.' });
+      c.send('token-withdraw-result', { ok: 0, amount, fee, net, status: 'unconfigured', reason: CFG.BRIDGE_WITHDRAW_ENABLED ? 'The Solana bridge is not configured on this server (SOLANA_RPC / PROGRAM_ID / MINT_ADDRESS / ORACLE_KEYPAIR). Nothing was deducted.' : 'Withdrawals are disabled on this server (BRIDGE_WITHDRAW_ENABLED is off). Nothing was deducted.' });
+      return;
+    }
+    // per-WALLET daily cap across every character bound to the same wallet
+    let walletToday = 0;
+    try { walletToday = dbm?.walletWithdrawnToday?.(address) | 0; } catch { walletToday = CFG.BRIDGE_WALLET_DAILY_CAP; }
+    if (walletToday + net > CFG.BRIDGE_WALLET_DAILY_CAP) {
+      err(c, `Daily wallet cap reached: ${walletToday}/${CFG.BRIDGE_WALLET_DAILY_CAP} tokens today for ${short(address)}.`, 'cap');
       return;
     }
 
-    // Deduct + reserve the daily cap; the row is 'pending' until a mint lands.
+    // Deduct + reserve both caps synchronously.
     ext.bridgeDailyClaimed = { date: today, amount: claimedToday + net };
     rec.progress.wayfarerTokens = (rec.progress.wayfarerTokens | 0) - amount;
     rec.rev = (rec.rev || 0) + 1;
     rec.savedAt = now(); rec.progress.savedAt = rec.savedAt;
     saveChar(p.token, p.name, rec);
+    let rowId = null;
+    try { rowId = dbm?.insertBridgeWithdrawal?.({ ck: ckOf(p), address, amount, fee, net, status: 'sending', signature: null, reason: null }) || null; } catch (e) { log.error('bridge ledger insert failed', { err: e.message }); }
     const delta = { wayfarerTokens: -amount };
-    ledger({ op: 'token-withdraw', ck: ckOf(p), name: p.name, address, amount, fee, net, rev: rec.rev });
+    ledger({ op: 'token-withdraw', ck: ckOf(p), name: p.name, address, amount, fee, net, rev: rec.rev, row: rowId });
 
     // Persist the debit before attempting the irreversible on-chain mint.
     if (!await commitFor(c, { deviceKeys: [dkOf(p)] })) return;
@@ -1165,8 +1300,10 @@ export function install(room) {
 
     const mint = await sendMintWithdraw(address, net);
     const status = mint.signature ? 'sent' : 'pending';
-    const dbm = await bridgeDb();
-    try { dbm?.insertBridgeWithdrawal?.({ ck: ckOf(p), address, amount, fee, net, status, signature: mint.signature, reason: mint.reason }); } catch { /* bridge ledger is best-effort */ }
+    try {
+      if (typeof rowId === 'number') dbm.updateBridgeWithdrawal(rowId, { status, signature: mint.signature, reason: mint.reason });
+      else dbm?.insertBridgeWithdrawal?.({ ck: ckOf(p), address, amount, fee, net, status, signature: mint.signature, reason: mint.reason });
+    } catch (e) { log.error('bridge ledger update failed', { row: rowId, err: e.message }); }
     c.send('token-withdraw-result', {
       ok: 1, amount, fee, net, status, signature: mint.signature || undefined,
       reason: mint.signature ? undefined : `Queued for settlement: ${mint.reason || 'the on-chain mint could not be sent'}`,
@@ -1180,9 +1317,9 @@ export function install(room) {
 
   // ── token-deposit (on-chain $WAYFARER -> in-game Wayfarer Tokens) ──
   on('token-deposit', async (c, p, m) => {
-    const rec = requireRec(c, p, m, { needRev: false }); if (!rec) return;
     const signature = String(m.signature || '').trim();
     if (!/^[1-9A-HJ-NP-Za-km-z]{40,100}$/.test(signature)) { err(c, 'Paste a valid Solana transaction signature.', 'invalid'); return; }
+    if (!requireRec(c, p, m, { needRev: false })) return;
     const dbm = await bridgeDb();
     const address = boundWalletAddressFor(dbm, p);
     if (!address) { err(c, 'Link the wallet that sent this deposit before claiming it.', 'wallet'); return; }
@@ -1197,12 +1334,16 @@ export function install(room) {
     }
     const v = await verifyDeposit(signature, address);
     if (!v.ok) { c.send('token-deposit-result', { ok: 0, amount: 0, credited: 0, reason: v.reason }); return; }
-    const amount = Math.min(v.amount, 1e9); // bound the credit to the validator's int range
-    const inserted = dbm?.insertBridgeDeposit
-      ? (() => { try { return dbm.insertBridgeDeposit({ signature, ck: ckOf(p), address, amount }); } catch { return false; } })()
-      : false;
-    if (dbm?.insertBridgeDeposit && !inserted) {
-      // lost the race against a concurrent credit of the same signature
+    // Re-load the record AFTER the RPC await (a stale copy would overwrite any
+    // mutation that landed meanwhile), then credit synchronously.
+    const rec = requireRec(c, p, m, { needRev: false }); if (!rec) return;
+    const amount = Math.min(v.amount, 1e9 - (rec.progress.wayfarerTokens | 0));
+    if (amount <= 0) { c.send('token-deposit-result', { ok: 0, amount: v.amount, credited: 0, reason: 'Balance limit reached.' }); return; }
+    // The replay guard (PRIMARY KEY on signature) is the commit point: only
+    // the insert that wins credits. No db -> no credit.
+    let inserted = false;
+    try { inserted = !!dbm?.insertBridgeDeposit?.({ signature, ck: ckOf(p), address, amount }); } catch { inserted = false; }
+    if (!inserted) {
       c.send('token-deposit-result', { ok: 0, amount, credited: 0, reason: 'That transaction was already credited.' });
       return;
     }
@@ -1272,6 +1413,7 @@ function closeTrade(s, reason) {
   log.info('econ trade closed', { id: s.id, reason });
 }
 function failTrade(s, reason) {
+  s.executing = false; // allow a fresh lock+confirm round (it stayed stuck forever)
   unlockAll(s);
   send(s.room, s.a.sid, 'trade-result', { ok: 0, id: s.id, reason });
   send(s.room, s.b.sid, 'trade-result', { ok: 0, id: s.id, reason });

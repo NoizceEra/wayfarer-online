@@ -29,4 +29,16 @@ export const CFG = {
   TREASURY_ADDRESS: process.env.TREASURY_ADDRESS || '',            // treasury ATA (deposit destination)
   ORACLE_KEYPAIR: process.env.ORACLE_KEYPAIR || '',                // JSON secret-key array for the mint authority signer
   TOKEN_DECIMALS: intRange(process.env.TOKEN_DECIMALS, 0, 9, 6),   // SPL decimals of $WAYFARER
+  // Explicit kill switches, default OFF: even with every key above present the
+  // bridge neither mints nor credits unless the operator opts in. Redeemable
+  // value must stay off until the pre-launch checklist in docs/SECURITY_AUDIT.md
+  // is complete (server-authoritative earning, multisig, legal review).
+  BRIDGE_WITHDRAW_ENABLED: process.env.BRIDGE_WITHDRAW_ENABLED === '1',
+  BRIDGE_DEPOSIT_ENABLED: process.env.BRIDGE_DEPOSIT_ENABLED === '1',
+  // Per-wallet daily withdraw cap (whole tokens, net), across every character
+  // bound to that wallet. The per-character cap (economy.js) still applies.
+  BRIDGE_WALLET_DAILY_CAP: intRange(process.env.BRIDGE_WALLET_DAILY_CAP, 0, 1_000_000, 500),
+  // Domain/app string bound into the wallet-link message (anti-phishing): a
+  // signature produced for another site's challenge never verifies here.
+  WALLET_BIND_DOMAIN: String(process.env.WALLET_BIND_DOMAIN || 'wayfarer-online').slice(0, 64),
 };

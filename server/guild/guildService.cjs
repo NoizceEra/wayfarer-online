@@ -6,6 +6,13 @@
 
 const { GuildCore, GUILD_CREATE_COST } = require('./guildCore.cjs');
 const { GuildAuth } = require('./guildAuth.cjs');
+const DAILY_CONTRIBUTION_CAP = 5000; // mirrors src/data/guilds.cjs contributeGold
+// Player ids arrive from clients and are used as object keys
+// (guild.members[id], guild.invites[id]). "__proto__"/"constructor" would
+// resolve to Object.prototype: promote({playerId:'__proto__'}) then wrote
+// Object.prototype.rank (process-wide prototype pollution). Session ids only.
+const RESERVED_IDS = new Set(['__proto__', 'constructor', 'prototype']);
+const validId = (s) => typeof s === 'string' && /^[A-Za-z0-9_-]{4,32}$/.test(s) && !RESERVED_IDS.has(s.toLowerCase());
 
 class GuildService {
   constructor(options = {}) {
@@ -24,6 +31,12 @@ class GuildService {
 
   handleCreate(playerId, playerName, { name, tag }) {
     if (this.core.playerGuild.has(playerId)) return { error: 'already_in_guild' };
+    // bounded, plain strings: the guild object is broadcast to EVERY room, so
+    // an unbounded name was an amplification vector
+    name = String(typeof name === 'string' ? name : '').replace(/[\u0000-\u001f\u007f<>]/g, '').trim().slice(0, 24);
+    tag = String(typeof tag === 'string' ? tag : '').replace(/[^A-Za-z0-9]/g, '').slice(0, 4).toUpperCase();
+    // validate BEFORE charging: a refused create used to keep the 2000g
+    if (!name || !tag || String(tag).length < 2 || String(tag).length > 4) return { error: 'invalid_name_or_tag' };
     if (!this.deductGold(playerId, GUILD_CREATE_COST)) return { error: 'not_enough_gold' };
     const result = this.core.create(playerId, playerName, { name, tag });
     if (result.error) return result;
@@ -42,6 +55,7 @@ class GuildService {
   }
 
   handleInvite(playerId, { playerId: targetId }) {
+    if (!validId(targetId)) return { error: 'invalid_target' };
     if (!targetId || targetId === playerId) return { error: 'invalid_target' };
     const guild = this.auth.assertRank(playerId, 'invite');
     const result = this.core.addInvite(guild, targetId, playerId);
@@ -52,6 +66,7 @@ class GuildService {
   }
 
   handleAcceptInvite(playerId, playerName, { guildId }) {
+    if (typeof guildId !== 'string') return { error: 'guild_not_found' };
     if (this.core.playerGuild.has(playerId)) return { error: 'already_in_guild' };
     const result = this.core.acceptInvite(playerId, playerName, guildId);
     if (result.error) return result;
@@ -67,6 +82,7 @@ class GuildService {
   }
 
   handlePromote(playerId, { playerId: targetId }) {
+    if (!validId(targetId)) return { error: 'invalid_target' };
     const guild = this.auth.assertRank(playerId, 'promote');
     const result = this.core.promote(guild, targetId);
     if (result.error) return result;
@@ -76,6 +92,7 @@ class GuildService {
   }
 
   handleDemote(playerId, { playerId: targetId }) {
+    if (!validId(targetId)) return { error: 'invalid_target' };
     const guild = this.auth.assertRank(playerId, 'demote');
     const result = this.core.demote(guild, targetId);
     if (result.error) return result;
@@ -85,6 +102,7 @@ class GuildService {
   }
 
   handleKick(playerId, { playerId: targetId }) {
+    if (!validId(targetId)) return { error: 'invalid_target' };
     const guild = this.auth.canKick(playerId, targetId);
     const result = this.core.removeMember(guild, targetId);
     if (result.error) return result;
@@ -113,7 +131,15 @@ class GuildService {
 
   handleContribute(playerId, { amount }) {
     const guild = this.auth.assertInGuild(playerId);
-    if (!this.deductGold(playerId, amount)) return { error: 'not_enough_gold' };
+    // whole positive gold only (a negative amount minted gold through
+    // deductGold), and only what the daily cap will actually accept is charged
+    if (typeof amount !== 'number' || !Number.isInteger(amount) || amount <= 0) return { error: 'invalid_amount' };
+    const member = guild.members[playerId];
+    const remaining = Math.max(0, DAILY_CONTRIBUTION_CAP - (member?.contributionToday | 0));
+    const applied = Math.min(amount, remaining);
+    if (applied <= 0) return { error: 'daily_cap_reached' };
+    if (!this.deductGold(playerId, applied)) return { error: 'not_enough_gold' };
+    amount = applied;
     const result = this.core.contribute(guild, playerId, amount);
     if (result.error) return result;
     this.sendTo(playerId, 'guild:contributed', {
