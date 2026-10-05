@@ -110,7 +110,14 @@ if (PLAY) {
   await page.keyboard.press('Enter'); await waitScene('creator'); await page.waitForTimeout(600);
   await page.keyboard.press('Enter'); await waitScene('ui'); await page.waitForTimeout(3000);
   await page.evaluate(() => window.__perf.reset());
+  if (flag('--profile')) await cdp.send('Profiler.enable'), await cdp.send('Profiler.start');
   await page.waitForTimeout(6000);
+  if (flag('--profile')) {
+    const { profile } = await cdp.send('Profiler.stop');
+    const self = new Map(); const dt = profile.timeDeltas; const idx = new Map(profile.nodes.map((n) => [n.id, n]));
+    profile.samples.forEach((id, i) => { const n = idx.get(id); const k = `${n.callFrame.functionName || '(anon)'} ${n.callFrame.url.split('/').pop()}:${n.callFrame.lineNumber}`; self.set(k, (self.get(k) || 0) + (dt[i] || 0)); });
+    out.profileTop = [...self.entries()].sort((a, b) => b[1] - a[1]).slice(0, 30).map(([k, v]) => `${(v / 1000).toFixed(0)}ms ${k}`);
+  }
   out.world = await page.evaluate(() => window.__perf.snapshot());
   out.memWorld = await heap();
   out.cullOn = await page.evaluate(() => window.__perf.cull());
