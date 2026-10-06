@@ -8,7 +8,7 @@
     "dev": "vite --port 5176 --strictPort",
     "build": "vite build",
     "preview": "vite preview --port 5177 --strictPort",
-    "start": "vite preview --port 5177 --strictPort",
+    "start": "node server/index.js",
     "copy-assets": "node tools/copy_assets.mjs"
   },
   "dependencies": {
