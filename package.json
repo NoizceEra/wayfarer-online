@@ -4,9 +4,6 @@
   "description": "Wayfarer Online — a cozy Game Boy-style open-world action RPG with modular characters and solo/co-op interop.",
   "private": true,
   "type": "module",
-  "engines": {
-    "node": ">=22 <23"
-  },
   "scripts": {
     "dev": "vite --port 5176 --strictPort",
     "build": "vite build",
