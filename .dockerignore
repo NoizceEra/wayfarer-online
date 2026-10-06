@@ -1,0 +1,9 @@
+node_modules
+server/node_modules
+dist
+dist_verify
+.git
+.vercel
+Dockerfile
+.vscode
+*.log
