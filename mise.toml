@@ -1,0 +1,7 @@
+# Railpack builds with mise. `.node-version` (priority 5) and this file (priority 6)
+# both pin Node 22 by two independent routes, because the default resolved to Node
+# 18 here — whose npm cannot `ci` the root lock (it resolves utf-8-validate to
+# 5.0.10, but the lock pins 6.0.6, which requires Node >= 20). Node 22 also has the
+# better-sqlite3 ABI-127 prebuild, so no compiler is needed.
+[tools]
+node = "22"
