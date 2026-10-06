@@ -190,6 +190,12 @@ export class NetworkManager {
     });
     room.onMessage('snap', (m) => { this.stats.snaps++; emit('snap', m); });
     for (const type of ['adead', 'hit', 'ehit', 'edeath', 'act', 'saved', 'notice']) room.onMessage(type, (m) => emit(type, m));
+    // autonomous agent system (src/net/agentsNet.js): server->client messages are
+    // addressed to the owning player only; mirror the generic-relay echo guard so a
+    // relayed copy (tagged with sessionId) is not re-delivered here.
+    for (const type of ['agent-entitlement', 'agent-state', 'agent-claim-result']) {
+      room.onMessage(type, (m) => { if (m && typeof m === 'object' && m.sessionId !== undefined) return; emit(type, m); });
+    }
     room.onMessage('correct', (m) => { this.stats.corrections++; emit('correct', m); });
     room.onMessage('pong', (m) => this.onPong(m));
     // legacy shapes still forwarded on NET_STATE for older listeners

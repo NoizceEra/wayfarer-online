@@ -3,6 +3,13 @@ import { CFG } from './config.js';
 import { log } from './log.js';
 import { loadChar, saveChar, TOKEN_RE } from './store.js';
 import { validateSave, sanitizeHero } from './validate.js';
+import { createRequire } from 'module';
+
+// Optional autonomous-agents module (server/agents.cjs). CommonJS on purpose:
+// loading it with require() keeps this file free of a static .cjs import (which
+// would hard-fail relay boot if the file were ever absent) and avoids
+// require(esm) so engines.node>=18 stays honest.
+const nodeRequire = createRequire(import.meta.url);
 
 // One room class, two flavours:
 //   kind 'world' — public persistent shard (Embervale-1 is always on, overflow
@@ -160,6 +167,24 @@ export class WayfarerRoom extends Room {
     try { social?.install?.(this); } catch (e) { log.error('social.install failed', { err: e.message }); }
     hook('install', this);
 
+    // Autonomous agents (server/agents.cjs). Purely additive: it inserts
+    // player-shaped records into this.players, which the tick below already
+    // replicates to every real client — no client changes needed. Failure to
+    // load must never take the room down.
+    try {
+      const AR = nodeRequire('./agentRewards.cjs');
+      this.agentCaps = AR.capsFromEnv();
+      this.agentStore = nodeRequire('./agentStore.cjs').createAgentStore({ log });
+      this.agents = new (nodeRequire('./agents.cjs').AgentsSystem)(this, {
+        log,
+        // Book each completed gather against the OWNER's ledger. Ambient agents
+        // have no owner and earn nothing; caps live in agentRewards.accrue, which
+        // clamps rather than throwing, and the ledger's claim path is disabled by
+        // default so this can never move SOL.
+        onGather: (agent, kind) => this._recordAgentFind(agent, kind),
+      });
+    } catch (e) { this.agents = null; this.agentStore = null; log.error('agents system failed to init', { err: e.message }); }
+
     // simulation interval also drives this.clock (patches are off: no schema state)
     this.setSimulationInterval(() => this.tick(), Math.round(1000 / CFG.TICK_HZ));
     this.clock.setInterval(() => this.periodicSave(), 30_000);
@@ -229,10 +254,15 @@ export class WayfarerRoom extends Room {
     this.bcast('peer-join', { sessionId: client.sessionId, name: p.name, hero: p.hero, a: p.a }, client);
     for (const [sid, q] of this.players) {
       if (sid === client.sessionId) continue;
-      this.sendTo(client, 'peer-join', { sessionId: sid, name: q.name, hero: q.hero, a: q.a, dc: q.dc ? 1 : 0 });
+      const pj = { sessionId: sid, name: q.name, hero: q.hero, a: q.a, dc: q.dc ? 1 : 0 };
+      if (q.agent) { pj.agent = 1; pj.ownerSid = q.ownerSid; } // badge agents vs real players
+      this.sendTo(client, 'peer-join', pj);
     }
     try { social?.onJoin?.(this, client, p); } catch (e) { log.error('social.onJoin failed', { err: e.message }); }
     hook('onJoin', this, client, p);
+    // Wallet-holding players get their own autonomous agent. Fire-and-forget: the
+    // entitlement check can hit an RPC, so the join path must never wait on it.
+    this.spawnOwnedAgentFor(client.sessionId).catch(() => {});
     log.info('join', { room: this.displayName, name, n: this.clients.length, saved: !!stored });
   }
 
@@ -256,7 +286,12 @@ export class WayfarerRoom extends Room {
           t: Date.now(), tickMs: Math.round(1000 / CFG.TICK_HZ), aoi: CFG.AOI_RADIUS, n: this.clients.length, resumed: true,
           auth: [...this.areas].filter(([, a]) => a.auth).map(([k, a]) => [k, a.auth]),
         });
-        for (const [sid, q] of this.players) if (sid !== back.sessionId) this.sendTo(back, 'peer-join', { sessionId: sid, name: q.name, hero: q.hero, a: q.a, dc: q.dc ? 1 : 0 });
+        for (const [sid, q] of this.players) {
+          if (sid === back.sessionId) continue;
+          const pj = { sessionId: sid, name: q.name, hero: q.hero, a: q.a, dc: q.dc ? 1 : 0 };
+          if (q.agent) { pj.agent = 1; pj.ownerSid = q.ownerSid; }
+          this.sendTo(back, 'peer-join', pj);
+        }
         this.sendDeadList(back, p.a);
         this.bcast('peer-status', { sessionId: back.sessionId, dc: 0 }, back);
         log.info('reconnected', { room: this.displayName, name: p.name });
@@ -270,6 +305,9 @@ export class WayfarerRoom extends Room {
     const p = this.players.get(sid);
     if (!p) return;
     STATS.leaves++;
+    // An OWNED agent leaves with its owner (ambient agents stay). Without this a
+    // departed player's agent would linger and keep accruing to a stale session.
+    try { this.agents?.despawnForOwner?.(sid); } catch (e) { log.error('agent despawn on leave failed', { err: e.message }); }
     this.players.delete(sid);
     this.views.delete(sid);
     this.releaseAuth(sid);
@@ -289,8 +327,51 @@ export class WayfarerRoom extends Room {
   }
   onDispose() {
     LIVE_ROOMS.delete(this);
+    try { this.agents?.destroy?.(); } catch (e) { log.error('agents.destroy failed', { err: e.message }); }
     for (const p of this.players.values()) this.persist(p);
     log.info('room disposed', { room: this.displayName });
+  }
+
+  // ── autonomous agents: owner wiring ────────────────────────────────────────
+  // Book one completed gather into the owner's SOL-find ledger. Only OWNED agents
+  // earn (ambient agents have no owner). The amount is a small flavour value; the
+  // per-find and per-UTC-day caps live in agentRewards.accrue, and nothing here
+  // can move SOL — the ledger's claim path requires an operator-enabled payout
+  // that does not exist.
+  _recordAgentFind(agent, kind) {
+    try {
+      const ownerSid = agent && agent.ownerSid;
+      if (!ownerSid || !this.agentStore) return;
+      const owner = this.players.get(ownerSid);
+      if (!owner || !owner.token) return; // owner left: stop booking for this session
+      const FIND = { wood: 6000, ore: 12000, stone: 8000, herb: 4000, fish: 5000 };
+      const AR = nodeRequire('./agentRewards.cjs');
+      this.agentStore.recordFind(owner.token, {
+        lamports: FIND[kind] || 5000,
+        dayKey: AR.utcDayKey(),
+        caps: this.agentCaps,
+      });
+    } catch (e) { log.error('agent find booking failed', { err: e.message }); }
+  }
+
+  // A wallet-holding player gets one agent of their own. Fire-and-forget: the gate
+  // may hit an RPC, so the join path must never wait on it. With no RPC/mint/price
+  // configured the gate answers 'unconfigured' and no agent is spawned.
+  async spawnOwnedAgentFor(sid) {
+    if (!this.agents) return null;
+    try {
+      const p = this.players.get(sid);
+      if (!p || p.agent) return null;
+      if (this.agents.list().some((a) => a && a.ownerSid === sid)) return null; // one each
+      const { entitlementFor } = nodeRequire('./agentGate.cjs');
+      const ent = await entitlementFor(this, sid);
+      if (!ent || !ent.eligible) return null;
+      const cur = this.players.get(sid);
+      if (!cur) return null; // left while the lookup was in flight
+      const rec = this.agents.spawn({ ownerSid: sid, a: cur.a || 'ow', x: cur.x, y: cur.y });
+      log.info('agent spawned for owner', { sid, name: rec && rec.name, reason: ent.reason });
+      return rec;
+    } catch (e) { log.error('owner agent spawn failed', { err: e.message }); return null; }
   }
 
   // ─── authority ─────────────────────────────────────────────────────
@@ -299,7 +380,11 @@ export class WayfarerRoom extends Room {
     const cur = a.auth && this.players.get(a.auth);
     if (cur && !cur.dc && cur.a === key) return;
     let best = null;
-    for (const q of this.players.values()) if (!q.dc && q.a === key && (!best || q.order < best.order)) best = q;
+    // Agents are excluded on purpose: an agent has no client to simulate the
+    // area's enemies, so it must never win authority. `!q.agent` is explicit —
+    // do not rely on agents lacking `order` (an agent iterated first would
+    // otherwise become `best` via `!best`).
+    for (const q of this.players.values()) if (!q.dc && !q.agent && q.a === key && (!best || q.order < best.order)) best = q;
     const next = best ? best.sid : null;
     if (next === a.auth) return;
     a.auth = next;
@@ -439,6 +524,9 @@ export class WayfarerRoom extends Room {
   tick() {
     const now = Date.now();
     hook('tick', this);
+    // Drive agent behaviour BEFORE replication so their fresh x/y/f/m go out
+    // in this same snapshot. Never allowed to throw out of the tick.
+    try { this.agents?.tick?.(now); } catch (e) { log.error('agents.tick failed', { err: e.message }); }
     const R = CFG.AOI_RADIUS;
     for (const c of this.clients) {
       const me = this.players.get(c.sessionId);
@@ -453,6 +541,7 @@ export class WayfarerRoom extends Room {
         const last = view.p.get(sid);
         if (!near && last && now - last._t < 1000) continue; // far peers: ~1 Hz (minimap)
         const cur = { x: Math.round(q.x), y: Math.round(q.y), f: q.f, h: q.h, a: q.a, m: q.m, dc: q.dc ? 1 : 0 };
+        if (q.agent) cur.ag = 1; // marks an autonomous agent (client: agentsNet.isAgent)
         const d = { i: sid };
         let n = 0;
         for (const k in cur) if (!last || last[k] !== cur[k]) { d[k] = cur[k]; n++; }

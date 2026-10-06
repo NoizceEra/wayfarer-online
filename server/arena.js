@@ -114,11 +114,14 @@ const err = (room, sid, msg) => send(room, sid, 'arena:error', { msg });
 
 function findPlayerByName(room, name) {
   const n = String(name || '').toLowerCase();
-  for (const [sid, p] of room.players) if (String(p.name).toLowerCase() === n) return sid;
+  // Agents are skipped: an agent has no client to accept a duel, so a challenge
+  // resolved to one would create a match that can never resolve.
+  for (const [sid, p] of room.players) if (!p.agent && String(p.name).toLowerCase() === n) return sid;
   return null;
 }
 function resolveTarget(room, target) {
-  if (room.players.has(target)) return target;
+  const direct = room.players.get(target);
+  if (direct && !direct.agent) return target;
   return findPlayerByName(room, target);
 }
 
@@ -135,7 +138,7 @@ function tryMatchQueue(room) {
     while (q.length && !room.players.has(q[0])) q.shift();
     if (q.length < 2) break;
     const a = q.shift();
-    let bIdx = q.findIndex((sid) => sid !== a && room.players.has(sid) && !inMatch(room, sid));
+    let bIdx = q.findIndex((sid) => sid !== a && room.players.has(sid) && !room.players.get(sid)?.agent && !inMatch(room, sid));
     if (inMatch(room, a)) continue; // a entered a match meanwhile: skip, keep b queued
     if (bIdx === -1) { q.unshift(a); break; }
     const b = q.splice(bIdx, 1)[0];

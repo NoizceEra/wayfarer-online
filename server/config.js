@@ -29,4 +29,11 @@ export const CFG = {
   TREASURY_ADDRESS: process.env.TREASURY_ADDRESS || '',            // treasury ATA (deposit destination)
   ORACLE_KEYPAIR: process.env.ORACLE_KEYPAIR || '',                // JSON secret-key array for the mint authority signer
   TOKEN_DECIMALS: intRange(process.env.TOKEN_DECIMALS, 0, 9, 6),   // SPL decimals of $WAYFARER
+  // ─── agent entitlement gate (server/agentGate.cjs) ───
+  // A wallet-bound player who HOLDS >= AGENT_MIN_USD of $WAYFARER gets an
+  // autonomous agent. The gate is OFF unless an operator sets a price: with no
+  // AGENT_TOKEN_PRICE_USD the gate reports 'unconfigured' and NEVER invents a
+  // market value. Requires SOLANA_RPC + MINT_ADDRESS + AGENT_TOKEN_PRICE_USD.
+  AGENT_MIN_USD: num(process.env.AGENT_MIN_USD, 50),               // USD a bound wallet must hold (default $50)
+  AGENT_TOKEN_PRICE_USD: num(process.env.AGENT_TOKEN_PRICE_USD, 0), // operator-set $WAYFARER price in USD; 0 = unconfigured
 };

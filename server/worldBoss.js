@@ -208,7 +208,7 @@ export function install(room) {
     if (m?.i !== state.id) return;
     const by = typeof m.by === 'string' ? m.by : client.sessionId;
     const who = room.players.get(by);
-    if (!who) return;
+    if (!who || who.agent) return; // agents take no boss contribution/credit
     // Store token so rewards can be persisted even if the player leaves before slain.
     const rec = state.contributions.get(by) || { name: who.name, damage: 0, token: who.token };
     rec.token = who.token;

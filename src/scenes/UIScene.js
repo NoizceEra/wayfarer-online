@@ -31,6 +31,8 @@ import { ArenaPanel } from '../ui/ArenaPanel.js';
 import { SkillTreePanel } from '../ui/SkillTreePanel.js';
 import { ArenaChallengeModal } from '../ui/ArenaChallengeModal.js';
 import { arenaNet } from '../net/arenaNet.js';
+import { agentsNet } from '../net/agentsNet.js';
+import { AgentPanel } from '../ui/AgentPanel.js';
 import DungeonSystem from '../systems/dungeonSystem.js';
 import SeasonSystem from '../systems/seasonSystem.js';
 import GuildSystem from '../systems/guildSystem.js';
@@ -361,6 +363,7 @@ export class UIScene extends Phaser.Scene {
       input.addCloser({ id: 'guild', priority: 920, isOpen: () => !!this.guildPanel?.visible, close: () => this.guildPanel?.close() }),
       input.addCloser({ id: 'arena', priority: 935, isOpen: () => !!this.arenaPanel?.container, close: () => this.arenaPanel?.hide() }),
       input.addCloser({ id: 'spec', priority: 936, isOpen: () => !!this.skillTreePanel?.container, close: () => this.skillTreePanel?.hide() }),
+      input.addCloser({ id: 'agent', priority: 925, isOpen: () => !!this.agentPanel?.visible, close: () => this.agentPanel?.close() }),
       input.addCloser({ id: 'pause-sub', priority: 850, isOpen: () => this.menu.isOpen && this.menu.page !== 'main', close: () => this.menu.goto('main') }),
       input.addCloser({ id: 'shop', priority: 450, isOpen: () => !!this.shop?.isOpen, close: () => this.shop.close() }),
       input.addCloser({ id: 'equip', priority: 400, isOpen: () => !!this.equip?.isOpen, close: () => this.equip.toggle(false) }),
@@ -406,8 +409,8 @@ export class UIScene extends Phaser.Scene {
       this.resizeTimer?.remove(false);
       this.equip?.destroy(); this.shop?.destroy(); this.journal?.destroy(); this.craftPanel?.destroy(); this.fishing?.destroy(); this.toast?.destroy(); this.walletPanel?.destroy();
       this.dailyPanel?.destroy(); this.dailyRewards?.destroy();
-      this.partyFinderBtn?.destroy(); this.lfgBtn?.destroy(); this.seasonBtn?.destroy(); this.guildBtn?.destroy(); this.arenaBtn?.destroy(); this.specBtn?.destroy(); this.worldBossBtn?.destroy();
-      this.lfgPanel?.destroy(); this.seasonPanel?.destroy(); this.guildPanel?.destroy(); this.arenaPanel?.destroy(); this.skillTreePanel?.destroy(); this.arenaChallenge?.destroy(); this.worldBossAlert?.destroy();
+      this.partyFinderBtn?.destroy(); this.lfgBtn?.destroy(); this.seasonBtn?.destroy(); this.guildBtn?.destroy(); this.arenaBtn?.destroy(); this.specBtn?.destroy(); this.worldBossBtn?.destroy(); this.agentBtn?.destroy();
+      this.lfgPanel?.destroy(); this.seasonPanel?.destroy(); this.guildPanel?.destroy(); this.arenaPanel?.destroy(); this.skillTreePanel?.destroy(); this.arenaChallenge?.destroy(); this.worldBossAlert?.destroy(); this.agentPanel?.destroy();
       this.dungeonSystem?.destroy(); this.seasonSystem?.destroy(); this.guildSystem?.destroy();
     });
     // Mail unread indicator for the touch HUD
@@ -471,6 +474,7 @@ export class UIScene extends Phaser.Scene {
     this.guildPanel = new GuildPanel(this, cx, cy, this.guildSystem);
     this.arenaPanel = new ArenaPanel(this);
     this.skillTreePanel = new SkillTreePanel(this);
+    this.agentPanel = new AgentPanel(this);
     this.arenaChallenge = new ArenaChallengeModal(this);
     // Arena wires: incoming challenge -> modal; result -> toast + system
     // message, rating refresh, auto-leave-queue state; errors -> system msg.
@@ -673,6 +677,14 @@ export class UIScene extends Phaser.Scene {
     this.specBtn.on('pointerover', () => this.specBtn.setBackgroundColor('#3a2d20ee'));
     this.specBtn.on('pointerout', () => this.specBtn.setBackgroundColor('#2a1d10dd'));
     this.specBtn.on('pointerdown', () => { audio.play('ui', 0.6); this.skillTreePanel?.toggle(); });
+    // Agent icon (right of the skill-tree icon): opens the autonomous-agent panel.
+    this.agentBtn = this.add.text(baseX - (iconSize + gap) * 8, startY, '🤖', {
+      fontFamily: '"Silkscreen", monospace', fontSize: '16px', color: '#03e1ff',
+      backgroundColor: '#2a1d10dd', padding: { x: 4, y: 2 },
+    }).setOrigin(1, 0).setDepth(110).setInteractive({ useHandCursor: true });
+    this.agentBtn.on('pointerover', () => this.agentBtn.setBackgroundColor('#3a2d20ee'));
+    this.agentBtn.on('pointerout', () => this.agentBtn.setBackgroundColor('#2a1d10dd'));
+    this.agentBtn.on('pointerdown', () => { audio.play('ui', 0.6); this.agentPanel?.toggle(); });
     this.walletPanel = new WalletPanel(this);
   }
 
@@ -991,7 +1003,18 @@ export class UIScene extends Phaser.Scene {
     }
     // other players: party green (bigger), friends pink, guild gold, else blue; grey = peer inside an interior/dungeon
     const REL = { party: 0x7dff9a, friend: 0xff9ad5, guild: 0xffd84a, other: 0x5ad0ff };
-    w.sync?.remotes?.forEach((r, id) => { const m = r.mapPos ? r.mapPos() : r; if (!m) return; const rel = social.relation(id); dot(x + (m.x / T) * k, y + (m.y / T) * k, rel === 'party' ? 2.6 : 2, m.grey ? 0x7a7a88 : REL[rel]); });
+    w.sync?.remotes?.forEach((r, id) => {
+      const m = r.mapPos ? r.mapPos() : r; if (!m) return;
+      const mx = x + (m.x / T) * k, my = y + (m.y / T) * k;
+      // Agents are marked apart from players: a magenta diamond (Solana accent)
+      // so a peer that is an autonomous agent reads as an agent at a glance.
+      if (agentsNet.isAgent(id)) {
+        g.fillStyle(0x1a1024, 1).fillTriangle(mx, my - 4, mx - 4, my, mx + 4, my).fillTriangle(mx, my + 4, mx - 4, my, mx + 4, my);
+        g.fillStyle(0xdc1fff, 1).fillTriangle(mx, my - 3, mx - 3, my, mx + 3, my).fillTriangle(mx, my + 3, mx - 3, my, mx + 3, my);
+        return;
+      }
+      const rel = social.relation(id); dot(mx, my, rel === 'party' ? 2.6 : 2, m.grey ? 0x7a7a88 : REL[rel]);
+    });
     const blink = 0.5 + 0.5 * Math.sin(this.time.now / 250);
     const px = x + tx * k, py = y + ty * k;
     g.fillStyle(0xffffff, 0.25 + 0.3 * blink).fillCircle(px, py, 4.5);
