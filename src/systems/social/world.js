@@ -123,7 +123,10 @@ export function installSocialWorld(scene) {
   // first so the tap never also swings a weapon (see below).
   const onPointer = (p) => {
     if (p.button !== 2 || !scene.sync?.remotes?.size) return;
-    const best = remoteAt(scene, p.worldX, p.worldY + 8);
+    // screen -> world through this scene's camera (zoom/scroll aware); the raw
+    // pointer world point is wrong here, so the peer hit-test missed.
+    const wp = scene.cameras.main.getWorldPoint(p.x, p.y);
+    const best = remoteAt(scene, wp.x, wp.y + 8);
     if (best) social.act('contextMenu', { id: best.id, name: best.name, x: p.event?.clientX ?? p.x, y: p.event?.clientY ?? p.y });
   };
   scene.input.on('pointerdown', onPointer);

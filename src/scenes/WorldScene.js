@@ -173,14 +173,20 @@ export class WorldScene extends Phaser.Scene {
     this.input.on('pointerdown', (p) => {
       if (p.button !== 0 || this.chatOpen || this.uiLock || this.uiModal || input.modal) return;
       if (this.pointerOnHud(p)) return; // clicks on HUD panels/buttons never swing
+      // p.worldX/worldY must NOT be trusted here: this scene's main camera is
+      // zoomed (~3x) and scrolled, while the pointer's world point is derived from
+      // its own camera, so the click arrived as SCREEN coordinates. The aim vector
+      // was then dominated by a constant offset and every shot flew in nearly the
+      // same direction. getWorldPoint() applies scroll AND zoom correctly.
+      const wp = this.cameras.main.getWorldPoint(p.x, p.y);
       // Tapping a fellow wayfarer opens their menu instead of attacking.
-      const peer = remoteAt(this, p.worldX, p.worldY);
+      const peer = remoteAt(this, wp.x, wp.y);
       if (peer) {
         audio.play('ui', 0.5);
         social.act('contextMenu', { id: peer.id, name: peer.name, x: p.event?.clientX ?? p.x, y: p.event?.clientY ?? p.y });
         return;
       }
-      this.attack(p.worldX, p.worldY);
+      this.attack(wp.x, wp.y);
     });
 
     // Loot pickups (gear drops + bonus gold)

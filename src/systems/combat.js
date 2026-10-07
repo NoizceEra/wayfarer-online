@@ -79,7 +79,14 @@ export class Combat {
     kb.on('keydown-SPACE', () => { if (!typing() && !input.modal) this.dodge(); });
     input.on('dodge', () => { this.dodge(); return true; }, { scene });
     input.on('target', () => { this.cycleTarget(); return true; }, { scene });
-    scene.input.on('pointerdown', (ptr) => { if (ptr.button === 0 && !scene.chatOpen && !scene.uiLock && !scene.uiModal) this.pickTarget(ptr.worldX, ptr.worldY); });
+    // Click-to-lock: convert the click to a WORLD point through this scene's own
+    // camera. ptr.worldX/worldY is derived from the pointer's camera and is wrong
+    // under this scene's zoom/scroll, so picks landed at the wrong place.
+    scene.input.on('pointerdown', (ptr) => {
+      if (ptr.button !== 0 || scene.chatOpen || scene.uiLock || scene.uiModal) return;
+      const wp = scene.cameras.main.getWorldPoint(ptr.x, ptr.y);
+      this.pickTarget(wp.x, wp.y);
+    });
 
     if (!scene.scene.get('combathud')) scene.scene.add('combathud', CombatHudScene, false);
     scene.scene.launch('combathud');
