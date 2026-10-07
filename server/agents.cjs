@@ -17,6 +17,14 @@
 //   peer-leave{ sessionId:'agent:<id>', name, wasHost:0 } -> removes the puppet
 //   act       { sessionId:'agent:<id>', k, x, y, f, kind, ab }  (AOI-scoped FX)
 //
+// CONTINUITY + SOCIAL PRESENCE (docs/AGENT_CONTINUITY.md):
+//   * An OWNED agent's progress (level / kills / gathered) is persisted through
+//     room.agentStore's `progress` section, keyed by the owner's STABLE device
+//     token, and restored on the next spawn — the same companion comes back.
+//     Ambient agents (no owner) and hirelings never persist (rec.b.persistKey null).
+//   * A real player within GREET_RADIUS earns a one-off `act` acknowledgement at
+//     most once per GREET_CD_MS per (agent,player): social presence, not spam.
+//
 // LOADED FROM WayfarerRoom.onCreate via createRequire (additive, try/caught) so
 // the room keeps its "optional module" convention. No import of ESM modules
 // here: this file must stay CommonJS (require(esm) would break engines.node>=18).
@@ -27,7 +35,14 @@
 // at the bottom of this file.
 // ─────────────────────────────────────────────────────────────────────────────
 
+const AP = require('./agentPersist.cjs');
+
 const AGENT_SID_PREFIX = 'agent:';
+const HIRELING_TIERS = Object.freeze({
+  scout: Object.freeze({ label: 'Scout', cost: 300, wayfarerCost: 10, durationMs: 30 * 60_000, intelligence: 1 }),
+  tactician: Object.freeze({ label: 'Tactician', cost: 900, wayfarerCost: 30, durationMs: 60 * 60_000, intelligence: 2 }),
+  veteran: Object.freeze({ label: 'Veteran', cost: 2400, wayfarerCost: 75, durationMs: 120 * 60_000, intelligence: 3 }),
+});
 
 // ── tunables (kept here on purpose: config.js is owned by another track) ──────
 const DEFAULT_AGENTS = 0;        // ambient population is OPT-IN via env AGENTS
@@ -52,6 +67,18 @@ const MAX_DT = 0.5;              // s: clamp a stalled tick so agents never tele
 const PRESENCE_SETTLE_MS = 400;  // wait this long after the first real client joins
                                  // before announcing agents, so the client's handlers
                                  // are registered and its peer-join is not missed
+
+// ── social presence (greeting) ───────────────────────────────────────────────
+// A real player who comes within GREET_RADIUS of an agent gets a one-off
+// acknowledgement (an `act`), at most once per GREET_CD_MS per (agent,player)
+// pair. See docs/AGENT_CONTINUITY.md for why the acknowledgement reuses the
+// existing `act` animation path (the client's remote-act handler).
+const GREET_RADIUS = 120;        // px: "a modest radius"
+const GREET_CD_MS = 15_000;      // per (agent,player) cooldown — never spam
+
+// ── persistence (progress continuity) ────────────────────────────────────────
+const SAVE_MIN_MS = 400;         // min gap between durable progress writes per agent
+                                 // (a trailing flush still lands the latest values)
 
 const HOME = { area: 'ow', x: 0, y: 0 }; // fresh clients join at 0,0 -> agents cluster within AOI
 const FACINGS = ['down', 'left', 'right', 'up'];
@@ -121,13 +148,17 @@ class AgentsSystem {
     const y = clampN(opts.y, -20000, 40000, HOME.y);
     const look = HERO_LOOKS[(this._seq) % HERO_LOOKS.length];
     const name = this._uniqueName(String(opts.name || NAMES[this._seq % NAMES.length]).replace(/[^\w \-']/g, '').trim().slice(0, 14) || 'Wayfarer');
-    const level = clampN(opts.level, 1, 99, 3) | 0;
+    const base0 = clampN(opts.level, 1, 99, 3) | 0;
     const job = String((opts.hero && opts.hero.job) || look.job || 'wayfarer').slice(0, 16);
     const hero = { ...HERO_BASE, ...look, ...(opts.hero || {}), name };
     const now = Date.now();
+    const hireling = opts.hireling === true;
+    const hireTier = hireling && HIRELING_TIERS[opts.hireTier] ? opts.hireTier : null;
+    const intelligence = hireTier ? HIRELING_TIERS[hireTier].intelligence : 1;
     const rec = {
-      sid, name, token: null, hero, x, y, f: 'down', h: 100, a, m: 0,
+      sid, name, level: base0, token: null, hero, x, y, f: 'down', h: 100, a, m: 0,
       agent: true, ownerSid: opts.ownerSid != null ? opts.ownerSid : null,
+      hireling: !!hireTier,
       joinedAt: now, dc: false, lastMv: now, t: now,
       // NOTE: no `order`, no `buckets`, no `lastSave`, no `warp` — see audit note.
       b: {
@@ -135,18 +166,49 @@ class AgentsSystem {
         mode: 'wander', tx: null, ty: null, gatherUntil: 0,
         nextAtk: 0, nextCast: now + 1500 + Math.floor(Math.random() * 2000),
         spell: SPELLS[this._seq % SPELLS.length],
+        intelligence, hireTier,
+        hiredUntil: hireTier ? now + HIRELING_TIERS[hireTier].durationMs : 0,
         home: { x, y, area: a },
-        stats: { gathered: 0, attacks: 0, spells: 0 },
+        stats: { gathered: 0, attacks: 0, spells: 0, kills: 0 },
         nodes: [],
+        base: base0,                     // level at first spawn; persisted so the curve is restart-stable
+        persistKey: null,                // owner STABLE device token, or null (ambient / hireling)
+        greetLast: Object.create(null),  // playerSid -> last greeting ms (social presence)
+        engagedFoe: null,                // last hostile this agent fought (kill bookkeeping)
+        solFound: 0,                     // mirror of the owner's accrual (read-only)
       },
     };
     rec.b.nodes = this._genNodes(rec);
+
+    // Continuity (docs/AGENT_CONTINUITY.md): only OWNED, permanent companions
+    // persist — an ambient agent has no owner and a gold-hired companion is a
+    // temporary contract. Keyed by the owner's STABLE device token (never the
+    // ephemeral sessionId), so a returning wallet-holder gets the SAME companion
+    // back from DATA_DIR/agents/agents.json. token stays null on the record; the
+    // device token lives only in b.persistKey and is never written to players/.
+    let restored = null;
+    if (!hireling && rec.ownerSid != null) {
+      const key = this._ownerTokenFor(rec.ownerSid);
+      rec.b.persistKey = key;
+      if (key && this.room.agentStore && typeof this.room.agentStore.progress === 'function') {
+        try {
+          const snap = this.room.agentStore.progress(key);
+          if (snap) {
+            // keep the persisted companion name unless a live player holds it
+            if (snap.name && !this._nameTaken(snap.name)) rec.name = snap.name;
+            restored = AP.applyTo(rec, snap);
+          }
+        } catch (e) { this.log.error('agent restore failed', { sid, err: e.message }); }
+      }
+    }
+    rec.level = AP.computeLevel(rec.b.base, rec.b.stats.gathered, rec.b.stats.kills);
+    rec.b.solFound = this._solFoundFor(rec.b.persistKey, rec.b.solFound);
 
     // 1) let the existing replication tick render it (this is the whole point)
     this.room.players.set(sid, rec);
     // 2) register presence exactly like a real join, so presenceOf()/`/who` work
     if (this.room.social && this.room.social.players) {
-      this.room.social.players.set(sid, { name, level, job, zone: this._zoneFor(a), guild: '', party: '' });
+      this.room.social.players.set(sid, { name: rec.name, level: rec.level, job: String(rec.hero.job || job), zone: this._zoneFor(a), guild: '', party: '' });
     }
     // 3) announce the new peer to every real client (agents have no client of
     //    their own, so they cannot receive peer-join — not needed anyway)
@@ -154,8 +216,12 @@ class AgentsSystem {
     // `agent`/`ownerSid` are the documented client contract (src/net/agentsNet.js
     // reads peer-join.agent === 1 to badge an agent vs a real player); snap.p[]
     // carries `ag` for peers already known to a client. Keep both in sync.
-    try { this.room.bcast('peer-join', { sessionId: sid, name, hero, a, agent: 1, ownerSid: rec.ownerSid }); } catch (e) { this.log.error('agent peer-join failed', e.message); }
-    this.log.info('agent spawn', { sid, name, a, x, y, job, level });
+    try { this.room.bcast('peer-join', { sessionId: sid, name: rec.name, hero: rec.hero, a, agent: 1, ownerSid: rec.ownerSid, hireling: rec.hireling ? 1 : 0, intelligence }); } catch (e) { this.log.error('agent peer-join failed', e.message); }
+    if (restored) {
+      this.log.info('agent restored', { sid, name: rec.name, a, level: rec.level, kills: rec.b.stats.kills, gathered: rec.b.stats.gathered, solFound: rec.b.solFound });
+    } else {
+      this.log.info('agent spawn', { sid, name: rec.name, a, x, y, job, level: rec.level });
+    }
     return rec;
   }
 
@@ -163,6 +229,13 @@ class AgentsSystem {
   despawn(sid) {
     const a = this.agents.get(sid);
     if (!a) return false;
+    // Flush the companion's progress to disk BEFORE it leaves the registries, so
+    // a graceful despawn (owner left, room disposed) never loses the last gather.
+    this._saveProgress(a, true);
+    this.clearArenaOpponent(sid);
+    for (const other of this.agents.values()) {
+      if (other?.b?.arenaMatch?.opponentSid === sid) this.clearArenaOpponent(other.sid);
+    }
     this.agents.delete(sid);
     this.room.players.delete(sid);
     if (this.room.social && this.room.social.players) this.room.social.players.delete(sid);
@@ -175,6 +248,66 @@ class AgentsSystem {
 
   list() { return [...this.agents.values()]; }
   get(sid) { return this.agents.get(sid) || null; }
+
+  getHirelingTier(tier) { return HIRELING_TIERS[String(tier || '')] || null; }
+
+  hirelingOptions() {
+    return Object.entries(HIRELING_TIERS).map(([id, spec]) => ({
+      id, label: spec.label, cost: spec.cost, goldCost: spec.cost, wayfarerCost: spec.wayfarerCost,
+      durationMs: spec.durationMs, intelligence: spec.intelligence,
+    }));
+  }
+
+  getOwnedHireling(ownerSid) {
+    return [...this.agents.values()].find((a) => a?.ownerSid === ownerSid && a.hireling) || null;
+  }
+
+  hireForOwner(ownerSid, tier, position = {}) {
+    const spec = this.getHirelingTier(tier);
+    const owner = this.room.players.get(ownerSid);
+    if (this.destroyed || !spec || !owner || owner.agent || this.agents.size >= 200) return null;
+    if ([...this.agents.values()].some((a) => a.ownerSid === ownerSid)) return null;
+    const rec = this.spawn({
+      ownerSid, hireling: true, hireTier: tier,
+      a: position.a || owner.a, x: position.x ?? owner.x, y: position.y ?? owner.y,
+      level: Math.max(1, Math.min(99, owner.hero?.level || 3)),
+    });
+    return rec?.hireling ? rec : null;
+  }
+
+  companionState(ownerSid) {
+    const a = [...this.agents.values()].find((v) => v?.ownerSid === ownerSid) || null;
+    if (!a) return null;
+    return {
+      sid: a.sid, name: a.name, kind: a.hireling ? 'hireling' : 'agent', tier: a.b?.hireTier || null,
+      intelligence: a.b?.intelligence || 1,
+      remainingMs: a.hireling ? Math.max(0, (a.b?.hiredUntil || 0) - Date.now()) : null,
+      action: a.b?.mode || 'wander',
+    };
+  }
+
+  /** Assign an agent to pursue an arena opponent. Returns false for stale or invalid ids. */
+  assignArenaOpponent(agentSid, opponentSid, matchId) {
+    const agent = this.agents.get(String(agentSid || ''));
+    const opponent = this.room.players.get(String(opponentSid || ''));
+    const match = String(matchId || '').trim();
+    if (this.destroyed || !agent || !opponent || agent.sid === opponent.sid || !match || match.length > 96) return false;
+    if (!agent.b) agent.b = {};
+    agent.b.arenaMatch = { opponentSid: opponent.sid, matchId: match, nextAtk: 0 };
+    agent.b.mode = 'arena';
+    agent.b.gatherUntil = 0;
+    return true;
+  }
+
+  /** Clear an assignment; an optional matchId prevents an old match clearing a newer one. */
+  clearArenaOpponent(agentSid, matchId) {
+    const agent = this.agents.get(String(agentSid || ''));
+    const assignment = agent?.b?.arenaMatch;
+    if (!assignment || (matchId != null && assignment.matchId !== String(matchId))) return false;
+    delete agent.b.arenaMatch;
+    if (agent.b.mode === 'arena') agent.b.mode = 'wander';
+    return true;
+  }
 
   /** Remove every agent owned by this session. Called when its owner leaves, so a
    *  departed player's agent cannot linger and keep earning to a stale session. */
@@ -200,7 +333,15 @@ class AgentsSystem {
     this._last = now;
     if (dt <= 0) return;
     for (const a of this.agents.values()) {
+      if (a.hireling && a.b?.hiredUntil && now >= a.b.hiredUntil) {
+        const ownerSid = a.ownerSid;
+        this.despawn(a.sid);
+        try { this.room.clientOf?.(ownerSid)?.send('agent-hire-state', { agent: null, reason: 'contract_expired' }); } catch { /* closing */ }
+        continue;
+      }
       try { this._behave(a, now, dt); } catch (e) { this.log.error('agent tick failed', { sid: a.sid, err: e.message }); }
+      // Trailing flush for a debounced progress write (never throws out of tick).
+      if (a.b && a.b.progressDirty && a.b.persistKey) { try { this._saveProgress(a); } catch { /* ignore */ } }
     }
   }
 
@@ -242,11 +383,66 @@ class AgentsSystem {
   // A spell is cast on an independent cooldown regardless of mode.
   _behave(a, now, dt) {
     const b = a.b;
-    const foe = this._nearestEnemy(a);
-    if (foe && Math.hypot(foe.x - a.x, foe.y - a.y) <= HOSTILE_ENGAGE) {
+    // Social presence: greet a real player who comes near (cooldown-gated, so it
+    // fires at most once per player per GREET_CD_MS and never spams).
+    this._maybeGreet(a, now);
+    const arena = b.arenaMatch;
+    if (arena) {
+      const opponent = this.room.players.get(arena.opponentSid);
+      if (!opponent || opponent.dc || opponent.h <= 0) {
+        this.clearArenaOpponent(a.sid, arena.matchId);
+      } else if (opponent.a === a.a) {
+        b.mode = 'arena';
+        b.gatherUntil = 0;
+        const dx = opponent.x - a.x, dy = opponent.y - a.y;
+        const d = Math.hypot(dx, dy);
+        if (d > ATK_RANGE) {
+          const tx = opponent.x - (dx / d) * (ATK_RANGE - 2);
+          const ty = opponent.y - (dy / d) * (ATK_RANGE - 2);
+          this._advance(a, tx, ty, dt);
+        } else {
+          a.m = 0;
+          if (now >= arena.nextAtk) {
+            arena.nextAtk = now + ATK_CD_MS;
+            b.stats.arenaAttacks = (b.stats.arenaAttacks || 0) + 1;
+            try { this.room._agentArenaAttack?.(a.sid, opponent.sid, arena.matchId); }
+            catch (e) { this.log.error('agent arena attack failed', { sid: a.sid, matchId: arena.matchId, err: e.message }); }
+          }
+        }
+      } else {
+        // Do not chase across areas; orchestration must move the combatants or clear the match.
+        b.mode = 'arena';
+        a.m = 0;
+      }
+      return; // enrolled agents do not gather, wander, hunt NPCs, or cast spells
+    }
+    const owner = a.hireling ? this.room.players.get(a.ownerSid) : null;
+    const intel = Math.max(1, Math.min(3, b.intelligence | 0));
+    if (owner && owner.a !== a.a) {
+      // Companions travel with their owner between world areas.
+      a.a = areaKey(owner.a); a.x = owner.x; a.y = owner.y;
+      b.home = { x: owner.x, y: owner.y, area: a.a };
+      b.tx = null; b.ty = null; b.gatherUntil = 0; a.m = 0;
+    }
+    const ownerDistance = owner && owner.a === a.a ? Math.hypot(owner.x - a.x, owner.y - a.y) : Infinity;
+    const leash = intel === 2 ? 360 : 220;
+    if (owner && ownerDistance > leash) {
+      b.mode = 'follow'; b.gatherUntil = 0;
+      this._advance(a, owner.x, owner.y, dt);
+      return;
+    }
+    // A hostile that died while this agent was engaged counts as a kill for the
+    // companion's progress. Local bookkeeping only: it reads area.enemies and
+    // increments a counter — it claims no bounty, quest or world-boss credit.
+    this._checkKills(a);
+    const foe = this._nearestEnemy(a, intel >= 3 ? owner : null);
+    const engage = HOSTILE_ENGAGE + (intel - 1) * 45;
+    if (foe && Math.hypot(foe.x - a.x, foe.y - a.y) <= engage) {
       b.mode = 'fight';
+      b.engagedFoe = foe;
       const arrived = this._advance(a, foe.x, foe.y, dt);
-      if (arrived && now >= b.nextAtk) { b.nextAtk = now + ATK_CD_MS; b.stats.attacks++; this._act(a, 'atk'); }
+      const cd = Math.max(ATK_CD_MS * 0.72, ATK_CD_MS - (intel - 1) * 90);
+      if (arrived && now >= b.nextAtk) { b.nextAtk = now + cd; b.stats.attacks++; this._act(a, 'atk'); }
     } else {
       const node = this._nearestNode(a, now);
       if (node && Math.hypot(node.x - a.x, node.y - a.y) <= RESOURCE_RADIUS) {
@@ -257,6 +453,7 @@ class AgentsSystem {
           a.m = 0;
           if (!b.gatherUntil) b.gatherUntil = now + GATHER_MS;
           if (now >= b.gatherUntil) { b.gatherUntil = 0; node.cd = now + NODE_CD_MS; b.stats.gathered++; this._act(a, 'gather', node.kind);
+            this._onProgress(a);
             try { this.onGather?.(a, node.kind); } catch (e) { this.log.error('agent onGather failed', e.message); } }
         }
       } else {
@@ -266,7 +463,7 @@ class AgentsSystem {
       }
     }
     if (now >= b.nextCast) {
-      b.nextCast = now + Math.round(CAST_CD_MS * (0.7 + b.rng() * 0.6));
+      b.nextCast = now + Math.round(CAST_CD_MS * (0.7 + b.rng() * 0.6) / (1 + (intel - 1) * 0.2));
       b.stats.spells++;
       this._act(a, 'cast', b.spell);
     }
@@ -294,13 +491,18 @@ class AgentsSystem {
     b.ty = Math.round(b.home.y + Math.sin(ang) * rad);
   }
 
-  _nearestEnemy(a) {
+  _nearestEnemy(a, protectOwner = null) {
     const ar = this.room.areas && this.room.areas.get(a.a);
     if (!ar || !ar.enemies || !ar.enemies.size) return null;
     let best = null, bd = Infinity;
     for (const e of ar.enemies.values()) {
       const d = Math.hypot(e.x - a.x, e.y - a.y);
-      if (d < bd) { bd = d; best = e; }
+      // The Veteran prioritizes enemies closest to its owner, protecting their
+      // local area instead of blindly chasing the nearest target to itself.
+      const ownerThreat = protectOwner && protectOwner.a === a.a
+        ? Math.hypot(e.x - protectOwner.x, e.y - protectOwner.y) : 0;
+      const score = d + ownerThreat * 0.55;
+      if (score < bd) { bd = score; best = e; }
     }
     return best;
   }
@@ -331,10 +533,96 @@ class AgentsSystem {
   }
 
   // AOI-scoped action FX for nearby real clients (matches the room's own 'act' shape).
-  _act(a, kind, ab) {
+  // `extra` lets a greeting tag its act (greet:1) without inventing a new message.
+  _act(a, kind, ab, extra) {
     const msg = { sessionId: a.sid, k: kind, x: Math.round(a.x), y: Math.round(a.y), f: a.f, kind };
     if (ab) msg.ab = String(ab).slice(0, 16);
+    if (extra && extra.greet) msg.greet = 1;
     try { this.room.sendNear(a, 'act', msg); } catch { /* no clients / closing */ }
+  }
+
+  // ── social presence ─────────────────────────────────────────────────────────
+  // When a REAL player comes within GREET_RADIUS of an agent, the agent plays a
+  // one-off acknowledgement through the EXISTING `act` message (the client's
+  // remote-act animation path), at most once per (agent,player) per GREET_CD_MS.
+  // Only ever sends toward clients that exist: the loop iterates room.clients and
+  // _act -> sendNear only touches real clients — an agent has no client of its own.
+  _maybeGreet(a, now) {
+    if (a.b?.arenaMatch) return;                 // do not mix gestures into a duel
+    if (!this.room.clients || this.room.clients.length === 0) return;
+    const greet = a.b.greetLast || (a.b.greetLast = Object.create(null));
+    for (const c of this.room.clients) {
+      const q = this.room.players.get(c.sessionId);
+      if (!q || q.agent || q.dc) continue;       // real, connected players only
+      if (q.a !== a.a) continue;
+      if (Math.hypot(q.x - a.x, q.y - a.y) > GREET_RADIUS) continue;
+      if (now - (greet[c.sessionId] || 0) < GREET_CD_MS) continue;  // cooled down
+      greet[c.sessionId] = now;
+      // k:'atk' is the one gesture the client's remote-act handler actually
+      // animates (an arm/weapon raise); greet:1 tags it as a greeting, not combat.
+      this._act(a, 'atk', null, { greet: 1 });
+    }
+    // keep the cooldown map bounded: forget players who are gone
+    for (const sid of Object.keys(greet)) if (!this.room.clients.some((c) => c.sessionId === sid)) delete greet[sid];
+  }
+
+  // ── progress (durable continuity) ───────────────────────────────────────────
+  // Increment a kill when the hostile this agent last engaged is no longer in the
+  // area's enemy set (it died / despawned while the agent was fighting it). This
+  // is a local counter for the companion's progress — it credits no quest, arena,
+  // bounty or world-boss system.
+  _checkKills(a) {
+    const engaged = a.b && a.b.engagedFoe;
+    if (!engaged) return;
+    const ar = this.room.areas && this.room.areas.get(a.a);
+    if (ar && ar.enemies) { for (const e of ar.enemies.values()) if (e === engaged) return; }
+    a.b.engagedFoe = null;
+    a.b.stats.kills = (a.b.stats.kills || 0) + 1;
+    this._onProgress(a);
+  }
+
+  /** Recompute the companion's level from its progress and persist (debounced). */
+  _onProgress(a) {
+    if (!a || !a.b || !a.b.persistKey) return;
+    a.level = AP.computeLevel(a.b.base, a.b.stats.gathered, a.b.stats.kills);
+    const pres = this.room.social && this.room.social.players && this.room.social.players.get(a.sid);
+    if (pres) pres.level = a.level;
+    this._saveProgress(a);
+  }
+
+  /** The owner's STABLE device token for a session, or null. Never the sessionId. */
+  _ownerTokenFor(ownerSid) {
+    if (ownerSid == null) return null;
+    const owner = this.room.players && this.room.players.get(ownerSid);
+    const token = owner && owner.token;
+    return typeof token === 'string' && token ? token : null;
+  }
+
+  /** The owner's accrued SOL-find total (authoritative ledger), else `fallback`. */
+  _solFoundFor(key, fallback = 0) {
+    try {
+      const e = key && this.room.agentStore && typeof this.room.agentStore.get === 'function' ? this.room.agentStore.get(key) : null;
+      const n = e && e.solFoundLamports;
+      if (Number.isFinite(n)) return n;
+    } catch { /* ledger unavailable */ }
+    return Number.isFinite(fallback) ? fallback : 0;
+  }
+
+  // Write one agent's continuity record through the shared agent store. Debounced
+  // per agent (SAVE_MIN_MS) with a trailing flush; force=true writes immediately
+  // (despawn / teardown). Ambient agents and hirelings have no persistKey -> no-op.
+  _saveProgress(a, force) {
+    try {
+      const store = this.room && this.room.agentStore;
+      const key = a && a.b && a.b.persistKey;
+      if (!key || !store || typeof store.saveProgress !== 'function') return;
+      const now = Date.now();
+      if (!force && a._saveAt && now - a._saveAt < SAVE_MIN_MS) { a.b.progressDirty = true; return; }
+      a._saveAt = now;
+      a.b.progressDirty = false;
+      a.b.solFound = this._solFoundFor(key, a.b.solFound);
+      store.saveProgress(key, AP.snapshot(a, a.b.solFound));
+    } catch (e) { try { this.log.error('agent progress save failed', { sid: a && a.sid, err: e.message }); } catch { /* ignore */ } }
   }
 
   _uniqueName(base) {
@@ -346,10 +634,19 @@ class AgentsSystem {
     return n;
   }
 
+  /** Is this display name already held by a live player (or another agent)? */
+  _nameTaken(base) {
+    const lc = String(base || '').toLowerCase();
+    if (!lc) return true;
+    for (const p of this.room.players.values()) if (String(p.name || '').toLowerCase() === lc) return true;
+    if (this.room.social && this.room.social.players) for (const p of this.room.social.players.values()) if (String(p.name || '').toLowerCase() === lc) return true;
+    return false;
+  }
+
   _zoneFor(a) { return a === 'ow' ? 'Embervale' : String(a).slice(0, 24); }
 }
 
-module.exports = { AgentsSystem, AGENT_SID_PREFIX, DEFAULT_AGENTS };
+module.exports = { AgentsSystem, AGENT_SID_PREFIX, DEFAULT_AGENTS, HIRELING_TIERS };
 
 // ── null-safety audit note (what this module deliberately does NOT touch) ─────
 //  * record keeps token:null and never sets lastSave -> room.persist() early-
@@ -362,3 +659,10 @@ module.exports = { AgentsSystem, AGENT_SID_PREFIX, DEFAULT_AGENTS };
 //  * the only room calls made here are bcast/peer-join, bcast/peer-leave,
 //    sendNear('act'), players/social.players mutations, and reads of areas —
 //    all of which iterate room.clients (never assume a client for an agent sid).
+//  * continuity (docs/AGENT_CONTINUITY.md) writes ONLY to room.agentStore's
+//    `progress` section (DATA_DIR/agents/agents.json) keyed by the owner's STABLE
+//    device token. The token is held in b.persistKey, never in rec.token (which
+//    stays null) — so persist()/periodicSave() still early-return on the agent and
+//    no agent row is ever written to DATA_DIR/players. lastSave is never set.
+//  * the greeting sends an `act` only via sendNear (AOI-scoped, iterates real
+//    clients); an agent has no client, so a greeting can never be addressed to one.

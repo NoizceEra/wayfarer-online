@@ -63,6 +63,12 @@ let leaderboard = null;
 try { leaderboard = await import('./leaderboard.js'); } catch (e) {
   if (e?.code !== 'ERR_MODULE_NOT_FOUND') log.error('leaderboard.js failed to load', { err: e.message });
 }
+// Public read-only agent board (GET /agents). CommonJS, loaded the same way as
+// guilds.cjs; it reads the live world rooms' AgentsSystem and exposes no owner data.
+let agentBoard = null;
+try { agentBoard = (await import('./agentBoard.cjs')).default; } catch (e) {
+  if (e?.code !== 'ERR_MODULE_NOT_FOUND') log.error('agentBoard.cjs failed to load', { err: e.message });
+}
 
 await initSqlite();
 initStore();
@@ -170,6 +176,7 @@ try { referrals?.routes?.(app); } catch (e) { log.error('referrals.routes failed
 try { dungeonMatch?.routes?.(app); } catch (e) { log.error('dungeonMatch.routes failed', { err: e.message }); }
 try { season?.routes?.(app); } catch (e) { log.error('season.routes failed', { err: e.message }); }
 try { leaderboard?.routes?.(app); } catch (e) { log.error('leaderboard.routes failed', { err: e.message }); }
+try { agentBoard?.routes?.(app, { rooms: LIVE_ROOMS, worldName: CFG.WORLD_NAME }); } catch (e) { log.error('agentBoard.routes failed', { err: e.message }); }
 
 const httpServer = http.createServer(app);
 const gameServer = new Server({

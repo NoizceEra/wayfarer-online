@@ -3,6 +3,7 @@ import { bus, Events } from '../../core/events.js';
 import { net } from '../../net/NetworkManager.js';
 import { social } from './index.js';
 import { ensureEmoteTextures, playEmoteAnim } from './emotes.js';
+import { agentsNet, AGENT_PLATE_COLOR, AGENT_PLATE_BG, agentPlateText } from '../../net/agentsNet.js';
 
 // World-space social layer for WorldScene: speech bubbles for Say, emote
 // bubbles + rig animations (local and remote), nameplate decoration
@@ -83,13 +84,24 @@ export function installSocialWorld(scene) {
   let plateDirty = true, plateT = 0;
   const markDirty = () => { plateDirty = true; };
   off.push(bus.on(Events.SOCIAL_ROSTER, markDirty), bus.on(Events.SOCIAL_PARTY, markDirty), bus.on(Events.NET_PLAYER_JOINED, markDirty));
+  // Hoisted so refreshPlates (every 1.5s over every remote) allocates nothing
+  // for the background lookup. Agent plates use the agentsNet palette instead,
+  // which cannot be confused with any relation colour.
+  const REL_BG = { party: '#0b2a10cc', friend: '#2a1020cc', guild: '#2a2210cc', other: '#00000088' };
   const refreshPlates = () => {
     scene.sync?.remotes?.forEach((r, id) => {
       if (!r.label?.active) return;
+      // Autonomous agents are identified by the wire contract's agent session
+      // ids (agentsNet latches peer-join.agent===1 / snap.p[].ag===1). isAgent
+      // is a Set lookup — cheap enough for this 1.5s sweep.
+      const isAg = agentsNet.isAgent(id);
+      if (typeof r.setAgent === 'function') r.setAgent(isAg); // keep RemotePlayer's own refresh path in sync (cheap: no-ops when unchanged)
       const p = social.plateFor(id, r.rname, { lag: r.dc });
-      if (r.label.text !== p.text) r.label.setText(p.text);
-      if (r.label.style.color !== p.color) r.label.setColor(p.color);
-      const bg = { party: '#0b2a10cc', friend: '#2a1020cc', guild: '#2a2210cc', other: '#00000088' }[p.rel];
+      const text = isAg ? agentPlateText(p.text) : p.text;
+      if (r.label.text !== text) r.label.setText(text);
+      const color = isAg ? AGENT_PLATE_COLOR : p.color;
+      if (r.label.style.color !== color) r.label.setColor(color);
+      const bg = isAg ? AGENT_PLATE_BG : REL_BG[p.rel];
       if (r.label.style.backgroundColor !== bg) r.label.setBackgroundColor(bg);
     });
   };

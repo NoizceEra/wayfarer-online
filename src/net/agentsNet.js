@@ -18,21 +18,26 @@ import { net } from './NetworkManager.js';
 // module only records WHICH remote sessionIds are agents so the world/HUD can
 // mark them (`isAgent(id)` / `agentIds()` / `onAgents()`); it never draws.
 
-export const AGENT_TYPES = ['agent-entitlement', 'agent-state', 'agent-claim-result', 'agent-claim'];
+export const AGENT_TYPES = ['agent-entitlement', 'agent-state', 'agent-claim-result', 'agent-claim', 'agent-hire-state', 'agent-hire-result'];
 
-const INCOMING = ['agent-entitlement', 'agent-state', 'agent-claim-result'];
-const OUTGOING = new Set(['agent-claim']);
+const INCOMING = ['agent-entitlement', 'agent-state', 'agent-claim-result', 'agent-hire-state', 'agent-hire-result'];
+const OUTGOING = new Set(['agent-claim', 'agent-hire-state']);
 
 const handlers = {
   'agent-entitlement': new Set(),
   'agent-state': new Set(),
   'agent-claim-result': new Set(),
+  'agent-hire-state': new Set(),
+  'agent-hire-result': new Set(),
 };
 
 // ─── snapshot state (readable via `state`) ───────────────────────────────
 let entitlement = null;   // latest agent-entitlement
 let agent = null;         // latest agent-state
 let lastClaim = null;     // latest agent-claim-result
+let hireling = null;
+let hirelingOptions = [];
+let lastHire = null;
 const agents = new Map(); // sid -> { sid, name, ownerSid } — identity of agent peers
 const agentListeners = new Set();
 
@@ -53,6 +58,8 @@ function ensureWired() {
         if (msg?.sessionId !== undefined) return;
         if (type === 'agent-entitlement') entitlement = msg;
         else if (type === 'agent-state') agent = msg;
+        else if (type === 'agent-hire-state') { hireling = msg.agent || null; hirelingOptions = Array.isArray(msg.tiers) ? msg.tiers : hirelingOptions; }
+        else if (type === 'agent-hire-result') { lastHire = msg; if (msg.ok) { hireling = msg.agent || hireling; hirelingOptions = Array.isArray(msg.tiers) ? msg.tiers : hirelingOptions; } }
         else lastClaim = msg;
         for (const fn of handlers[type]) safe(fn, msg);
       });
@@ -68,7 +75,7 @@ function ensureIdWired() {
   idWired = true;
   net.on('peer-join', (m) => {
     if (!m || m.agent !== 1 || !m.sessionId) return;
-    agents.set(m.sessionId, { sid: m.sessionId, name: m.name || null, ownerSid: m.ownerSid || null });
+    agents.set(m.sessionId, { sid: m.sessionId, name: m.name || null, ownerSid: m.ownerSid || null, hireling: m.hireling === 1, intelligence: m.intelligence || 1 });
     notifyAgents();
   });
   net.on('peer-leave', (m) => { if (m && agents.delete(m.sessionId)) notifyAgents(); });
@@ -97,20 +104,37 @@ function send(type, payload = {}) {
 
 function on(type, fn) { ensureWired(); handlers[type].add(fn); return () => handlers[type].delete(fn); }
 
+// ─── world nameplate badging ────────────────────────────────────────────────
+// ONE source of truth for how an agent peer is marked in the world. Shared by
+// the plate renderers (src/systems/social/world.js and src/entities/
+// RemotePlayer.js) so the marker + colours can never drift between them.
+// The palette is deliberately OUTSIDE party(#7dff9a green)/friend(#ff9ad5
+// pink)/guild(#ffd84a gold)/other(#ffffff) so an agent plate is unmistakable:
+// bright cyan text on a deep navy-cyan background. isAgent() above stays a
+// plain Set lookup with no allocation; agentPlateText builds at most one string
+// per plate (the plates already join a string every refresh).
+export const AGENT_PLATE_BADGE = '◆ AUTO';
+export const AGENT_PLATE_COLOR = '#00e5ff';
+export const AGENT_PLATE_BG = '#06283dee';
+export function agentPlateText(text) { return text ? `${AGENT_PLATE_BADGE} · ${text}` : AGENT_PLATE_BADGE; }
+
 export const agentsNet = {
   isOnline() { return !!net.connected; },
 
   // Ask the server to pay out the agent's accumulated SOL. No-op offline; the
   // server decides — a disabled claim path answers via agent-claim-result.
   claim() { return send('agent-claim'); },
+  requestHirelingState() { return send('agent-hire-state'); },
 
   onEntitlement(fn) { return on('agent-entitlement', fn); },
   onState(fn) { return on('agent-state', fn); },
   onClaimResult(fn) { return on('agent-claim-result', fn); },
+  onHireState(fn) { return on('agent-hire-state', fn); },
+  onHireResult(fn) { return on('agent-hire-result', fn); },
 
   // Read-only snapshot of everything received so far.
   get state() {
-    return { entitlement, agent, lastClaim, agents: [...agents.values()], connected: !!net.connected };
+    return { entitlement, agent, lastClaim, hireling, hirelingOptions, lastHire, agents: [...agents.values()], connected: !!net.connected };
   },
 
   // ─── agent identity (for marking agents in the world / on the HUD) ──────

@@ -3,6 +3,12 @@ import { ModularPlayer } from './ModularPlayer.js';
 import { defaultHero } from '../data/customization.js';
 import { SnapBuffer } from '../net/interp.js';
 import { social } from '../systems/social/index.js';
+import { agentsNet, AGENT_PLATE_COLOR, AGENT_PLATE_BG, agentPlateText } from '../net/agentsNet.js';
+
+// Relation backgrounds for REAL players (unchanged). An agent plate overrides
+// both colour and background with the agentsNet palette so it cannot be
+// confused with party/friend/guild/other. Hoisted (not rebuilt per refresh).
+const REL_BG = { party: '#0b2a10cc', friend: '#2a1020cc', guild: '#2a2210cc', other: '#00000088' };
 
 // Puppet for other players in the room.
 // The avatar is a physics-free ModularPlayer, so a remote hero wears exactly
@@ -21,11 +27,15 @@ export class RemotePlayer extends Phaser.GameObjects.Container {
     scene.add.existing(this);
     this.rname = name;
     this.facing = 'down';
+    this.ag = false; // autonomous-agent peer (set by world.js from agentsNet.isAgent)
     this.avatar = new ModularPlayer(scene, 0, 0, { ...defaultHero(), ...(hero || {}) }, { remote: true });
     this.avatar.noDust = true;
     this.avatar.shadow.setScale(1.4, 1);
     this.label = scene.add.text(0, -28, name, { fontFamily: '"Silkscreen", monospace', fontSize: '8px', color: '#fff', backgroundColor: '#00000088' }).setOrigin(0.5);
-    this.add([this.label]);
+    // Agent-only sprite marker: a small cyan gem above the head, invisible for
+    // real players so a player's puppet is byte-for-byte what it was before.
+    this.agentMark = scene.add.rectangle(0, -20, 5, 5, 0x00e5ff).setStrokeStyle(1, 0x06283d).setAngle(45).setVisible(false);
+    this.add([this.label, this.agentMark]);
     this.setDepth(9);
     this.buf = new SnapBuffer();
     this.moving = false; this.movingFlag = 0;
@@ -50,12 +60,28 @@ export class RemotePlayer extends Phaser.GameObjects.Container {
     this.area = a; this.buf.clear(); this.placed = false;
   }
   setDisconnected(dc) { this.dc = !!dc; this.refreshPlate(); }
+  // Called by the world social layer with agentsNet.isAgent(id) for this remote.
+  // No-op when unchanged (the 1.5s refreshPlates sweep calls it for every
+  // remote), so it costs one boolean compare in the steady state.
+  setAgent(v) {
+    v = !!v;
+    if (v === this.ag) return;
+    this.ag = v;
+    this.agentMark?.setVisible(v);
+    this.refreshPlate();
+  }
   refreshPlate() {
-    if (!social?.plateFor) { this.label.setText(this.dc ? `${this.rname} (lag)` : this.rname); return; }
-    const p = social.plateFor(this.rname, this.rname, { lag: this.dc });
-    this.label.setText(p.text);
-    this.label.setColor(p.color);
-    const bg = { party: '#0b2a10cc', friend: '#2a1020cc', guild: '#2a2210cc', other: '#00000088' }[p.rel];
+    let text, color = '#ffffff', bg = REL_BG.other;
+    if (!social?.plateFor) {
+      text = this.dc ? `${this.rname} (lag)` : this.rname;
+    } else {
+      const p = social.plateFor(this.rname, this.rname, { lag: this.dc });
+      text = p.text; color = p.color; bg = REL_BG[p.rel] || REL_BG.other;
+    }
+    // An agent is badged + recoloured; real players keep their exact plate.
+    if (this.ag) { text = agentPlateText(text); color = AGENT_PLATE_COLOR; bg = AGENT_PLATE_BG; }
+    this.label.setText(text);
+    this.label.setColor(color);
     this.label.setBackgroundColor(bg);
   }
 

@@ -55,6 +55,7 @@ input.install(game);
 
 installMobile();
 installPwa();
+import { installPwaInstall } from './ui/PwaInstall.js'; installPwaInstall(); // DOM PWA install pill (src/ui/PwaInstall.js): only when installable, never over the login UI
 installPerf(game);
 injectPolishCss(); // additive HUD readability/mobile floors (ui/hudPolish.js; id-guarded, safe to call once)
 // Specialization catalogue (skill trees + adv gates) for the spec runtime.

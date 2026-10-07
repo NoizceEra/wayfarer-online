@@ -24,8 +24,19 @@
  *                           lastFindAt, foundTodayLamports, dayKey,
  *                           finds:[{lamports,at}], claim, lastClaim }
  *          },
+ *          "progress": {
+ *            "<ownerDeviceToken>": { name, hero, base, level, gathered, kills,
+ *                                    attacks, spells, solFoundLamports, updatedAt }
+ *          },
  *          "global": { "totalFoundLamports": n, "totalClaimedLamports": n }
  *        }
+ *
+ * The `progress` section (added by docs/AGENT_CONTINUITY.md) is the companion
+ * continuity record: an OWNED agent's level/kills/gathered, keyed by the owner's
+ * STABLE device token so a returning wallet-holder gets the SAME agent back.
+ * `players` is the SOL-find reward ledger; the two sections share ONE file and
+ * ONE atomic write, so there is a single on-disk format for the subsystem. The
+ * continuation shape is defined and defended by the pure server/agentPersist.cjs.
  *
  * HONESTY: this file stores numbers. It holds no SOL, no key, no treasury and
  * moves nothing. `global` exists for operator visibility only.
@@ -34,6 +45,7 @@
 const fs = require('fs');
 const path = require('path');
 const R = require('./agentRewards.cjs');
+const P = require('./agentPersist.cjs');
 
 const baseDataDir = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data'));
 const DEFAULT_DIR = path.join(baseDataDir, 'agents');
@@ -55,6 +67,7 @@ function createAgentStore(opts = {}) {
 
   const db = {
     players: Object.create(null),
+    progress: Object.create(null),   // owner deviceToken -> continuity record (agentPersist.cjs)
     global: { totalFoundLamports: 0, totalClaimedLamports: 0 },
   };
   let seq = 0;
@@ -80,6 +93,10 @@ function createAgentStore(opts = {}) {
         if (parsed.players && typeof parsed.players === 'object') {
           db.players = Object.create(null);
           for (const [k, v] of Object.entries(parsed.players)) db.players[k] = R.normalize(v);
+        }
+        if (parsed.progress && typeof parsed.progress === 'object') {
+          db.progress = Object.create(null);
+          for (const [k, v] of Object.entries(parsed.progress)) { const n = P.normalizeProgress(v); if (n) db.progress[k] = n; }
         }
         if (parsed.global && typeof parsed.global === 'object') {
           db.global = {
@@ -127,8 +144,38 @@ function createAgentStore(opts = {}) {
     return {
       players: Object.keys(db.players).length,
       pending: Object.values(db.players).filter((p) => p.claim && p.claim.status === 'pending').length,
+      agents: Object.keys(db.progress).length,
       ...db.global,
     };
+  }
+
+  // ── companion continuity (docs/AGENT_CONTINUITY.md) ─────────────────────
+  // The persisted progress of an OWNED agent, keyed by the owner's STABLE
+  // device token. Separate from `players` (the SOL-find ledger) but stored in
+  // this same file with the same atomic write, so there is ONE store format.
+  /** The canonical continuity record for a token, or null (never creates). */
+  function progress(ck) {
+    if (!ck) return null;
+    ensureLoaded();
+    return db.progress[String(ck)] || null;
+  }
+
+  /** Persist an agent's continuity record atomically. Returns the normalized copy. */
+  function saveProgress(ck, snap) {
+    if (!ck) return null;
+    ensureLoaded();
+    const norm = P.normalizeProgress(snap);
+    if (!norm) return null;
+    db.progress[String(ck)] = norm;
+    save();
+    return norm;
+  }
+
+  function progressStats() {
+    ensureLoaded();
+    let gathered = 0, kills = 0;
+    for (const p of Object.values(db.progress)) { gathered += p.gathered | 0; kills += p.kills | 0; }
+    return { agents: Object.keys(db.progress).length, gathered, kills };
   }
 
   /**
@@ -163,6 +210,7 @@ function createAgentStore(opts = {}) {
   return {
     dir, file, db,
     load, save, entry, get, put, global, stats, recordFind, applyClaim,
+    progress, saveProgress, progressStats,
   };
 }
 

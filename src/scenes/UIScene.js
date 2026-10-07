@@ -33,6 +33,7 @@ import { ArenaChallengeModal } from '../ui/ArenaChallengeModal.js';
 import { arenaNet } from '../net/arenaNet.js';
 import { agentsNet } from '../net/agentsNet.js';
 import { AgentPanel } from '../ui/AgentPanel.js';
+import { AgentBoardPanel } from '../ui/AgentBoardPanel.js';
 import DungeonSystem from '../systems/dungeonSystem.js';
 import SeasonSystem from '../systems/seasonSystem.js';
 import GuildSystem from '../systems/guildSystem.js';
@@ -364,6 +365,7 @@ export class UIScene extends Phaser.Scene {
       input.addCloser({ id: 'arena', priority: 935, isOpen: () => !!this.arenaPanel?.container, close: () => this.arenaPanel?.hide() }),
       input.addCloser({ id: 'spec', priority: 936, isOpen: () => !!this.skillTreePanel?.container, close: () => this.skillTreePanel?.hide() }),
       input.addCloser({ id: 'agent', priority: 925, isOpen: () => !!this.agentPanel?.visible, close: () => this.agentPanel?.close() }),
+      input.addCloser({ id: 'agent-board', priority: 924, isOpen: () => !!this.agentBoardPanel?.visible, close: () => this.agentBoardPanel?.close() }),
       input.addCloser({ id: 'pause-sub', priority: 850, isOpen: () => this.menu.isOpen && this.menu.page !== 'main', close: () => this.menu.goto('main') }),
       input.addCloser({ id: 'shop', priority: 450, isOpen: () => !!this.shop?.isOpen, close: () => this.shop.close() }),
       input.addCloser({ id: 'equip', priority: 400, isOpen: () => !!this.equip?.isOpen, close: () => this.equip.toggle(false) }),
@@ -409,8 +411,8 @@ export class UIScene extends Phaser.Scene {
       this.resizeTimer?.remove(false);
       this.equip?.destroy(); this.shop?.destroy(); this.journal?.destroy(); this.craftPanel?.destroy(); this.fishing?.destroy(); this.toast?.destroy(); this.walletPanel?.destroy();
       this.dailyPanel?.destroy(); this.dailyRewards?.destroy();
-      this.partyFinderBtn?.destroy(); this.lfgBtn?.destroy(); this.seasonBtn?.destroy(); this.guildBtn?.destroy(); this.arenaBtn?.destroy(); this.specBtn?.destroy(); this.worldBossBtn?.destroy(); this.agentBtn?.destroy();
-      this.lfgPanel?.destroy(); this.seasonPanel?.destroy(); this.guildPanel?.destroy(); this.arenaPanel?.destroy(); this.skillTreePanel?.destroy(); this.arenaChallenge?.destroy(); this.worldBossAlert?.destroy(); this.agentPanel?.destroy();
+      this.partyFinderBtn?.destroy(); this.lfgBtn?.destroy(); this.seasonBtn?.destroy(); this.guildBtn?.destroy(); this.arenaBtn?.destroy(); this.specBtn?.destroy(); this.worldBossBtn?.destroy(); this.agentBtn?.destroy(); this.agentBoardBtn?.destroy();
+      this.lfgPanel?.destroy(); this.seasonPanel?.destroy(); this.guildPanel?.destroy(); this.arenaPanel?.destroy(); this.skillTreePanel?.destroy(); this.arenaChallenge?.destroy(); this.worldBossAlert?.destroy(); this.agentPanel?.destroy(); this.agentBoardPanel?.destroy();
       this.dungeonSystem?.destroy(); this.seasonSystem?.destroy(); this.guildSystem?.destroy();
     });
     // Mail unread indicator for the touch HUD
@@ -476,8 +478,7 @@ export class UIScene extends Phaser.Scene {
     this.skillTreePanel = new SkillTreePanel(this);
     this.agentPanel = new AgentPanel(this);
     this.arenaChallenge = new ArenaChallengeModal(this);
-    // Arena wires: incoming challenge -> modal; result -> toast + system
-    // message, rating refresh, auto-leave-queue state; errors -> system msg.
+    // Arena wires: server-resolved combat result -> toast; rating packet -> refresh.
     this.offs.push(
       arenaNet.onChallenge((m) => { this.arenaChallenge?.show(m || {}); }),
       arenaNet.onDeclined((m) => {
@@ -485,13 +486,17 @@ export class UIScene extends Phaser.Scene {
         this.say(`${m?.fromName || 'Opponent'} declined the arena duel.`);
       }),
       arenaNet.onResult((m) => {
-        const line = m?.winnerName ? `${m.winnerName} wins the arena duel${m?.reason ? ` (${m.reason})` : ''}!` : 'Arena duel decided.';
-        this.toast?.push({ title: 'Arena result', text: line, color: '#14f195' });
-        this.say(line);
-        this.arenaPanel.queued = false;
-        this.arenaPanel.setStatus('Press queue to fight.');
-        this.arenaPanel.render();
+        // Rating packets can arrive immediately before combat-result; the panel
+        // correlates them by matchId and presents both together.
         arenaNet.refreshRating();
+      }),
+      arenaNet.onCombatResult((m) => {
+        const won = !!arenaNet.sessionId() && m?.winner === arenaNet.sessionId();
+        const line = m?.disputed || m?.status === 'disputed' || !m?.winner
+          ? 'Arena result disputed or unverified. No rating change was applied.'
+          : `Arena duel ${won ? 'won' : 'lost'}${m?.reason ? ` (${m.reason})` : ''}.`;
+        this.toast?.push({ title: 'Arena result', text: line, color: won ? '#14f195' : '#03e1ff' });
+        this.say(line);
       }),
       arenaNet.onError((m) => { this.say(`Arena: ${m?.msg || 'unavailable'}`); }),
     );
@@ -685,7 +690,17 @@ export class UIScene extends Phaser.Scene {
     this.agentBtn.on('pointerover', () => this.agentBtn.setBackgroundColor('#3a2d20ee'));
     this.agentBtn.on('pointerout', () => this.agentBtn.setBackgroundColor('#2a1d10dd'));
     this.agentBtn.on('pointerdown', () => { audio.play('ui', 0.6); this.agentPanel?.toggle(); });
+    // World-agents board icon (📡): a PUBLIC, read-only view of the autonomous
+    // agents currently in the world (src/ui/AgentBoardPanel.js, GET /agents).
+    this.agentBoardBtn = this.add.text(baseX - (iconSize + gap) * 9, startY, '📡', {
+      fontFamily: '"Silkscreen", monospace', fontSize: '16px', color: '#14f195',
+      backgroundColor: '#2a1d10dd', padding: { x: 4, y: 2 },
+    }).setOrigin(1, 0).setDepth(110).setInteractive({ useHandCursor: true });
+    this.agentBoardBtn.on('pointerover', () => this.agentBoardBtn.setBackgroundColor('#3a2d20ee'));
+    this.agentBoardBtn.on('pointerout', () => this.agentBoardBtn.setBackgroundColor('#2a1d10dd'));
+    this.agentBoardBtn.on('pointerdown', () => { audio.play('ui', 0.6); this.agentBoardPanel?.toggle(); });
     this.walletPanel = new WalletPanel(this);
+    this.agentBoardPanel = new AgentBoardPanel();
   }
 
   // —— Daily login reward HUD icon + panel
