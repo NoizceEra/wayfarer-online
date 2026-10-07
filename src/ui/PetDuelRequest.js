@@ -1,5 +1,6 @@
 import { bus, Events } from '../core/events.js';
 import { social } from '../systems/social/index.js';
+import { input } from '../core/input.js';
 
 const FONT = '"Silkscreen", monospace';
 
@@ -10,16 +11,15 @@ export class PetDuelRequest {
   constructor(scene) {
     this.scene = scene;
     this.container = null;
+    this.backdrop = null;
     this.pending = null;
+    this.offCloser = null;
     this.off = bus.on(Events.SOCIAL_UI, (m) => {
       if (m.panel === 'pet-duel-request') {
         if (m.open && m.duel) this.show(m.duel);
         else this.hide();
       }
     });
-    this._keyDown = (e) => {
-      if (e.key === 'Escape') { e.stopPropagation?.(); this._decline(); }
-    };
   }
 
   show({ fromName, from }) {
@@ -30,6 +30,9 @@ export class PetDuelRequest {
     const pw = Math.min(W - 32, 360);
     const ph = 120;
 
+    // Dim + click-swallowing backdrop so taps can't reach the world behind the
+    // prompt, and block gameplay keys while the challenge is on screen.
+    this.backdrop = this.scene.add.rectangle(0, 0, W, H, 0x0a0812, 0.6).setOrigin(0).setDepth(199).setInteractive();
     this.container = this.scene.add.container(W / 2, H / 2 - 30).setDepth(200);
 
     const bg = this.scene.add.rectangle(0, 0, pw, ph, 0x2a1d10, 0.97).setStrokeStyle(2, 0x8d5a2b);
@@ -46,7 +49,19 @@ export class PetDuelRequest {
 
     this.container.add([bg, title, body, accept.bg, accept.text, decline.bg, decline.text]);
     this.container.setVisible(true);
-    window.addEventListener('keydown', this._keyDown);
+    input.pushModal('petDuelReq');
+    // Esc ownership. UIScene also registers an id-'pet-duel-request' closer
+    // (priority 960) that only calls hide(), i.e. it dismissed the prompt WITHOUT
+    // telling the server we declined (the challenger then waits out its 45s
+    // timeout). addCloser() de-dupes by id, so registering here REPLACES that one;
+    // the priority must also outrank the generic 'social' aggregator (950) or
+    // Escape would close that no-op closer first and leave the prompt on screen.
+    this.offCloser = input.addCloser({
+      id: 'pet-duel-request', priority: 970,
+      isOpen: () => !!this.container,
+      close: () => this._decline(),
+      scene: this.scene,
+    });
   }
 
   makeBtn(x, y, w, h, label, color, cb) {
@@ -77,7 +92,10 @@ export class PetDuelRequest {
 
   hide() {
     if (!this.container) return;
-    window.removeEventListener('keydown', this._keyDown);
+    if (this.offCloser) { this.offCloser(); this.offCloser = null; }
+    input.popModal('petDuelReq');
+    this.backdrop?.destroy();
+    this.backdrop = null;
     this.container.destroy();
     this.container = null;
     this.pending = null;
