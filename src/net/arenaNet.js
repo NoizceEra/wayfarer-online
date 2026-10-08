@@ -11,7 +11,6 @@ import { net } from './NetworkManager.js';
 //   challenge(name)    -> arena:challenge { target }
 //   accept(name)       -> arena:accept { target }
 //   decline(name)      -> arena:decline { target }
-//   report(matchId, winner, reason?) -> arena:report { matchId, winner, reason }
 //   refreshRating()    -> arena:rating {}
 //
 // Incoming (server -> client):
@@ -20,26 +19,33 @@ import { net } from './NetworkManager.js';
 //   challenge -> arena:challenge { from, fromName }
 //   declined  -> arena:declined { from, fromName }
 //   result    -> arena:result { matchId, winner, winnerName, reason, you }
+//   combat-state -> arena:combat-state { matchId, youHp, opponentHp, maxHp }
+//   combat-result -> arena:combat-result { matchId, winner, loser, reason }
 //   rating    -> arena:rating { rating, wins, losses }
 //   error     -> arena:error { msg }
 
 export const ARENA_TYPES = [
   'arena:queue',
   'arena:leave',
+  'arena:agent-queue',
+  'arena:agent-leave',
   'arena:challenge',
   'arena:accept',
   'arena:decline',
   'arena:report',
   'arena:rating',
   'arena:queued',
+  'arena:agent-queued',
   'arena:match',
   'arena:declined',
   'arena:result',
+  'arena:combat-state',
+  'arena:combat-result',
   'arena:error',
 ];
 
-const INCOMING = ['arena:queued', 'arena:match', 'arena:challenge', 'arena:declined', 'arena:result', 'arena:rating', 'arena:error'];
-const OUTGOING = new Set(['arena:queue', 'arena:leave', 'arena:challenge', 'arena:accept', 'arena:decline', 'arena:report', 'arena:rating']);
+const INCOMING = ['arena:queued', 'arena:agent-queued', 'arena:match', 'arena:challenge', 'arena:declined', 'arena:result', 'arena:combat-state', 'arena:combat-result', 'arena:rating', 'arena:error'];
+const OUTGOING = new Set(['arena:queue', 'arena:leave', 'arena:agent-queue', 'arena:agent-leave', 'arena:challenge', 'arena:accept', 'arena:decline', 'arena:rating']);
 
 const handlers = {
   'arena:queued': new Set(),
@@ -47,6 +53,9 @@ const handlers = {
   'arena:challenge': new Set(),
   'arena:declined': new Set(),
   'arena:result': new Set(),
+  'arena:agent-queued': new Set(),
+  'arena:combat-state': new Set(),
+  'arena:combat-result': new Set(),
   'arena:rating': new Set(),
   'arena:error': new Set(),
 };
@@ -80,20 +89,23 @@ function on(type, fn) { ensureWired(); handlers[type].add(fn); return () => hand
 
 export const arenaNet = {
   isOnline() { return !!net.connected; },
+  sessionId() { return net.sessionId || null; },
   queue() { return send('arena:queue'); },
   leave() { return send('arena:leave'); },
+  queueAgent() { return send('arena:agent-queue'); },
+  leaveAgent() { return send('arena:agent-leave'); },
   challenge(name) { return send('arena:challenge', { target: String(name || '') }); },
   accept(name) { return send('arena:accept', { target: String(name || '') }); },
   decline(name) { return send('arena:decline', { target: String(name || '') }); },
-  report(matchId, winner, reason) {
-    return send('arena:report', { matchId: String(matchId || ''), winner: String(winner || ''), reason: String(reason || 'ko').slice(0, 24) });
-  },
   refreshRating() { return send('arena:rating'); },
   onQueued(fn) { return on('arena:queued', fn); },
   onMatch(fn) { return on('arena:match', fn); },
   onChallenge(fn) { return on('arena:challenge', fn); },
   onDeclined(fn) { return on('arena:declined', fn); },
   onResult(fn) { return on('arena:result', fn); },
+  onAgentQueued(fn) { return on('arena:agent-queued', fn); },
+  onCombatState(fn) { return on('arena:combat-state', fn); },
+  onCombatResult(fn) { return on('arena:combat-result', fn); },
   onRating(fn) { return on('arena:rating', fn); },
   onError(fn) { return on('arena:error', fn); },
 };

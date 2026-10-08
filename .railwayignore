@@ -1,0 +1,14 @@
+# The Railway service runs the game relay only. Vite assets, docs, and promo
+# videos are not needed by the server container.
+public/
+docs/
+tools/
+videos/
+dist/
+.env*
+server/.env*
+src/*
+!src/data
+src/data/*
+!src/data/guilds.cjs
+!src/data/seasons.js

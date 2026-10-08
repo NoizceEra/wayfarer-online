@@ -9,7 +9,7 @@
     "build": "vite build",
     "preview": "vite preview --port 5177 --strictPort",
     "start": "node server/index.js",
-    "postinstall": "npm ci --prefix server",
+    "postinstall": "node scripts/install-server-deps.cjs",
     "copy-assets": "node tools/copy_assets.mjs"
   },
   "dependencies": {

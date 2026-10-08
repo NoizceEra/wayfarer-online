@@ -136,6 +136,11 @@ class EconNet {
     else if (m.rev !== this.rev) { this.replaceFrom(m, m.stale ? 'Bag re-synced with the server.' : null); this.setRev(m.rev); }
     else if (m.stale) this.world()?.saveNow?.(); // our state is current: re-upload progress
     if (m.sinksState) this.sinksState = { ...this.sinksState, ...m.sinksState };
+    if (m.dyes) {
+      const p = this.player();
+      if (p) p.dyes = { ...m.dyes };
+      else this.patchStored((pr) => { pr.dyes = { ...m.dyes }; });
+    }
     this.emit('sync', m);
   }
 
@@ -147,6 +152,7 @@ class EconNet {
       p.gold = Math.max(0, (p.gold | 0) + (d.gold | 0));
       if (d.tokenPoints !== undefined) p.tokenPoints = Math.max(0, (p.tokenPoints | 0) + d.tokenPoints);
       if (d.wayfarerTokens !== undefined) p.wayfarerTokens = Math.max(0, (p.wayfarerTokens | 0) + d.wayfarerTokens);
+      if (d.dyes) p.dyes = { ...d.dyes };
       if (d.stake) { p.ext ||= {}; p.ext.stake = d.stake; }
       for (const id of d.remove || []) {
         const i = p.inventory.indexOf(id);
@@ -161,6 +167,7 @@ class EconNet {
         pr.gold = Math.max(0, (pr.gold | 0) + (d.gold | 0));
         if (d.tokenPoints !== undefined) pr.tokenPoints = Math.max(0, (pr.tokenPoints | 0) + d.tokenPoints);
         if (d.wayfarerTokens !== undefined) pr.wayfarerTokens = Math.max(0, (pr.wayfarerTokens | 0) + d.wayfarerTokens);
+        if (d.dyes) pr.dyes = { ...d.dyes };
         if (d.stake) { pr.ext ||= {}; pr.ext.stake = d.stake; }
         for (const id of d.remove || []) { const i = pr.inventory.indexOf(id); if (i >= 0) pr.inventory.splice(i, 1); }
         for (const id of d.add || []) pr.inventory.push(id);
@@ -174,11 +181,13 @@ class EconNet {
     const p = this.player();
     if (p) {
       p.gold = m.gold | 0; p.inventory = inv;
+      if (m.dyes) p.dyes = { ...m.dyes };
       if (m.tokenPoints !== undefined) p.tokenPoints = m.tokenPoints | 0;
       if (m.wayfarerTokens !== undefined) p.wayfarerTokens = m.wayfarerTokens | 0;
       this.afterChange();
     } else this.patchStored((pr) => {
       pr.gold = m.gold | 0; pr.inventory = inv;
+      if (m.dyes) pr.dyes = { ...m.dyes };
       if (m.tokenPoints !== undefined) pr.tokenPoints = m.tokenPoints | 0;
       if (m.wayfarerTokens !== undefined) pr.wayfarerTokens = m.wayfarerTokens | 0;
     });
@@ -251,10 +260,18 @@ class EconNet {
 
   onTokenSpendOk(m) {
     if (!m || !m.type) return;
+    if (m.rev !== undefined) this.setRev(m.rev);
     const p = this.player();
     if (m.wayfarerTokens !== undefined) {
       if (p) p.wayfarerTokens = Math.max(0, m.wayfarerTokens | 0);
       else this.patchStored((pr) => { pr.wayfarerTokens = Math.max(0, m.wayfarerTokens | 0); });
+    }
+    if (m.dyeUpdate?.itemId && m.dyeUpdate?.dyeId) {
+      if (p?.setDye) p.setDye(m.dyeUpdate.itemId, m.dyeUpdate.dyeId);
+      else this.patchStored((pr) => { pr.dyes ||= {}; pr.dyes[m.dyeUpdate.itemId] = m.dyeUpdate.dyeId; });
+    } else if (m.dyes) {
+      if (p) p.dyes = { ...m.dyes };
+      else this.patchStored((pr) => { pr.dyes = { ...m.dyes }; });
     }
     if (m.sinksState) this.sinksState = { ...this.sinksState, ...m.sinksState };
     this.afterChange();

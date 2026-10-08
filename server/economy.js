@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { CFG } from './config.js';
 import { loadChar, saveChar, deviceKey } from './store.js';
 import {
-  ECON, GEAR_META, isGearId, isMatId, CAPS, goldAmount, itemList, cleanLine, cleanCharName, cleanPetName, revOf, hasItems, withoutItems,
+  ECON, GEAR_META, isGearId, isMatId, CAPS, DYE_IDS, NON_DYEABLE_GEAR, goldAmount, itemList, cleanLine, cleanCharName, cleanPetName, revOf, hasItems, withoutItems,
 } from './validate.js';
 import { db, initEconStore, markDirty, commit, flushEcon, ledger, stopEcon } from './econStore.js';
 
@@ -93,13 +93,14 @@ function charRec(p) {
   if (!rec?.progress || !Array.isArray(rec.progress.inventory)) return null;
   return rec;
 }
-const stateOf = (rec) => ({ rev: rec.rev || 0, gold: rec.progress.gold | 0, inventory: rec.progress.inventory.slice(), tokenPoints: rec.progress.tokenPoints | 0, wayfarerTokens: rec.progress.wayfarerTokens | 0 });
+const stateOf = (rec) => ({ rev: rec.rev || 0, gold: rec.progress.gold | 0, inventory: rec.progress.inventory.slice(), dyes: { ...(rec.progress.dyes || {}) }, tokenPoints: rec.progress.tokenPoints | 0, wayfarerTokens: rec.progress.wayfarerTokens | 0 });
 
 // Apply an economy mutation to a server copy: bumps rev, marks the device dirty.
-function mutate(p, rec, { gold = 0, add = [], remove = [] }) {
+function mutate(p, rec, { gold = 0, wayfarerTokens = 0, add = [], remove = [] }) {
   const pr = rec.progress;
   pr.inventory = withoutItems(pr.inventory, remove).concat(add);
   pr.gold = (pr.gold | 0) + gold;
+  pr.wayfarerTokens = (pr.wayfarerTokens | 0) + wayfarerTokens;
   const t = now();
   rec.rev = (rec.rev || 0) + 1;
   rec.savedAt = t; pr.savedAt = t;
@@ -109,7 +110,7 @@ function mutate(p, rec, { gold = 0, add = [], remove = [] }) {
     rec.econOut = rec.econOut.slice(-40);
   }
   saveChar(p.token, p.name, rec);
-  return { gold, add, remove };
+  return { gold, wayfarerTokens, add, remove };
 }
 function sync(client, rec, why, delta) {
   try { client.send('econ-sync', { why, ...stateOf(rec), delta }); } catch { /* closing */ }
@@ -185,7 +186,7 @@ function sweepBindNonces() {
 const short = (a) => (a ? `${String(a).slice(0, 4)}...${String(a).slice(-4)}` : '');
 // Withdraw needs the oracle signer + program + mint + RPC; deposit only needs the
 // RPC + mint (the treasury is read from env or derived from the on-chain config).
-const withdrawConfigured = () => !!(CFG.SOLANA_RPC && CFG.PROGRAM_ID && CFG.MINT_ADDRESS && CFG.ORACLE_KEYPAIR);
+const withdrawConfigured = () => !!(CFG.ENABLE_TOKEN_WITHDRAWALS && CFG.SOLANA_RPC && CFG.PROGRAM_ID && CFG.MINT_ADDRESS && CFG.ORACLE_KEYPAIR);
 const depositConfigured = () => !!(CFG.SOLANA_RPC && CFG.MINT_ADDRESS);
 const TOKEN_PROGRAM_ID = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
 const ATA_PROGRAM_ID = 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL';
@@ -434,7 +435,7 @@ export function install(room) {
   };
   // Server->client economy types must never ride the generic '*' passthrough
   // (a client could forge a trade-result / econ-sync for its peers): swallow them.
-  for (const t of ['econ-state', 'econ-sync', 'econ-msg', 'econ-error', 'trade-open', 'trade-update', 'trade-result', 'trade-closed', 'trade-done', 'escrow-open', 'escrow-update', 'escrow-result', 'escrow-closed', 'market-page', 'mail-box', 'mail-unread', 'guild-info', 'guild-update', 'saved', 'referral-state', 'referral-paid', 'worldboss-announce', 'worldboss-state', 'worldboss-slain', 'token-spend-ok', 'wallet-bind-challenge', 'wallet-bound', 'token-withdraw-result', 'token-deposit-result', 'token-bridge-state']) {
+  for (const t of ['econ-state', 'econ-sync', 'econ-msg', 'econ-error', 'trade-open', 'trade-update', 'trade-result', 'trade-closed', 'trade-done', 'escrow-open', 'escrow-update', 'escrow-result', 'escrow-closed', 'market-page', 'mail-box', 'mail-unread', 'guild-info', 'guild-update', 'saved', 'referral-state', 'referral-paid', 'worldboss-announce', 'worldboss-state', 'worldboss-slain', 'token-spend-ok', 'wallet-bind-challenge', 'wallet-bound', 'token-withdraw-result', 'token-deposit-result', 'token-bridge-state', 'agent-hire-result']) {
     room.onMessage(t, () => {});
   }
 
@@ -453,6 +454,57 @@ export function install(room) {
       sinksState: { stashTabs: Math.max(0, Math.min(5, Math.floor(Number(ext.stashTabs)) || 0)), dailyClaimed: bridgeDailyClaimed },
     });
   }, 'browse');
+
+  // Temporary autonomous hirelings can be paid with gold or the internal
+  // wayfarerTokens ledger. This is not a wallet transfer. Hirelings never
+  // receive the separate wallet-agent reward ledger.
+  on('agent-hire-state', (c, p) => {
+    const agent = room.agents?.companionState?.(c.sessionId) || null;
+    c.send('agent-hire-state', { agent, tiers: room.agents?.hirelingOptions?.() || [] });
+  }, 'browse');
+
+  on('agent-hire', async (c, p, m) => {
+    const rec = requireRec(c, p, m); if (!rec) return;
+    const tier = String(m.tier || '').slice(0, 16);
+    const spec = room.agents?.getHirelingTier?.(tier);
+    if (!spec) { err(c, 'Choose Scout, Tactician, or Veteran.', 'agent_tier'); return; }
+    if (!room.agents || room.agents.destroyed) { err(c, 'Hirelings are unavailable in this room.', 'agent_unavailable'); return; }
+    if (room.agents.list().some((a) => a?.ownerSid === c.sessionId)) {
+      err(c, 'You already have an active companion. Dismiss it or wait for its contract to expire.', 'agent_exists'); return;
+    }
+    const currency = m.currency === 'wayfarer' ? 'wayfarer' : m.currency === 'gold' || m.currency == null ? 'gold' : '';
+    if (!currency) { err(c, 'Choose gold or in-game WAYFARER.', 'currency'); return; }
+    const cost = currency === 'wayfarer' ? spec.wayfarerCost : spec.cost;
+    const balance = currency === 'wayfarer' ? (rec.progress.wayfarerTokens | 0) : (rec.progress.gold | 0);
+    if (balance < cost) {
+      err(c, currency === 'wayfarer' ? `You need ${cost} in-game WAYFARER to hire a ${spec.label}.` : `You need ${cost} gold to hire a ${spec.label}.`, currency === 'wayfarer' ? 'wayfarer' : 'gold'); return;
+    }
+    // Spawn synchronously after all checks; this reserves the one-companion
+    // slot before any async commit can let a duplicate request race it.
+    const hireling = room.agents.hireForOwner(c.sessionId, tier, { a: p.a, x: p.x, y: p.y });
+    if (!hireling) { err(c, 'A companion could not be hired right now.', 'agent_unavailable'); return; }
+    let delta;
+    try { delta = mutate(p, rec, currency === 'wayfarer' ? { wayfarerTokens: -cost } : { gold: -cost }); }
+    catch (e) {
+      room.agents.despawn(hireling.sid);
+      err(c, 'Your gold could not be saved, so the hire was cancelled.', 'storage');
+      log.warn('agent hire debit failed', { name: p.name, tier, err: e.message });
+      return;
+    }
+    ledger({ op: 'agent-hire', ck: ckOf(p), name: p.name, tier, currency, cost, sid: hireling.sid, rev: rec.rev });
+    if (!await commitFor(c, { deviceKeys: [dkOf(p)] })) {
+      // The character save itself is already written by mutate(); keep the
+      // active hire aligned with that durable debit if the auxiliary commit
+      // store is unavailable.
+      c.send('agent-hire-result', { ok: 1, tier, currency, cost, rev: rec.rev, agent: room.agents.companionState(c.sessionId), tiers: room.agents.hirelingOptions(), warning: 'economy_commit_delayed' });
+      sync(c, rec, 'agent-hire', delta);
+      return;
+    }
+    sync(c, rec, 'agent-hire', delta);
+    const agent = room.agents.companionState(c.sessionId);
+    c.send('agent-hire-result', { ok: 1, tier, currency, cost, rev: rec.rev, agent, tiers: room.agents.hirelingOptions() });
+    note(c, `${spec.label} hired for ${Math.round(spec.durationMs / 60_000)} minutes with ${currency === 'wayfarer' ? 'in-game WAYFARER' : 'gold'}.`);
+  });
 
   // ── direct trade ──
   on('trade-request', (c, p, m) => {
@@ -950,46 +1002,8 @@ export function install(room) {
   // goes to the fee treasury; the other half is paid as a token bonus to the
   // referrer when this player was referred. If there is no referrer the entire
   // fee stays in the treasury.
-  on('token-claim', async (c, p, m) => {
-    const rec = requireRec(c, p, m); if (!rec) return;
-    const amount = goldAmount(m.amount); // token points to claim
-    if (!amount || amount <= 0) { err(c, 'Enter a whole number of token points to claim.', 'invalid'); return; }
-    if ((rec.progress.tokenPoints | 0) < amount) { err(c, `You only have ${rec.progress.tokenPoints | 0} token points.`, 'missing'); return; }
-    const fee = Math.max(1, Math.floor(amount * ECON.TOKEN_CLAIM_FEE));
-    const net = amount - fee;
-    if (net <= 0) { err(c, 'Amount too small after fee.', 'invalid'); return; }
-    if ((rec.progress.gold | 0) < fee) { err(c, `You need ${fee} gold to cover the claim fee.`, 'gold'); return; }
-    // daily cap tracking
-    const today = new Date().toISOString().slice(0, 10);
-    const prev = rec.progress.ext?.bridgeDailyClaimed || { date: '', amount: 0 };
-    const claimedToday = prev.date === today ? (prev.amount || 0) : 0;
-    if (claimedToday + net > ECON.TOKEN_WITHDRAW_DAILY_CAP) {
-      err(c, `Daily token claim cap reached: ${claimedToday}/${ECON.TOKEN_WITHDRAW_DAILY_CAP} tokens today.`, 'cap');
-      return;
-    }
-    rec.progress.ext = rec.progress.ext || {};
-    rec.progress.ext.bridgeDailyClaimed = { date: today, amount: claimedToday + net };
-
-    rec.progress.tokenPoints = (rec.progress.tokenPoints | 0) - amount;
-    rec.progress.wayfarerTokens = (rec.progress.wayfarerTokens | 0) + net;
-    rec.progress.gold = (rec.progress.gold | 0) - fee;
-    rec.rev = (rec.rev || 0) + 1;
-    rec.savedAt = now(); rec.progress.savedAt = rec.savedAt;
-    saveChar(p.token, p.name, rec);
-    const delta = { gold: -fee, tokenPoints: -amount, wayfarerTokens: net };
-    ledger({ op: 'token-claim', ck: ckOf(p), name: p.name, amount, fee, net, rev: rec.rev });
-    if (!await commitFor(c, { deviceKeys: [dkOf(p)] })) return;
-    const treasuryFee = Math.floor(fee / 2);
-    const referralBonus = fee - treasuryFee; // the remainder so fee = treasuryFee + referralBonus
-    let bonus = 0;
-    try {
-      const refs = await import('./referrals.js');
-      refs.recordFee(treasuryFee);
-      bonus = refs.payReferralTokenBonus(ckOf(p), referralBonus, amount);
-    } catch { /* referrals not loaded */ }
-    sync(c, rec, 'token-claim', delta);
-    note(c, `Claimed ${net} Wayfarer Token${net !== 1 ? 's' : ''} (fee ${fee}g).`);
-    if (bonus > 0) note(c, `Your referrer earned ${bonus} Wayfarer Token bonus.`);
+  on('token-claim', (c) => {
+    err(c, 'Token claims are paused until reward points are recorded by the server. Your existing Wayfarer Token balance is unchanged.', 'paused');
   });
 
   // ── token-spend (Wayfarer Token sinks) ──
@@ -1003,7 +1017,7 @@ export function install(room) {
 
     const ext = rec.progress.ext || (rec.progress.ext = {});
     const sinksState = { stashTabs: Math.max(0, Math.min(5, Math.floor(Number(ext.stashTabs)) || 0)) };
-    let ok = false, note = '';
+    let ok = false, note = '', dyeUpdate = null;
 
     if (type === 'orb-upgrade') {
       const item = String(m.item || '');
@@ -1034,6 +1048,21 @@ export function install(room) {
       ext.stashTabs = tabs + 1;
       sinksState.stashTabs = ext.stashTabs;
       ok = true; note = `Stash tab ${ext.stashTabs}/5 unlocked!`;
+    } else if (type === 'gear-dye') {
+      const itemId = String(m.itemId || '');
+      const dyeId = String(m.dyeId || '');
+      const gear = GEAR_META[itemId];
+      const equipped = Object.values(rec.progress.equipped || {}).includes(itemId);
+      const owned = (rec.progress.inventory || []).includes(itemId) || equipped;
+      const cost = 20;
+      if (!gear || NON_DYEABLE_GEAR.has(itemId) || !owned) { err(c, 'Choose dyeable gear that you own or have equipped.', 'invalid'); return; }
+      if (!DYE_IDS.has(dyeId)) { err(c, 'Choose a valid gear dye.', 'invalid'); return; }
+      if (amount !== cost) { err(c, `Gear dye costs ${cost} Wayfarer Tokens.`, 'invalid'); return; }
+      if (rec.progress.dyes?.[itemId] === dyeId) { err(c, 'That gear already has this dye.', 'invalid'); return; }
+      rec.progress.dyes ||= {};
+      rec.progress.dyes[itemId] = dyeId;
+      dyeUpdate = { itemId, dyeId };
+      ok = true; note = `${gear.name || itemId} dyed ${dyeId}.`;
     }
 
     if (!ok) { err(c, 'That token spend could not be completed.', 'invalid'); return; }
@@ -1045,8 +1074,9 @@ export function install(room) {
     if (!await commitFor(c, { deviceKeys: [dkOf(p)] })) return;
     ledger({ op: 'token-spend', ck: ckOf(p), name: p.name, type, amount, rev: rec.rev });
     c.send('token-spend-ok', {
-      type, amount,
+      type, amount, rev: rec.rev,
       wayfarerTokens: rec.progress.wayfarerTokens,
+      dyes: { ...(rec.progress.dyes || {}) }, dyeUpdate,
       sinksState,
       petId: type === 'pet-rename' ? String(m.petId || '') : undefined,
       name: type === 'pet-rename' ? cleanPetName(m.name) : undefined,
@@ -1146,7 +1176,10 @@ export function install(room) {
     }
     if (!withdrawConfigured()) {
       // Honest degradation: no mint, no deduction.
-      c.send('token-withdraw-result', { ok: 0, amount, fee, net, status: 'unconfigured', reason: 'The Solana bridge is not configured on this server (SOLANA_RPC / PROGRAM_ID / MINT_ADDRESS / ORACLE_KEYPAIR). Nothing was deducted.' });
+      const reason = !CFG.ENABLE_TOKEN_WITHDRAWALS
+        ? 'External withdrawals are paused while reward accounting is secured. Nothing was deducted.'
+        : 'The Solana bridge is not configured on this server (SOLANA_RPC / PROGRAM_ID / MINT_ADDRESS / ORACLE_KEYPAIR). Nothing was deducted.';
+      c.send('token-withdraw-result', { ok: 0, amount, fee, net, status: 'unconfigured', reason });
       return;
     }
 
@@ -1233,6 +1266,7 @@ export function install(room) {
     try { if (ck) deposits = dbm?.listBridgeDeposits?.(ck, 8) || []; } catch { deposits = []; }
     c.send('token-bridge-state', {
       configured: withdrawConfigured(),
+      withdrawalsPaused: !CFG.ENABLE_TOKEN_WITHDRAWALS,
       depositConfigured: depositConfigured(),
       dbReady: !!dbm,
       address: wallet?.address || '',

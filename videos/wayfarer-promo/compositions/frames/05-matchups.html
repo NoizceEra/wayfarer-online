@@ -1,0 +1,271 @@
+<template>
+<div data-hf-id="hf-nxek" id="root" data-composition-id="05-matchups" data-width="1920" data-height="1080" data-duration="5.3">
+  <style>
+    @font-face {
+      font-family: "Jacquard12";
+      src: url("assets/fonts/Jacquard12-Regular.ttf") format("truetype");
+      font-weight: 400;
+    }
+    @font-face {
+      font-family: "Silkscreen";
+      src: url("assets/fonts/Silkscreen-Regular.ttf") format("truetype");
+      font-weight: 400;
+    }
+
+    #root {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      container-type: size;
+      overflow: hidden;
+      font-family: "Silkscreen", monospace;
+    }
+
+    .clip {
+      position: absolute;
+      inset: 0;
+    }
+
+    /* ---------- background ground + ambient blooms ---------- */
+    .m05-bg {
+      background: #0a0e1a;
+    }
+    .m05-glow {
+      position: absolute;
+      top: 38cqh;
+      width: 46cqw;
+      height: 46cqw;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(20, 241, 149, 0.55) 0%, rgba(20, 241, 149, 0) 70%);
+      opacity: 0;
+      will-change: opacity;
+    }
+    .m05-glow-a { left: 6cqw; }
+    .m05-glow-b { left: 70cqw; }
+
+    /* ---------- title ---------- */
+    .m05-title-wrap {
+      position: absolute;
+      top: 4.5cqh;
+      left: 0;
+      width: 100%;
+      text-align: center;
+      will-change: transform, opacity;
+    }
+    .m05-title {
+      font-family: "Jacquard12", serif;
+      font-size: 4.6cqw;
+      font-weight: 400;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+      color: #e1e8f0;
+      text-transform: lowercase;
+      margin: 0;
+    }
+    .m05-title .m05-accent {
+      color: #14f195;
+    }
+
+    /* ---------- stage ---------- */
+    .m05-scene-root {
+      position: absolute;
+      top: 22cqh;
+      left: 0;
+      width: 100%;
+      height: 50cqh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      perspective: 1600px;
+    }
+    .m05-split-stage {
+      position: relative;
+      display: flex;
+      gap: 4.2cqw;
+      transform-style: preserve-3d;
+    }
+
+    .m05-card {
+      width: 29cqw;
+      height: 44cqh;
+      position: relative;
+      background: #050810;
+      border: 1px solid #2a3350;
+      overflow: hidden;
+      transform-style: preserve-3d;
+      will-change: transform, opacity;
+    }
+    .m05-card-left {
+      box-shadow: -18px 24px 46px rgba(0, 0, 0, 0.55);
+    }
+    .m05-card-right {
+      box-shadow: 18px 24px 46px rgba(0, 0, 0, 0.55);
+    }
+
+    .m05-card-img {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+    }
+    .m05-card-img img {
+      position: absolute;
+      width: 220%;
+      height: 220%;
+      max-width: none;
+      object-fit: cover;
+      filter: saturate(0.85) brightness(0.8);
+    }
+    .m05-crop-left {
+      left: -34%;
+      top: -58%;
+      object-position: 15% 35%;
+    }
+    .m05-crop-right {
+      left: -86%;
+      top: -62%;
+      object-position: 82% 55%;
+    }
+
+    .m05-card-shade {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(5, 8, 16, 0.15) 0%, rgba(5, 8, 16, 0.75) 100%);
+    }
+
+    .m05-chip {
+      position: absolute;
+      top: 1.6cqh;
+      left: 1.4cqw;
+      padding: 0.6cqh 1cqw;
+      background: rgba(10, 14, 26, 0.78);
+      border: 1px solid #2a3350;
+      font-family: "Silkscreen", monospace;
+      font-size: 0.95cqw;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #14f195;
+      will-change: transform, opacity;
+    }
+
+    /* ---------- inner-edge badges (parent-level, never inside a card) ---------- */
+    .m05-badge {
+      position: absolute;
+      top: 50%;
+      height: 3.6cqh;
+      margin-top: -1.8cqh;
+      display: flex;
+      align-items: center;
+      padding: 0 1.1cqw;
+      background: #14f195;
+      border: 1px solid #0a0e1a;
+      font-family: "Silkscreen", monospace;
+      font-size: 1cqw;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #0a0e1a;
+      transform-origin: 50% 50%;
+      will-change: transform, opacity;
+    }
+    .m05-badge-left {
+      left: 50%;
+      margin-left: -7.4cqw;
+    }
+    .m05-badge-right {
+      left: 50%;
+      margin-left: 1.2cqw;
+    }
+  </style>
+
+  <div data-hf-id="hf-w39y" class="clip m05-bg" data-start="0" data-duration="5.3" data-track-index="0">
+    <div data-hf-id="hf-hgk2" class="m05-glow m05-glow-a"></div>
+    <div data-hf-id="hf-dig1" class="m05-glow m05-glow-b"></div>
+  </div>
+
+  <div data-hf-id="hf-4ovn" class="clip" data-start="0" data-duration="5.3" data-track-index="1">
+    <div data-hf-id="hf-pnum" class="m05-title-wrap">
+      <h2 data-hf-id="hf-5xsu" class="m05-title">same <span data-hf-id="hf-knd9" class="m05-accent">arena</span></h2>
+    </div>
+  </div>
+
+  <div data-hf-id="hf-w0zs" class="clip" data-start="0" data-duration="5.3" data-track-index="2">
+    <div data-hf-id="hf-1zsw" class="m05-scene-root">
+      <div data-hf-id="hf-95ju" class="m05-split-stage">
+        <div data-hf-id="hf-cr3c" class="m05-card m05-card-left">
+          <div data-hf-id="hf-i82h" class="m05-card-img">
+            <img data-hf-id="hf-n7id" class="m05-crop-left" src="assets/01-town-crowded.jpg" alt="" data-layout-allow-overflow="">
+          </div>
+          <div data-hf-id="hf-m2cf" class="m05-card-shade"></div>
+          <div data-hf-id="hf-n9va" class="m05-chip">Player</div>
+        </div>
+        <div data-hf-id="hf-0i7r" class="m05-card m05-card-right">
+          <div data-hf-id="hf-ezvx" class="m05-card-img">
+            <img data-hf-id="hf-xcb6" class="m05-crop-right" src="assets/01-town-crowded.jpg" alt="" data-layout-allow-overflow="">
+          </div>
+          <div data-hf-id="hf-wz4v" class="m05-card-shade"></div>
+          <div data-hf-id="hf-ugu4" class="m05-chip">Agent</div>
+        </div>
+        <div data-hf-id="hf-dkn0" class="m05-badge m05-badge-left">PvP</div>
+        <div data-hf-id="hf-28j2" class="m05-badge m05-badge-right">PvA</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script>
+    (function () {
+      var tl = gsap.timeline({ paused: true });
+
+      // ---- Scene 1 (0.0-0.8s): title slides down from above into place ----
+      tl.fromTo(
+        ".m05-title-wrap",
+        { y: -40, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.8, ease: "power3.out" },
+        0
+      );
+
+      // ambient side glows bloom in alongside the title, same beat
+      tl.fromTo(".m05-glow-a", { opacity: 0 }, { opacity: 0.28, duration: 0.8, ease: "power2.out" }, 0);
+      tl.fromTo(".m05-glow-b", { opacity: 0 }, { opacity: 0.22, duration: 0.8, ease: "power2.out" }, 0.1);
+
+      // ---- Scene 2 (0.4-1.9s): split-tilt card entry, signature move ----
+      tl.fromTo(
+        ".m05-card-left",
+        { x: -260, rotateY: 22, opacity: 0 },
+        { x: 0, rotateY: 14, opacity: 1, duration: 0.9, ease: "power3.out" },
+        0.4
+      );
+      tl.fromTo(
+        ".m05-card-right",
+        { x: 260, rotateY: -22, opacity: 0 },
+        { x: 0, rotateY: -14, opacity: 1, duration: 0.9, ease: "power3.out" },
+        0.6
+      );
+
+      // chip labels fade up during each card's settle tail
+      tl.fromTo(".m05-card-left .m05-chip", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" }, 0.9);
+      tl.fromTo(".m05-card-right .m05-chip", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" }, 1.1);
+
+      // ---- Scene 3 (2.2-4.8s): inner-edge badges, the shot's one earned overshoot ----
+      tl.fromTo(
+        ".m05-badge-left",
+        { scale: 0, opacity: 0 },
+        { scale: 1, opacity: 1, duration: 0.5, ease: "back.out(1.6)" },
+        2.2
+      );
+      tl.fromTo(
+        ".m05-badge-right",
+        { scale: 0, opacity: 0 },
+        { scale: 1, opacity: 1, duration: 0.5, ease: "back.out(1.6)" },
+        2.5
+      );
+
+      // settle, then gentle phase-opposed idle float — never synchronized
+      tl.to(".m05-card-left", { y: -6, duration: 1.1, ease: "sine.inOut", yoyo: true, repeat: 1 }, 2.9);
+      tl.to(".m05-card-right", { y: 6, duration: 1.1, ease: "sine.inOut", yoyo: true, repeat: 1 }, 2.9);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["05-matchups"] = tl;
+    })();
+  </script>
+</div>
+</template>

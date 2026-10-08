@@ -1,0 +1,195 @@
+<template>
+<style>
+  @font-face {
+    font-family: 'Silkscreen';
+    src: url('assets/fonts/Silkscreen-Regular.ttf') format('truetype');
+    font-weight: 400;
+    font-style: normal;
+  }
+
+  #root {
+    container-type: size;
+    container-name: auto3-root;
+    position: relative;
+    width: 1920px;
+    height: 1080px;
+    overflow: hidden;
+    font-family: 'Silkscreen', monospace;
+  }
+
+  .auto3-ground {
+    position: absolute;
+    inset: 0;
+    background: #0A0E1A;
+  }
+
+  .auto3-dim {
+    position: absolute;
+    inset: 0;
+    background: #0A0E1A;
+    opacity: 0;
+  }
+
+  .auto3-wash {
+    position: absolute;
+    inset: 0;
+    background: rgba(10, 14, 26, 0.3);
+  }
+
+  .auto3-chip {
+    position: absolute;
+    top: 70.3cqh; /* ~759px, inside 83% keep-out */
+    display: flex;
+    flex-direction: column;
+    gap: 0.4cqh;
+    padding: 1.1cqw 1.6cqw;
+    background: rgba(10, 14, 26, 0.75);
+    border-top: 1px solid #2A3350;
+    transform-origin: 50% 50%;
+    will-change: transform, opacity;
+  }
+  .auto3-chip-rule {
+    width: 36px;
+    height: 2px;
+    background: #14F195;
+  }
+  .auto3-chip-label {
+    font-family: 'Silkscreen', monospace;
+    font-size: 0.9cqw;
+    font-weight: 400;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #E1E8F0;
+  }
+
+  #auto3-chip-gathered {
+    left: 7.3cqw; /* left-weighted 70% zone */
+  }
+  #auto3-chip-kills {
+    right: 7.3cqw; /* right 30% zone */
+  }
+
+  #auto3-chips-group {
+    position: absolute;
+    inset: 0;
+  }
+
+  #auto3-uptime-hero {
+    position: absolute;
+    left: 50%;
+    top: 44.4cqh; /* ~480px, center-foreground, well above keep-out */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1cqh;
+    padding: 2.2cqw 4cqw;
+    background: rgba(10, 14, 26, 0.55);
+    border-top: 1px solid #2A3350;
+    z-index: 5;
+    transform-origin: 50% 50%;
+    will-change: transform, opacity;
+  }
+  #auto3-uptime-hero .auto3-chip-rule {
+    width: 48px;
+  }
+  #auto3-uptime-value {
+    font-family: 'Silkscreen', monospace;
+    font-size: 5cqw;
+    font-weight: 400;
+    letter-spacing: -0.01em;
+    color: #14F195;
+    line-height: 1;
+  }
+  #auto3-uptime-label {
+    font-family: 'Silkscreen', monospace;
+    font-size: 0.9cqw;
+    font-weight: 400;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #6B7A99;
+  }
+</style>
+
+<div data-hf-id="hf-ncn7" id="root" data-composition-id="03-autonomy" data-width="1920" data-height="1080" data-duration="5.108">
+  <!-- Dark backstop only from the dim-to-40% point onward (3.0s+) — before
+       that, the real gameplay video hoisted at the host root (index.html,
+       Archetype B) shows through undimmed for Scenes 1-2. -->
+  <div data-hf-id="hf-dxs8" class="clip auto3-ground" data-start="3.0" data-duration="2.108" data-track-index="0"></div>
+
+  <!-- Scene 1 (0.0-1.6s) — open-world wandering, camera locked, full-bleed -->
+  <!-- Scene 2+3 (1.6-4.608s) — velocity-matched cut to Meadowfield combat (Thornmite / Dew Slime) -->
+  <!-- real footage lives at the host root as #auto3-bg-video, positioned behind this sub-comp's own layers by DOM order — left fully undimmed/uncovered here for Scenes 1-2 (0-3.0s) -->
+  <div data-hf-id="hf-dm36" class="clip auto3-wash" data-start="0" data-duration="3.0" data-track-index="1"></div>
+
+  <!-- Scene 2 (1.6-3.0s) — GATHERED / KILLS stat chips flash in, asymmetric 70/30 -->
+  <div data-hf-id="hf-obre" id="auto3-chips-group" class="clip" data-start="1.6" data-duration="1.4" data-track-index="2">
+    <div data-hf-id="hf-o6u9" class="auto3-chip" id="auto3-chip-gathered">
+      <div data-hf-id="hf-rwz2" class="auto3-chip-rule"></div>
+      <div data-hf-id="hf-ooak" class="auto3-chip-label">Gathered</div>
+    </div>
+    <div data-hf-id="hf-p8ki" class="auto3-chip" id="auto3-chip-kills">
+      <div data-hf-id="hf-f4xe" class="auto3-chip-rule"></div>
+      <div data-hf-id="hf-zgz7" class="auto3-chip-label">Kills</div>
+    </div>
+  </div>
+
+  <!-- Scene 3 (3.0-4.608s) — footage dims to ~40% -->
+  <div data-hf-id="hf-hdht" class="clip auto3-dim" id="auto3-dim" data-start="3.0" data-duration="2.108" data-track-index="3"></div>
+
+  <!-- Scene 3 — UPTIME scale-swaps to center-foreground in Silkscreen, settles and holds -->
+  <div data-hf-id="hf-ba5e" id="auto3-uptime-hero" class="clip" data-start="2.85" data-duration="2.258" data-track-index="4">
+    <div data-hf-id="hf-fj8f" class="auto3-chip-rule"></div>
+    <div data-hf-id="hf-c7fw" id="auto3-uptime-value">UPTIME</div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+<script>
+  (function () {
+    var tl = gsap.timeline({ paused: true });
+
+    // Scene 2 — chips pop in on their VO cue (spring-pop-entrance: fromTo, power3.out, no bounce)
+    tl.fromTo(
+      "#auto3-chip-gathered",
+      { scale: 0, opacity: 0 },
+      { scale: 1, opacity: 1, duration: 0.45, ease: "power3.out" },
+      1.65
+    );
+    tl.fromTo(
+      "#auto3-chip-kills",
+      { scale: 0, opacity: 0 },
+      { scale: 1, opacity: 1, duration: 0.45, ease: "power3.out" },
+      2.35
+    );
+
+    // Scene 2->3 — chips group shrinks away (scale-swap-transition: outgoing, power2.in)
+    tl.to(
+      "#auto3-chips-group",
+      { scale: 0.7, opacity: 0, duration: 0.25, ease: "power2.in" },
+      2.75
+    );
+
+    // Scene 3 — footage dims to ~40% visibility as the UPTIME field becomes the subject
+    tl.fromTo(
+      "#auto3-dim",
+      { opacity: 0 },
+      { opacity: 0.6, duration: 0.6, ease: "power2.out" },
+      3.0
+    );
+
+    // Scene 3 — UPTIME scale-swaps to center-foreground (scale-swap-transition: incoming, back.out)
+    // xPercent/yPercent fold the -50%/-50% centering into the same transform GSAP owns,
+    // avoiding a CSS-transform + GSAP-transform conflict on this element.
+    tl.fromTo(
+      "#auto3-uptime-hero",
+      { xPercent: -50, yPercent: -50, scale: 0.7, opacity: 0 },
+      { xPercent: -50, yPercent: -50, scale: 1, opacity: 1, duration: 0.55, ease: "back.out(1.4)" },
+      2.85
+    );
+
+    window.__timelines = window.__timelines || {};
+    window.__timelines["03-autonomy"] = tl;
+    tl.seek(0);
+  })();
+</script>
+</template>

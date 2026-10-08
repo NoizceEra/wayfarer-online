@@ -11,7 +11,7 @@ import {
   tierForXp,
   getProgressToNextTier,
   getRewardsForTier,
-} from '../src/data/seasons.js';
+} from './shared/seasons.js';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 

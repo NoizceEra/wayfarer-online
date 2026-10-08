@@ -24,7 +24,9 @@ const SOL = {
   white: '#E1E8F0',
   muted: '#6B7A99',
   darkText: '#0A0E1A',
-  panelBg: 0x0A0E1A,
+  panelBg: 0x080D18,
+  panelEdge: 0x263552,
+  panelInner: 0x10192B,
 };
 
 export class TitleScene extends Phaser.Scene {
@@ -75,7 +77,7 @@ export class TitleScene extends Phaser.Scene {
     const bw = Math.min(300, W - 40);
     const bh = small || short ? 30 : 38;
 
-    const titleY = Math.round(H * (short ? 0.10 : 0.13));
+    const titleY = Math.round(H * (short ? 0.105 : 0.13));
     const subY = Math.round(H * (short ? 0.18 : 0.22));
     const labelY = Math.round(H * (short ? 0.255 : 0.30));
     const fieldY = Math.round(H * (short ? 0.325 : 0.38));
@@ -83,20 +85,36 @@ export class TitleScene extends Phaser.Scene {
     const bottom = H - 34;
 
     // Darker semi-transparent panel so video still shows through but UI is readable
+    const panelW = Math.min(W - 16, Math.max(bw + 64, 560));
     const panelTop = titleY - 34, panelBot = H - 12;
-    add(this.add.rectangle(W / 2, (panelTop + panelBot) / 2, Math.min(W - 16, Math.max(bw + 64, 560)), panelBot - panelTop, SOL.panelBg, 0.55).setStrokeStyle(2, SOL.cyanHex, 0.6));
+    add(this.add.rectangle(W / 2 + 4, (panelTop + panelBot) / 2 + 4, panelW, panelBot - panelTop, 0x03050a, 0.62));
+    add(this.add.rectangle(W / 2, (panelTop + panelBot) / 2, panelW, panelBot - panelTop, SOL.panelBg, 0.88).setStrokeStyle(2, SOL.panelEdge, 0.95));
+    add(this.add.rectangle(W / 2, panelTop + 5, panelW - 12, 2, SOL.cyanHex, 0.72));
+    // Corner marks make the menu read like a field terminal without obscuring the game backdrop.
+    const cornerX = panelW / 2 - 12;
+    const cornerY = panelBot - panelTop - 12;
+    for (const sx of [-1, 1]) for (const sy of [-1, 1]) {
+      const x = W / 2 + sx * cornerX;
+      const y = (panelTop + panelBot) / 2 + sy * cornerY;
+      add(this.add.rectangle(x - sx * 4, y, 8, 2, SOL.greenHex, 0.9));
+      add(this.add.rectangle(x, y - sy * 4, 2, 8, SOL.greenHex, 0.9));
+    }
 
     const spacing = Math.max(bh + 16, Math.min(Math.round(H * 0.13) + 8, Math.floor((bottom - b1Y - bh / 2) / 2)));
     const capSize = small ? '11px' : '12px';
     this.cx = W / 2;
 
-    // ─── Title ───
+    // ─── Title / world terminal ───
+    add(this.add.text(W / 2, titleY - (small || short ? 20 : 27), 'WAYFARER FIELD TERMINAL  /  01', {
+      fontSize: small ? '7px' : '9px', color: SOL.muted, fontFamily: '"Silkscreen"',
+      letterSpacing: 1,
+    }).setOrigin(0.5));
     add(this.add.text(W / 2, titleY, 'WAYFARER ONLINE', {
-      fontSize: small ? '34px' : short ? '44px' : '56px', color: SOL.green, fontFamily: '"Jacquard12"',
-    }).setOrigin(0.5).setShadow(0, 2, SOL.cyan, 0.5, false, true));
+      fontSize: small ? '31px' : short ? '42px' : '52px', color: SOL.green, fontFamily: '"Jacquard12"',
+    }).setOrigin(0.5).setShadow(0, 3, SOL.cyan, 0.72, false, true));
 
-    add(this.add.text(W / 2, subY, 'a cozy open world  ~  solo or together', {
-      fontSize: small ? '10px' : '13px', color: SOL.cyan, fontFamily: '"PixelifySans"',
+    add(this.add.text(W / 2, subY, 'EXPLORE  ·  BUILD  ·  FIND YOUR PEOPLE', {
+      fontSize: small ? '9px' : '12px', color: SOL.cyan, fontFamily: '"Silkscreen"',
     }).setOrigin(0.5));
 
     // ─── Name field ───
@@ -106,12 +124,12 @@ export class TitleScene extends Phaser.Scene {
 
     const fieldH = small || short ? 28 : 34;
     add(this.add.rectangle(W / 2 + 3, fieldY + 3, bw, fieldH, 0x05080f));
-    const fieldBorder = add(this.add.rectangle(W / 2, fieldY, bw, fieldH, SOL.greenHex).setStrokeStyle(2, SOL.cyanHex));
+    const fieldBorder = add(this.add.rectangle(W / 2, fieldY, bw, fieldH, SOL.panelInner).setStrokeStyle(2, SOL.panelEdge));
     const nameText = add(this.add.text(W / 2 - bw / 2 + 10, fieldY, this.nameValue, {
-      fontSize: small ? '14px' : '18px', color: SOL.darkText, fontFamily: '"Silkscreen"',
+      fontSize: small ? '13px' : '16px', color: SOL.white, fontFamily: '"Silkscreen"',
     }).setOrigin(0, 0.5));
     const cursor = add(this.add.text(0, fieldY, '_', {
-      fontSize: small ? '14px' : '18px', color: SOL.darkText, fontFamily: '"Silkscreen"',
+      fontSize: small ? '13px' : '16px', color: SOL.green, fontFamily: '"Silkscreen"',
     }).setOrigin(0, 0.5));
     this.blinkTimer = this.time.addEvent({ delay: 530, loop: true, callback: () => { cursor.setAlpha(cursor.alpha ? 0 : 1); } });
     fieldBorder.setInteractive({ useHandCursor: true });
@@ -121,27 +139,27 @@ export class TitleScene extends Phaser.Scene {
     this.items.name = { kind: 'field', border: fieldBorder, nameText, cursor, fieldW: bw };
 
     // ─── Subtle note under name ───
-    add(this.add.text(W / 2, fieldY + fieldH / 2 + 10, 'Customize appearance in-game', {
+    add(this.add.text(W / 2, fieldY + fieldH / 2 + 10, 'Your name appears above your wayfarer', {
       fontSize: small ? '9px' : '10px', color: SOL.muted, fontFamily: '"PixelifySans"',
     }).setOrigin(0.5));
 
     // ─── Buttons (only 2: Continue/New + Play Online) ───
     const hasHero = !!loadHero();
     const specs = [
-      { id: 'play', label: hasHero ? '> Continue Journey' : '> New Journey', cap: hasHero ? '' : 'Forge your hero, then enter the world' },
-      { id: 'online', label: '@ Play Online', cap: 'Public world: meet other wayfarers' },
+      { id: 'play', label: hasHero ? 'CONTINUE JOURNEY' : 'BEGIN YOUR JOURNEY', cap: hasHero ? 'Return to your saved hero' : 'Create a hero and explore solo' },
+      { id: 'online', label: 'ENTER THE PUBLIC WORLD', cap: 'Connect and meet other wayfarers' },
     ];
     specs.forEach((s, i) => {
       const y = b1Y + spacing * i;
       const x = W / 2;
-      add(this.add.rectangle(x + 3, y + 3, bw, bh, 0x05080f));
-      const bg = add(this.add.rectangle(x, y, bw, bh, SOL.greenHex).setStrokeStyle(2, SOL.cyanHex));
-      add(this.add.rectangle(x, y - Math.round(bh / 2) + 3, bw - 8, 2, 0xffffff, 0.35));
+      add(this.add.rectangle(x + 3, y + 3, bw, bh, 0x03050a));
+      const bg = add(this.add.rectangle(x, y, bw, bh, SOL.panelInner).setStrokeStyle(2, SOL.panelEdge));
+      add(this.add.rectangle(x, y - Math.round(bh / 2) + 3, bw - 8, 2, SOL.cyanHex, 0.35));
       const label = add(this.add.text(x, y, s.label, {
-        fontSize: small || short ? '12px' : '16px', color: SOL.darkText, fontFamily: '"Silkscreen"', align: 'center',
+        fontSize: small || short ? '10px' : '13px', color: SOL.white, fontFamily: '"Silkscreen"', align: 'center',
       }).setOrigin(0.5));
-      const arrowL = add(this.add.text(x - bw / 2 - 8, y, '>', { fontSize: '16px', color: SOL.green, fontFamily: '"Silkscreen"' }).setOrigin(1, 0.5));
-      const arrowR = add(this.add.text(x + bw / 2 + 8, y, '<', { fontSize: '16px', color: SOL.green, fontFamily: '"Silkscreen"' }).setOrigin(0, 0.5));
+      const arrowL = add(this.add.text(x - bw / 2 - 8, y, '▶', { fontSize: '12px', color: SOL.green, fontFamily: '"Silkscreen"' }).setOrigin(1, 0.5));
+      const arrowR = add(this.add.text(x + bw / 2 + 8, y, '◀', { fontSize: '12px', color: SOL.green, fontFamily: '"Silkscreen"' }).setOrigin(0, 0.5));
       const cap = add(this.add.text(x, y + bh / 2 + 9, s.cap, {
         fontSize: capSize, color: SOL.muted, fontFamily: '"PixelifySans"', align: 'center', wordWrap: { width: W - 24 },
       }).setOrigin(0.5));
@@ -161,19 +179,17 @@ export class TitleScene extends Phaser.Scene {
       fontSize: small ? '10px' : '12px', color: '#ffb3b3', backgroundColor: '#000000aa',
       padding: { x: 8, y: 4 }, fontFamily: '"PixelifySans"', align: 'center', wordWrap: { width: W - 24 },
     }).setOrigin(0.5).setVisible(!!this.toastMsg));
-    // ─── Contract address box ───
-    const caY = H - 42;
-    const caBox = add(this.add.rectangle(W / 2, caY, bw - 20, 18, 0x05080f, 0.85).setStrokeStyle(1, SOL.cyanHex, 0.4));
-    const caText = add(this.add.text(W / 2, caY, 'CA: TBA', {
-      fontSize: small ? '8px' : '10px', color: SOL.muted, fontFamily: '"Silkscreen"',
+    // ─── Status strip: describes available routes without implying online is connected yet. ───
+    const statusY = H - 42;
+    const statusW = Math.min(bw - 20, 280);
+    add(this.add.rectangle(W / 2, statusY, statusW, 18, 0x05080f, 0.9).setStrokeStyle(1, SOL.panelEdge, 0.9));
+    add(this.add.circle(W / 2 - statusW / 2 + 12, statusY, 3, SOL.greenHex));
+    add(this.add.text(W / 2 + 5, statusY, 'SOLO READY  /  ONLINE ON DEMAND', {
+      fontSize: small ? '7px' : '8px', color: SOL.muted, fontFamily: '"Silkscreen"',
     }).setOrigin(0.5));
-    caBox.setInteractive({ useHandCursor: true });
-    caBox.on('pointerover', () => { caBox.setStrokeStyle(1, SOL.green, 0.8); caText.setColor(SOL.green); });
-    caBox.on('pointerout', () => { caBox.setStrokeStyle(1, SOL.cyanHex, 0.4); caText.setColor(SOL.muted); });
-    caBox.on('pointerup', () => { this.say('Contract address coming at launch!'); });
 
-    add(this.add.text(W / 2, H - 22, 'Up/Down choose  Enter select  WASD move  J atk  E talk', {
-      fontSize: '9px', color: SOL.muted, fontFamily: '"Silkscreen"', align: 'center', wordWrap: { width: W - 24 },
+    add(this.add.text(W / 2, H - 22, '↑ ↓ CHOOSE     ENTER SELECT     TYPE TO EDIT NAME', {
+      fontSize: small ? '7px' : '8px', color: SOL.muted, fontFamily: '"Silkscreen"', align: 'center', wordWrap: { width: W - 24 },
     }).setOrigin(0.5));
 
     // ─── Social links row ───
@@ -239,16 +255,17 @@ export class TitleScene extends Phaser.Scene {
       const hot = this.hover === id;
       if (it.kind === 'btn') {
         const pressed = this.pressed === id;
-        it.bg.setFillStyle(pressed ? 0x0db87a : hot || focused ? SOL.greenHex : 0x0db87a);
-        it.bg.setStrokeStyle(focused ? 3 : 2, focused ? SOL.cyanHex : SOL.purpleHex);
+        it.bg.setFillStyle(pressed ? 0x0a765c : hot || focused ? 0x14243a : SOL.panelInner);
+        it.bg.setStrokeStyle(focused ? 3 : hot ? 2 : 1, focused ? SOL.greenHex : hot ? SOL.cyanHex : SOL.panelEdge);
+        it.label.setColor(pressed ? SOL.green : focused || hot ? '#ffffff' : SOL.white);
         it.label.setY(it.y + (pressed ? 1 : 0));
         it.arrowL.setVisible(focused); it.arrowR.setVisible(focused);
         let cap = it.baseCap;
         it.cap.setText(cap); it.cap.setColor((focused || hot) ? SOL.cyan : SOL.muted);
       } else {
         const editing = this.editing === 'name';
-        it.border.setStrokeStyle(focused || editing ? 3 : 2, focused || editing ? SOL.cyanHex : SOL.purpleHex);
-        it.border.setFillStyle(editing || hot ? 0x0db87a : SOL.greenHex);
+        it.border.setStrokeStyle(focused || editing ? 3 : hot ? 2 : 1, focused || editing ? SOL.greenHex : hot ? SOL.cyanHex : SOL.panelEdge);
+        it.border.setFillStyle(SOL.panelInner);
         it.nameText.setText(this.nameValue);
         it.cursor.setX(it.nameText.x + it.nameText.displayWidth + 2);
         it.cursor.setVisible(editing || focused);

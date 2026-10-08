@@ -2,7 +2,7 @@
  * guildAuth.js — Permission checks for guild actions.
  */
 
-const { hasPermission, getMemberRank } = require('../../src/data/guilds.cjs');
+const { hasPermission, getMemberRank } = require('../shared/guilds.cjs');
 
 class GuildAuth {
   constructor(core) {

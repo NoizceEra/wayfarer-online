@@ -4,6 +4,10 @@
 gather, fight and cast on their own, and are visible to real players as ordinary
 player-shaped peers. **No client change is required for visibility.**
 
+Players can also hire temporary companions with gold or their in-game WAYFARER
+balance. That balance is an internal game ledger; hiring does not initiate an
+on-chain SPL token transfer or give the hireling wallet-agent reward eligibility.
+
 ## The insight that makes this small
 
 `server/WayfarerRoom.js` already runs a replication tick
@@ -119,11 +123,20 @@ Every call site that could assume one client per `this.players` entry:
   (`!p.agent` in `findPlayerByName`/`resolveTarget`/`tryMatchQueue`; `who.agent`
   in the boss `ehit` handler) — these guards already exist in the working tree
   from the sibling tracks.
-* `src/net/agentsNet.js` (client, another track) marks agent peers from
-  `peer-join.agent === 1` / `snap.p[].ag === 1` for a *paid* agent-entitlement
-  feature. This module deliberately does **not** emit those markers or the
-  `agent-entitlement`/`agent-state`/`agent-claim-*` messages: world agents have no
-  owner. Reconciling the two contracts is parent work.
+* `src/net/agentsNet.js` marks peers from `peer-join.agent === 1` /
+  `snap.p[].ag === 1`. Owned wallet agents and temporary hired companions both
+  have owners; hired NPCs also carry a `hireling` marker and intelligence tier.
+
+## Gold-hired companions
+
+`AgentsSystem` also runs temporary hired companions for players without an
+owned agent. `server/economy.js` charges the server-defined in-game gold price
+under the character revision protocol. Scout, Tactician, and Veteran contracts
+run the same movement, gathering, and combat loop with different
+follow/threat/cadence behavior. A hire ends on expiry or owner departure.
+Hirelings are marked separately and excluded from the owned-agent SOL-find
+ledger. They share the single-companion slot with a wallet-entitled agent and
+do not receive special authoritative enemy-damage simulation.
 
 ## Verification
 

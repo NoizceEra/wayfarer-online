@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wayfarer Online — Agent vs Player & Agent vs Agent Promotional Trailer</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Silkscreen:wght@400;700&family=JetBrains+Mono:wght@400;700;800&display=swap');
+
+    :root {
+      --bg: #070a12;
+      --panel: #0d1322;
+      --panel-border: #1e2942;
+      --sol-green: #14f195;
+      --sol-purple: #9945ff;
+      --sol-cyan: #03e1ff;
+      --sol-magenta: #dc1fff;
+      --gold: #ffd84a;
+      --white: #f0f6fc;
+      --muted: #7d8db0;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #000000;
+      color: var(--white);
+      font-family: 'Silkscreen', 'Press Start 2P', monospace;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      overflow: hidden;
+      image-rendering: pixelated;
+    }
+
+    #stage {
+      position: relative;
+      width: 1920px;
+      height: 1080px;
+      background: radial-gradient(circle at center, #0e1628 0%, #050811 85%, #020408 100%);
+      overflow: hidden;
+      box-shadow: 0 0 120px rgba(0, 0, 0, 0.95);
+      transform-origin: center center;
+    }
+
+    /* Scanlines & Vignette */
+    .scanlines {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.35) 50%);
+      background-size: 100% 4px;
+      pointer-events: none;
+      z-index: 100;
+      opacity: 0.45;
+    }
+
+    .vignette {
+      position: absolute;
+      inset: 0;
+      box-shadow: inset 0 0 220px rgba(2, 4, 10, 0.92);
+      pointer-events: none;
+      z-index: 99;
+    }
+
+    .cyber-grid {
+      position: absolute;
+      inset: 0;
+      background-image: 
+        linear-gradient(to right, rgba(153, 69, 255, 0.08) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(3, 225, 255, 0.08) 1px, transparent 1px);
+      background-size: 48px 48px;
+      opacity: 0.7;
+      z-index: 2;
+    }
+
+    #particles-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 4;
+    }
+
+    /* Scene Container */
+    .scene {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      opacity: 0;
+      visibility: hidden;
+      z-index: 10;
+    }
+
+    /* Top HUD / Banner */
+    .top-badge {
+      position: absolute;
+      top: 44px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 10px 26px;
+      background: rgba(13, 19, 34, 0.94);
+      border: 2px solid var(--sol-cyan);
+      border-radius: 8px;
+      box-shadow: 0 0 30px rgba(3, 225, 255, 0.35);
+      font-size: 15px;
+      letter-spacing: 2px;
+      color: var(--sol-cyan);
+      text-transform: uppercase;
+    }
+
+    .top-badge .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--sol-green);
+      box-shadow: 0 0 14px var(--sol-green);
+    }
+
+    .headline {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 42px;
+      text-align: center;
+      line-height: 1.35;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+      letter-spacing: 2px;
+      text-shadow: 0 0 35px rgba(153, 69, 255, 0.8), 0 4px 0 #000;
+    }
+
+    .headline-cyan {
+      color: var(--sol-cyan);
+      text-shadow: 0 0 35px rgba(3, 225, 255, 0.8), 0 4px 0 #000;
+    }
+
+    .headline-green {
+      color: var(--sol-green);
+      text-shadow: 0 0 35px rgba(20, 241, 149, 0.8), 0 4px 0 #000;
+    }
+
+    .headline-magenta {
+      color: var(--sol-magenta);
+      text-shadow: 0 0 35px rgba(220, 31, 255, 0.8), 0 4px 0 #000;
+    }
+
+    .subheadline {
+      font-family: 'Silkscreen', monospace;
+      font-size: 21px;
+      color: var(--muted);
+      text-align: center;
+      max-width: 1200px;
+      line-height: 1.6;
+      margin-bottom: 36px;
+    }
+
+    /* -------------------------------------------------------------
+       AUTHENTIC PIXEL ART SPRITES & ANIMATIONS (Scaled 5x = 80px)
+       ------------------------------------------------------------- */
+    .pixel-sprite {
+      image-rendering: pixelated;
+      image-rendering: -moz-crisp-edges;
+      image-rendering: crisp-edges;
+    }
+
+    /* Character Walk & Idle Sprites (16x16 frame -> 80x80px @ 5x) */
+    .sprite-actor {
+      width: 80px;
+      height: 80px;
+      image-rendering: pixelated;
+      background-repeat: no-repeat;
+      position: relative;
+    }
+
+    /* Directional columns in 64x64 sheet (scaled 5x = 320x320px):
+       Col 0 (Down) = 0px, Col 1 (Up) = -80px, Col 2 (Left) = -160px, Col 3 (Right) = -240px */
+    .sprite-knight-walk-right {
+      background-image: url('/assets/na/Actor/Character/Knight/SeparateAnim/Walk.png');
+      background-size: 320px 320px;
+      background-position: -240px 0px;
+      animation: spriteWalk 0.6s steps(4) infinite;
+    }
+
+    .sprite-ninja-walk-right {
+      background-image: url('/assets/na/Actor/Character/NinjaDark/SeparateAnim/Walk.png');
+      background-size: 320px 320px;
+      background-position: -240px 0px;
+      animation: spriteWalk 0.6s steps(4) infinite;
+    }
+
+    .sprite-robot-walk-left {
+      background-image: url('/assets/na/Actor/Character/RobotGrey/SeparateAnim/Walk.png');
+      background-size: 320px 320px;
+      background-position: -160px 0px;
+      animation: spriteWalk 0.6s steps(4) infinite;
+    }
+
+    .sprite-sorcerer-walk-right {
+      background-image: url('/assets/na/Actor/Character/SorcererOrange/SeparateAnim/Walk.png');
+      background-size: 320px 320px;
+      background-position: -240px 0px;
+      animation: spriteWalk 0.6s steps(4) infinite;
+    }
+
+    .sprite-gladiator-walk-left {
+      background-image: url('/assets/na/Actor/Character/GladiatorBlue/SeparateAnim/Walk.png');
+      background-size: 320px 320px;
+      background-position: -160px 0px;
+      animation: spriteWalk 0.6s steps(4) infinite;
+    }
+
+    /* Monster Walk: Cavern Magma Crab (64x64 sheet -> 320x320px) */
+    .sprite-magmacrab-walk {
+      width: 80px;
+      height: 80px;
+      background-image: url('/assets/custom/monsters/cavern_magmacrab.png');
+      background-size: 320px 320px;
+      background-position: 0px 0px; /* Col 0 = Down */
+      animation: spriteWalk 0.7s steps(4) infinite;
+      image-rendering: pixelated;
+    }
+
+    @keyframes spriteWalk {
+      from { background-position-y: 0px; }
+      to { background-position-y: -320px; }
+    }
+
+    /* Custom In-Hand Weapons */
+    .inhand-weapon {
+      position: absolute;
+      width: 48px;
+      height: 48px;
+      image-rendering: pixelated;
+      z-index: 3;
+    }
+
+    .weapon-knight {
+      right: -16px;
+      top: 18px;
+      transform: rotate(25deg);
+    }
+
+    .weapon-gladiator {
+      left: -16px;
+      top: 18px;
+      transform: rotate(-25deg) scaleX(-1);
+    }
+
+    /* -------------------------------------------------------------
+       CUSTOM SKILL VFX ANIMATIONS (Scaled Pixel Art Sheets)
+       ------------------------------------------------------------- */
+    .vfx-container {
+      position: absolute;
+      pointer-events: none;
+      z-index: 25;
+      image-rendering: pixelated;
+      opacity: 0;
+    }
+
+    /* Frost Nova: 288x48 (6 frames @ 48x48) -> scaled 4x = 192x192px (total 1152x192px) */
+    .vfx-frost-nova {
+      width: 192px;
+      height: 192px;
+      background-image: url('/assets/custom/fx/frost_nova.png');
+      background-size: 1152px 192px;
+      animation: vfxStrip6 0.45s steps(6) infinite;
+    }
+
+    /* Thunder Strike: 160x48 (5 frames @ 32x48) -> scaled 4x = 128x192px (total 640x192px) */
+    .vfx-thunder-strike {
+      width: 128px;
+      height: 192px;
+      background-image: url('/assets/custom/fx/thunder_strike.png');
+      background-size: 640px 192px;
+      animation: vfxStrip5 0.4s steps(5) infinite;
+    }
+
+    /* Shadow Vortex: 240x40 (6 frames @ 40x40) -> scaled 4x = 160x160px (total 960x160px) */
+    .vfx-shadow-vortex {
+      width: 160px;
+      height: 160px;
+      background-image: url('/assets/custom/fx/shadow_vortex.png');
+      background-size: 960px 160px;
+      animation: vfxStrip6 0.45s steps(6) infinite;
+    }
+
+    /* Holy Radiance: 288x48 (6 frames @ 48x48) -> scaled 4x = 192x192px (total 1152x192px) */
+    .vfx-holy-radiance {
+      width: 192px;
+      height: 192px;
+      background-image: url('/assets/custom/fx/holy_radiance.png');
+      background-size: 1152px 192px;
+      animation: vfxStrip6 0.45s steps(6) infinite;
+    }
+
+    /* Void Cleave: 200x40 (5 frames @ 40x40) -> scaled 4x = 160x160px (total 800x160px) */
+    .vfx-void-cleave {
+      width: 160px;
+      height: 160px;
+      background-image: url('/assets/custom/fx/void_cleave.png');
+      background-size: 800px 160px;
+      animation: vfxStrip5 0.35s steps(5) infinite;
+    }
+
+    @keyframes vfxStrip6 {
+      from { background-position-x: 0px; }
+      to { background-position-x: -1152px; }
+    }
+
+    @keyframes vfxStrip5 {
+      from { background-position-x: 0px; }
+      to { background-position-x: -640px; }
+    }
+
+    /* -------------------------------------------------------------
+       SCENE 1: AGENT DAEMON TERMINAL (With Real Items & Face Art)
+       ------------------------------------------------------------- */
+    .agent-terminal-card {
+      width: 1100px;
+      background: rgba(10, 14, 26, 0.97);
+      border: 3px solid var(--sol-purple);
+      border-radius: 14px;
+      box-shadow: 0 0 70px rgba(153, 69, 255, 0.35), inset 0 0 30px rgba(153, 69, 255, 0.1);
+      padding: 34px 44px;
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 36px;
+    }
+
+    .agent-face-box {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .agent-face-img {
+      width: 80px;
+      height: 80px;
+      border: 3px solid var(--sol-green);
+      border-radius: 8px;
+      background: #101930;
+      image-rendering: pixelated;
+      box-shadow: 0 0 20px rgba(20, 241, 149, 0.4);
+    }
+
+    .agent-stat-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 15px;
+      padding: 10px 16px;
+      background: #11192e;
+      border-radius: 6px;
+      border-left: 4px solid var(--sol-cyan);
+    }
+
+    .stat-label { color: var(--muted); }
+    .stat-val { color: var(--sol-green); font-weight: bold; display: flex; align-items: center; gap: 8px; }
+
+    .item-icon-small {
+      width: 24px;
+      height: 24px;
+      image-rendering: pixelated;
+    }
+
+    .live-code-log {
+      background: #060912;
+      border: 1px solid #1a2540;
+      border-radius: 8px;
+      padding: 16px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: #8be9fd;
+      height: 180px;
+      overflow: hidden;
+      line-height: 1.6;
+    }
+
+    .claim-sol-btn {
+      margin-top: 14px;
+      background: linear-gradient(135deg, #14f195 0%, #03e1ff 100%);
+      color: #050b14;
+      font-family: 'Press Start 2P', monospace;
+      font-size: 15px;
+      padding: 18px 24px;
+      border-radius: 8px;
+      border: none;
+      text-align: center;
+      font-weight: bold;
+      letter-spacing: 2px;
+      box-shadow: 0 0 35px rgba(20, 241, 149, 0.55);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+    }
+
+    /* -------------------------------------------------------------
+       SCENE 2 & 3: ARENA BATTLEFIELD (Authentic Dungeon Stone Floor)
+       ------------------------------------------------------------- */
+    .arena-battlefield {
+      width: 1440px;
+      height: 600px;
+      background-color: #101626;
+      /* Authentic repeatable stone tile texture */
+      background-image: 
+        radial-gradient(circle at center, rgba(16, 26, 48, 0.4) 0%, rgba(6, 10, 20, 0.92) 90%),
+        url('/assets/na/Backgrounds/Tilesets/TilesetDungeon.png');
+      background-size: cover, 512px 512px;
+      border: 3px solid var(--sol-cyan);
+      border-radius: 16px;
+      box-shadow: 0 0 90px rgba(3, 225, 255, 0.3), inset 0 0 80px rgba(0, 0, 0, 0.85);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .arena-hud-top {
+      position: absolute;
+      top: 24px;
+      width: 92%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 30;
+    }
+
+    .gladiator-badge {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      background: rgba(10, 16, 32, 0.94);
+      border: 2px solid var(--sol-green);
+      padding: 10px 20px;
+      border-radius: 8px;
+      box-shadow: 0 0 20px rgba(20, 241, 149, 0.3);
+    }
+
+    .gladiator-badge.foe {
+      border-color: var(--sol-purple);
+      box-shadow: 0 0 20px rgba(153, 69, 255, 0.3);
+      flex-direction: row-reverse;
+    }
+
+    .badge-avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: 6px;
+      border: 2px solid var(--sol-green);
+      image-rendering: pixelated;
+    }
+
+    .badge-avatar.foe-avatar {
+      border-color: var(--sol-purple);
+    }
+
+    .health-bar-frame {
+      width: 280px;
+      height: 18px;
+      background: #111a2f;
+      border: 2px solid #233458;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .health-bar-fill {
+      height: 100%;
+      width: 100%;
+      background: linear-gradient(90deg, #14f195, #03e1ff);
+      box-shadow: 0 0 15px rgba(20, 241, 149, 0.8);
+    }
+
+    .health-bar-fill.foe-fill {
+      background: linear-gradient(90deg, #dc1fff, #9945ff);
+      box-shadow: 0 0 15px rgba(153, 69, 255, 0.8);
+    }
+
+    .vs-emblem {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 32px;
+      color: var(--gold);
+      text-shadow: 0 0 25px var(--gold);
+    }
+
+    /* Combat Entities on Battlefield */
+    .combatant {
+      position: absolute;
+      bottom: 150px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 20;
+    }
+
+    .combatant.left-hero { left: 260px; }
+    .combatant.right-hero { right: 260px; }
+
+    .agent-diamond-mark {
+      position: absolute;
+      top: -34px;
+      background: var(--sol-purple);
+      color: #fff;
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 4px;
+      letter-spacing: 1px;
+      box-shadow: 0 0 18px var(--sol-purple);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: 'Silkscreen', monospace;
+    }
+
+    .damage-popup {
+      position: absolute;
+      font-family: 'Press Start 2P', monospace;
+      font-size: 30px;
+      color: #ffd84a;
+      text-shadow: 0 0 25px #ffd84a, 0 4px 0 #000;
+      opacity: 0;
+      z-index: 35;
+    }
+
+    /* -------------------------------------------------------------
+       SCENE 4: TOKEN ECOSYSTEM & SPOILS (With Real Material Icons)
+       ------------------------------------------------------------- */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 36px;
+      width: 1400px;
+    }
+
+    .feature-card {
+      background: rgba(13, 20, 36, 0.96);
+      border: 2px solid var(--sol-purple);
+      border-radius: 12px;
+      padding: 34px 28px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      box-shadow: 0 0 45px rgba(153, 69, 255, 0.25);
+    }
+
+    .feature-asset-icon {
+      width: 64px;
+      height: 64px;
+      margin-bottom: 18px;
+      image-rendering: pixelated;
+      filter: drop-shadow(0 0 18px var(--sol-cyan));
+    }
+
+    .feature-title {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 17px;
+      color: var(--sol-green);
+      margin-bottom: 14px;
+      line-height: 1.4;
+    }
+
+    .feature-desc {
+      font-size: 15px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    /* -------------------------------------------------------------
+       SCENE 5: GRAND FINALE WITH HERO ROSTER
+       ------------------------------------------------------------- */
+    .finale-box {
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 24px;
+      padding: 60px 110px;
+      background: rgba(10, 16, 30, 0.97);
+      border: 4px solid var(--sol-green);
+      border-radius: 18px;
+      box-shadow: 0 0 110px rgba(20, 241, 149, 0.4), inset 0 0 40px rgba(3, 225, 255, 0.2);
+    }
+
+    .hero-roster-row {
+      display: flex;
+      gap: 28px;
+      margin: 8px 0;
+    }
+
+    .roster-hero-frame {
+      width: 72px;
+      height: 72px;
+      border: 2px solid var(--sol-cyan);
+      border-radius: 8px;
+      background: #111a30;
+      image-rendering: pixelated;
+      box-shadow: 0 0 18px rgba(3, 225, 255, 0.4);
+    }
+
+    .finale-title {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 58px;
+      color: var(--white);
+      text-shadow: 0 0 40px var(--sol-green), 0 6px 0 #000;
+      letter-spacing: 4px;
+    }
+
+    .token-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 14px;
+      background: #111a2f;
+      border: 2px solid var(--gold);
+      padding: 10px 26px;
+      border-radius: 30px;
+      font-family: 'Press Start 2P', monospace;
+      font-size: 15px;
+      color: var(--gold);
+      box-shadow: 0 0 30px rgba(255, 216, 74, 0.4);
+    }
+
+    .cta-url {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 24px;
+      color: var(--sol-cyan);
+      letter-spacing: 3px;
+      text-shadow: 0 0 25px var(--sol-cyan);
+    }
+  </style>
+</head>
+<body>
+  <div id="stage">
+    <div class="scanlines"></div>
+    <div class="vignette"></div>
+    <div class="cyber-grid"></div>
+    <canvas id="particles-canvas"></canvas>
+
+    <!-- SCENE 1: The Autonomous Agent System (0s - 6s) -->
+    <div id="scene-agent-intro" class="scene">
+      <div class="top-badge">
+        <span class="dot"></span>
+        <span>WAYFARER ONLINE · AUTONOMOUS AGENT PROTOCOL</span>
+      </div>
+      <h1 class="headline headline-cyan">DEPLOY 24/7 AI AGENTS</h1>
+      <p class="subheadline">On-chain autonomous gladiators grinding, gathering, and battling non-stop for $WAYFARER token holders.</p>
+      
+      <div class="agent-terminal-card" id="agent-card">
+        <div class="terminal-section">
+          <div class="agent-face-box">
+            <img class="agent-face-img" src="/assets/na/Actor/Character/NinjaDark/Faceset.png" alt="Agent Ninja">
+            <div>
+              <div style="font-size: 18px; color: var(--sol-green); font-weight: bold;">CYBER_AGENT_#01</div>
+              <div style="font-size: 13px; color: var(--sol-cyan); margin-top: 4px;">LV.50 SHADOWBLADE AGENT</div>
+            </div>
+            <div style="margin-left: auto; background: rgba(20,241,149,0.18); border: 1px solid var(--sol-green); color: var(--sol-green); padding: 6px 12px; border-radius: 4px; font-size: 12px;">ACTIVE 24/7</div>
+          </div>
+          
+          <div class="agent-stat-row" style="margin-top: 14px;">
+            <span class="stat-label">CURRENT HUNT ZONE</span>
+            <span class="stat-val" style="color: var(--white);">EMBERDEEP CAVERNS</span>
+          </div>
+          <div class="agent-stat-row">
+            <span class="stat-label">HUNTING TARGET</span>
+            <span class="stat-val">
+              <div class="sprite-magmacrab-walk" style="width: 28px; height: 28px; background-size: 112px 112px;"></div>
+              MAGMA CRABS
+            </span>
+          </div>
+          <div class="agent-stat-row">
+            <span class="stat-label">MONSTERS SLAIN</span>
+            <span class="stat-val">1,482 KILLS</span>
+          </div>
+          <div class="agent-stat-row">
+            <span class="stat-label">SPOILS HARVESTED</span>
+            <span class="stat-val">
+              <img class="item-icon-small" src="/assets/na/Items/Resource/IronOre.png" alt="Ore"> 340 ORE
+              <img class="item-icon-small" src="/assets/na/Items/Treasure/GoldCup.png" alt="Gold"> 120 RELICS
+            </span>
+          </div>
+        </div>
+
+        <div class="terminal-section">
+          <div style="font-size: 13px; color: var(--muted); display: flex; justify-content: space-between;">
+            <span>AUTONOMOUS TELEMETRY</span>
+            <span style="color: var(--sol-cyan);">SOLANA MAINNET-BETA</span>
+          </div>
+          <div class="live-code-log" id="code-log">
+            [00:00:01] AGENT_DAEMON_ONLINE<br>
+            [00:00:02] HOLDER_VERIFIED: 2,500 $WAYFARER [PASSED]<br>
+            [00:00:03] PATHFINDING -> EMBERDEEP CAVERNS LV.18<br>
+            [00:00:04] ENGAGED: MAGMA CRAB [HP: 100%]<br>
+            [00:00:05] CAST: SHADOW VORTEX [CRIT 420 DMG]<br>
+            [00:00:06] MOB_SLAIN -> +180 XP, +1 MAGMA CORE<br>
+            [00:00:07] UNCLAIMED SPOILS: 0.85 SOL
+          </div>
+          <div class="claim-sol-btn">
+            <img class="item-icon-small" src="/assets/na/Items/Treasure/GoldBag.png" alt="Gold">
+            CLAIM 0.85 SOL SPOILS
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SCENE 2: Agent vs Player (AvP) Arena (6s - 13s) -->
+    <div id="scene-avp" class="scene">
+      <div class="top-badge">
+        <span class="dot" style="background: var(--sol-magenta); box-shadow: 0 0 14px var(--sol-magenta);"></span>
+        <span>RANKED GLADIATOR ARENA · HUMAN VS MACHINE</span>
+      </div>
+      <h1 class="headline headline-magenta">AGENT VS PLAYER (AvP)</h1>
+      <p class="subheadline">Challenge machine-learning gladiators in real-time ranked duels. Test your human mastery!</p>
+
+      <div class="arena-battlefield" id="avp-arena">
+        <div class="arena-hud-top">
+          <div class="gladiator-badge">
+            <img class="badge-avatar" src="/assets/na/Actor/Character/Knight/Faceset.png" alt="Knight">
+            <div>
+              <div style="font-size: 14px; color: var(--sol-green); font-weight: bold;">YOU (HUMAN CHAMPION)</div>
+              <div class="health-bar-frame" style="margin-top: 6px;">
+                <div class="health-bar-fill" id="avp-player-hp"></div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="vs-emblem">VS</div>
+
+          <div class="gladiator-badge foe">
+            <img class="badge-avatar foe-avatar" src="/assets/na/Actor/Character/RobotGrey/Faceset.png" alt="RobotGrey">
+            <div style="text-align: right;">
+              <div style="font-size: 14px; color: var(--sol-purple); font-weight: bold;">CYBER AGENT #82</div>
+              <div class="health-bar-frame" style="margin-top: 6px;">
+                <div class="health-bar-fill foe-fill" id="avp-foe-hp"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Left Combatant (Human Knight) -->
+        <div class="combatant left-hero" id="avp-hero-left">
+          <div class="sprite-actor sprite-knight-walk-right">
+            <img class="inhand-weapon weapon-knight" src="/assets/na/Items/Weapons/Sword/SpriteInHand.png" alt="Sword">
+          </div>
+          <div style="font-size: 12px; color: var(--sol-green); margin-top: 8px;">LV.48 KNIGHT</div>
+        </div>
+
+        <!-- Right Combatant (Cyber Agent Robot) -->
+        <div class="combatant right-hero" id="avp-hero-right">
+          <div class="agent-diamond-mark">🤖 AI AGENT</div>
+          <div class="sprite-actor sprite-robot-walk-left"></div>
+          <div style="font-size: 12px; color: var(--sol-purple); margin-top: 8px;">AGENT LV.50</div>
+        </div>
+
+        <!-- Real Custom Skill VFX Sheets -->
+        <div class="vfx-container vfx-frost-nova" id="avp-vfx-nova"></div>
+        <div class="vfx-container vfx-thunder-strike" id="avp-vfx-thunder"></div>
+        
+        <div class="damage-popup" id="avp-damage-right">420! CRIT</div>
+        <div class="damage-popup" id="avp-damage-left">285</div>
+      </div>
+    </div>
+
+    <!-- SCENE 3: Agent vs Agent (AvA) Colosseum (13s - 20s) -->
+    <div id="scene-ava" class="scene">
+      <div class="top-badge">
+        <span class="dot" style="background: var(--sol-purple); box-shadow: 0 0 14px var(--sol-purple);"></span>
+        <span>24/7 AUTOMATED COLOSSEUM · AGENT MATCHMAKING</span>
+      </div>
+      <h1 class="headline headline-green">AGENT VS AGENT (AvA)</h1>
+      <p class="subheadline">Queue your agent into 24/7 autonomous tournaments. Watch your gladiator climb the global leaderboards!</p>
+
+      <div class="arena-battlefield" id="ava-arena">
+        <div class="arena-hud-top">
+          <div class="gladiator-badge">
+            <img class="badge-avatar" src="/assets/na/Actor/Character/SorcererOrange/Faceset.png" alt="Sorcerer">
+            <div>
+              <div style="font-size: 14px; color: var(--sol-cyan); font-weight: bold;">HOLDER_AGENT_ALPHA</div>
+              <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">RATING 1540 (DIAMOND)</div>
+              <div class="health-bar-frame" style="margin-top: 6px;">
+                <div class="health-bar-fill" id="ava-alpha-hp"></div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="vs-emblem">VS</div>
+
+          <div class="gladiator-badge foe">
+            <img class="badge-avatar foe-avatar" src="/assets/na/Actor/Character/GladiatorBlue/Faceset.png" alt="Gladiator">
+            <div style="text-align: right;">
+              <div style="font-size: 14px; color: var(--sol-magenta); font-weight: bold;">HOLDER_AGENT_OMEGA</div>
+              <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">RATING 1515 (DIAMOND)</div>
+              <div class="health-bar-frame" style="margin-top: 6px;">
+                <div class="health-bar-fill foe-fill" id="ava-omega-hp"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Left Combatant (Agent Sorcerer Alpha) -->
+        <div class="combatant left-hero" id="ava-hero-left">
+          <div class="agent-diamond-mark" style="background: var(--sol-cyan); box-shadow: 0 0 15px var(--sol-cyan);">🤖 AGENT ALPHA</div>
+          <div class="sprite-actor sprite-sorcerer-walk-right">
+            <img class="inhand-weapon weapon-knight" src="/assets/na/Items/Weapons/MagicWand/SpriteInHand.png" alt="Wand">
+          </div>
+        </div>
+
+        <!-- Right Combatant (Agent Gladiator Omega) -->
+        <div class="combatant right-hero" id="ava-hero-right">
+          <div class="agent-diamond-mark" style="background: var(--sol-magenta); box-shadow: 0 0 15px var(--sol-magenta);">🤖 AGENT OMEGA</div>
+          <div class="sprite-actor sprite-gladiator-walk-left">
+            <img class="inhand-weapon weapon-gladiator" src="/assets/na/Items/Weapons/Katana/SpriteInHand.png" alt="Katana">
+          </div>
+        </div>
+
+        <!-- Real Skill VFX Sheets -->
+        <div class="vfx-container vfx-shadow-vortex" id="ava-vfx-vortex"></div>
+        <div class="vfx-container vfx-holy-radiance" id="ava-vfx-radiance"></div>
+
+        <div class="damage-popup" id="ava-damage-right">530! CRIT</div>
+        <div class="damage-popup" id="ava-damage-left">310</div>
+      </div>
+    </div>
+
+    <!-- SCENE 4: Token Utility & Rewards (20s - 25s) -->
+    <div id="scene-rewards" class="scene">
+      <div class="top-badge">
+        <span class="dot"></span>
+        <span>$WAYFARER TOKEN ECOSYSTEM</span>
+      </div>
+      <h1 class="headline headline-cyan">TOKEN HOLDER UTILITY</h1>
+      <p class="subheadline">Empowering players and token holders with automated utility, real-time staking yield, and competitive glory.</p>
+
+      <div class="features-grid">
+        <div class="feature-card" id="fcard-1">
+          <img class="feature-asset-icon" src="/assets/na/Items/Potion/LifePot.png" alt="Potion">
+          <div class="feature-title">24/7 AGENT UPTIME</div>
+          <div class="feature-desc">Autonomous server execution. Your agent levels up, farms rare dungeon mats, and gathers even while you sleep.</div>
+        </div>
+
+        <div class="feature-card" id="fcard-2">
+          <img class="feature-asset-icon" src="/assets/na/Items/Weapons/BigSword/SpriteInHand.png" alt="Sword">
+          <div class="feature-title">AVP & AVA ARENAS</div>
+          <div class="feature-desc">Climb ranked matchmaking leaderboards. Duel AI agents or pit your gladiator against other token holders for trophies.</div>
+        </div>
+
+        <div class="feature-card" id="fcard-3">
+          <img class="feature-asset-icon" src="/assets/na/Items/Treasure/GoldBag.png" alt="Gold">
+          <div class="feature-title">SOL CLAIMS & SPOILS</div>
+          <div class="feature-desc">Claim token spoils directly to your Phantom/Solana wallet. Honest on-chain distribution with zero friction.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SCENE 5: Grand Finale CTA (25s - 30s) -->
+    <div id="scene-finale" class="scene">
+      <div class="finale-box" id="finale-card">
+        <div class="token-pill">
+          <img style="width: 22px; height: 22px; image-rendering: pixelated;" src="/assets/na/Items/Treasure/GoldCup.png" alt="Cup">
+          POWERED BY $WAYFARER ON SOLANA
+        </div>
+        <h1 class="finale-title">WAYFARER ONLINE</h1>
+        
+        <div class="hero-roster-row">
+          <img class="roster-hero-frame" src="/assets/na/Actor/Character/Knight/Faceset.png" alt="Knight">
+          <img class="roster-hero-frame" src="/assets/na/Actor/Character/NinjaDark/Faceset.png" alt="Ninja">
+          <img class="roster-hero-frame" src="/assets/na/Actor/Character/SorcererOrange/Faceset.png" alt="Sorcerer">
+          <img class="roster-hero-frame" src="/assets/na/Actor/Character/GladiatorBlue/Faceset.png" alt="Gladiator">
+          <img class="roster-hero-frame" src="/assets/na/Actor/Character/RobotGrey/Faceset.png" alt="Robot">
+        </div>
+
+        <p style="font-size: 20px; color: var(--sol-green); letter-spacing: 2px;">ACTION RPG · 16-BIT RETRO GLORY · AI GLADIATORS</p>
+        <div style="font-size: 17px; color: var(--muted); max-width: 850px; line-height: 1.5;">
+          Play as a human champion, or deploy your autonomous AI gladiator to rule the arena.
+        </div>
+        <div class="cta-url">PLAY.WAYFARER.ONLINE</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // -------------------------------------------------------------
+    // Canvas Particles System
+    // -------------------------------------------------------------
+    const canvas = document.getElementById('particles-canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = 1920;
+    canvas.height = 1080;
+
+    const colors = ['#14f195', '#9945ff', '#03e1ff', '#dc1fff', '#ffd84a'];
+    const particles = [];
+
+    for (let i = 0; i < 70; i++) {
+      particles.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        size: Math.random() * 4 + 2,
+        speedX: (Math.random() - 0.5) * 1.5,
+        speedY: (Math.random() - 0.5) * 1.5 - 0.5,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        alpha: Math.random() * 0.7 + 0.3
+      });
+    }
+
+    function renderParticles() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      for (const p of particles) {
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = p.alpha;
+        ctx.fillRect(p.x, p.y, p.size, p.size);
+        p.x += p.speedX;
+        p.y += p.speedY;
+        if (p.x < 0) p.x = canvas.width;
+        if (p.x > canvas.width) p.x = 0;
+        if (p.y < 0) p.y = canvas.height;
+        if (p.y > canvas.height) p.y = 0;
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // -------------------------------------------------------------
+    // GSAP Master Timeline (Exact 30s @ 60FPS)
+    // -------------------------------------------------------------
+    const tl = gsap.timeline({ paused: false });
+    window.__timelines = { "agent_arena_trailer": tl };
+
+    // Scene 1: Agent Daemon Intro (0s - 6s)
+    tl.set('#scene-agent-intro', { autoAlpha: 1 })
+      .from('#scene-agent-intro .headline', { y: -40, opacity: 0, duration: 0.8, ease: 'back.out(1.4)' }, 0.2)
+      .from('#scene-agent-intro .subheadline', { opacity: 0, duration: 0.6 }, 0.5)
+      .from('#agent-card', { scale: 0.9, opacity: 0, duration: 0.8, ease: 'power3.out' }, 0.6)
+      .to('#code-log', {
+        scrollTop: 110,
+        duration: 4,
+        ease: 'none'
+      }, 1.2)
+      .to('#scene-agent-intro', { autoAlpha: 0, duration: 0.5 }, 5.5);
+
+    // Scene 2: Agent vs Player (6s - 13s)
+    tl.set('#scene-avp', { autoAlpha: 1 }, 5.8)
+      .from('#scene-avp .headline', { y: -40, opacity: 0, duration: 0.8, ease: 'back.out(1.4)' }, 6.0)
+      .from('#avp-arena', { scale: 0.92, opacity: 0, duration: 0.7, ease: 'power3.out' }, 6.3)
+      .from('#avp-hero-left', { x: -100, opacity: 0, duration: 0.6, ease: 'power2.out' }, 6.7)
+      .from('#avp-hero-right', { x: 100, opacity: 0, duration: 0.6, ease: 'power2.out' }, 6.7)
+      
+      // Knight charges & bursts Thunder Strike on Robot Agent
+      .to('#avp-hero-left', { x: 260, duration: 0.28, yoyo: true, repeat: 1, ease: 'power2.in' }, 7.6)
+      .set('#avp-vfx-thunder', { left: '1000px', top: '220px', opacity: 1 }, 7.85)
+      .to('#avp-vfx-thunder', { opacity: 0, duration: 0.45 }, 8.3)
+      .fromTo('#avp-damage-right', { left: '1000px', top: '200px', opacity: 1, scale: 1.5 }, { y: -60, opacity: 0, duration: 0.8 }, 7.9)
+      .to('#avp-foe-hp', { width: '45%', duration: 0.4 }, 7.9)
+
+      // Robot Agent Counter-Attacks with Frost Nova
+      .to('#avp-hero-right', { x: -260, duration: 0.28, yoyo: true, repeat: 1, ease: 'power2.in' }, 9.3)
+      .set('#avp-vfx-nova', { left: '320px', top: '220px', opacity: 1 }, 9.55)
+      .to('#avp-vfx-nova', { opacity: 0, duration: 0.5 }, 10.0)
+      .fromTo('#avp-damage-left', { left: '340px', top: '190px', opacity: 1, scale: 1.5 }, { y: -60, opacity: 0, duration: 0.8 }, 9.6)
+      .to('#avp-player-hp', { width: '68%', duration: 0.4 }, 9.6)
+      .to('#scene-avp', { autoAlpha: 0, duration: 0.5 }, 12.5);
+
+    // Scene 3: Agent vs Agent (13s - 20s)
+    tl.set('#scene-ava', { autoAlpha: 1 }, 12.8)
+      .from('#scene-ava .headline', { y: -40, opacity: 0, duration: 0.8, ease: 'back.out(1.4)' }, 13.0)
+      .from('#ava-arena', { scale: 0.92, opacity: 0, duration: 0.7, ease: 'power3.out' }, 13.3)
+      .from('#ava-hero-left', { x: -100, opacity: 0, duration: 0.6, ease: 'power2.out' }, 13.6)
+      .from('#ava-hero-right', { x: 100, opacity: 0, duration: 0.6, ease: 'power2.out' }, 13.6)
+      
+      // Agent Alpha casts Shadow Vortex
+      .to('#ava-hero-left', { x: 240, duration: 0.28, yoyo: true, repeat: 1 }, 14.5)
+      .set('#ava-vfx-vortex', { left: '1020px', top: '230px', opacity: 1 }, 14.75)
+      .to('#ava-vfx-vortex', { opacity: 0, duration: 0.5 }, 15.2)
+      .fromTo('#ava-damage-right', { left: '1020px', top: '200px', opacity: 1, scale: 1.6 }, { y: -60, opacity: 0, duration: 0.8 }, 14.8)
+      .to('#ava-omega-hp', { width: '35%', duration: 0.4 }, 14.8)
+
+      // Agent Omega counters with Holy Radiance
+      .to('#ava-hero-right', { x: -240, duration: 0.28, yoyo: true, repeat: 1 }, 16.3)
+      .set('#ava-vfx-radiance', { left: '330px', top: '220px', opacity: 1 }, 16.55)
+      .to('#ava-vfx-radiance', { opacity: 0, duration: 0.5 }, 17.0)
+      .fromTo('#ava-damage-left', { left: '340px', top: '190px', opacity: 1, scale: 1.6 }, { y: -60, opacity: 0, duration: 0.8 }, 16.6)
+      .to('#ava-alpha-hp', { width: '52%', duration: 0.4 }, 16.6)
+      .to('#scene-ava', { autoAlpha: 0, duration: 0.5 }, 19.5);
+
+    // Scene 4: Token Holder Rewards (20s - 25s)
+    tl.set('#scene-rewards', { autoAlpha: 1 }, 19.8)
+      .from('#scene-rewards .headline', { y: -40, opacity: 0, duration: 0.8, ease: 'back.out(1.4)' }, 20.0)
+      .from('#fcard-1', { y: 60, opacity: 0, duration: 0.6, ease: 'back.out(1.2)' }, 20.4)
+      .from('#fcard-2', { y: 60, opacity: 0, duration: 0.6, ease: 'back.out(1.2)' }, 20.7)
+      .from('#fcard-3', { y: 60, opacity: 0, duration: 0.6, ease: 'back.out(1.2)' }, 21.0)
+      .to('#scene-rewards', { autoAlpha: 0, duration: 0.5 }, 24.5);
+
+    // Scene 5: Grand Finale CTA (25s - 30s)
+    tl.set('#scene-finale', { autoAlpha: 1 }, 24.8)
+      .from('#finale-card', { scale: 0.8, opacity: 0, duration: 0.9, ease: 'elastic.out(1, 0.75)' }, 25.0)
+      .from('#finale-card .finale-title', { y: -30, opacity: 0, duration: 0.6 }, 25.4)
+      .from('.hero-roster-row', { scale: 0.85, opacity: 0, duration: 0.6 }, 25.6)
+      .from('#finale-card .token-pill', { scale: 0.8, opacity: 0, duration: 0.5 }, 25.8)
+      .from('#finale-card .cta-url', { opacity: 0, duration: 0.6 }, 26.0);
+
+    // Continuous tick loop for particle canvas
+    gsap.ticker.add(renderParticles);
+  </script>
+</body>
+</html>

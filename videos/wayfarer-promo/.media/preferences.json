@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "preferences": {
+    "destination": {
+      "value": "youtube",
+      "confirmed_in": [
+        "wayfarer-promo"
+      ],
+      "updated_at": "2026-10-07T03:33:51.186Z"
+    },
+    "aspect": {
+      "value": "1920x1080",
+      "confirmed_in": [
+        "wayfarer-promo"
+      ],
+      "updated_at": "2026-10-07T03:33:51.378Z"
+    },
+    "language": {
+      "value": "en",
+      "confirmed_in": [
+        "wayfarer-promo"
+      ],
+      "updated_at": "2026-10-07T03:33:51.579Z"
+    },
+    "flow": {
+      "value": "automation",
+      "confirmed_in": [
+        "wayfarer-promo"
+      ],
+      "updated_at": "2026-10-07T03:33:51.735Z"
+    },
+    "storyboard": {
+      "value": "no",
+      "confirmed_in": [
+        "wayfarer-promo"
+      ],
+      "updated_at": "2026-10-07T03:33:51.926Z"
+    },
+    "style_preset.product-launch-video": {
+      "value": "broadside",
+      "confirmed_in": [
+        "wayfarer-promo"
+      ],
+      "updated_at": "2026-10-07T03:33:52.076Z"
+    }
+  },
+  "sightings": {}
+}

@@ -149,7 +149,8 @@ export class WayfarerRoom extends Room {
       'pet-duel', 'economy', 'mail', 'market', 'referral', 'world-boss', 'social-error',
       'season:getState', 'season:earnXp', 'season:claim', 'season:upgradePremium', 'season:state', 'season:xp', 'season:claimed', 'season:premium', 'season:error',
       'lfg:queue', 'lfg:cancel', 'lfg:accept', 'lfg:queued', 'lfg:waiting', 'lfg:match', 'dungeon:enter', 'dungeon:wave', 'dungeon:complete', 'dungeon:match',
-      'arena:queue', 'arena:leave', 'arena:challenge', 'arena:accept', 'arena:decline', 'arena:report', 'arena:rating', 'arena:queued', 'arena:match', 'arena:declined', 'arena:result', 'arena:error',
+      'arena:queue', 'arena:leave', 'arena:agent-queue', 'arena:agent-leave', 'arena:challenge', 'arena:accept', 'arena:decline', 'arena:report', 'arena:rating', 'arena:queued', 'arena:agent-queued', 'arena:match', 'arena:declined', 'arena:result', 'arena:combat-state', 'arena:combat-result', 'arena:error', 'pvp-hit-confirm',
+      'agent-hire', 'agent-hire-state', 'agent-hire-result',
     ]);
     this.onMessage('*', (client, type, m) => {
       STATS.msgsIn++;
@@ -255,7 +256,7 @@ export class WayfarerRoom extends Room {
     for (const [sid, q] of this.players) {
       if (sid === client.sessionId) continue;
       const pj = { sessionId: sid, name: q.name, hero: q.hero, a: q.a, dc: q.dc ? 1 : 0 };
-      if (q.agent) { pj.agent = 1; pj.ownerSid = q.ownerSid; } // badge agents vs real players
+      if (q.agent) { pj.agent = 1; pj.ownerSid = q.ownerSid; if (q.hireling) { pj.hireling = 1; pj.intelligence = q.b?.intelligence || 1; } } // badge agents vs real players
       this.sendTo(client, 'peer-join', pj);
     }
     try { social?.onJoin?.(this, client, p); } catch (e) { log.error('social.onJoin failed', { err: e.message }); }
@@ -289,7 +290,7 @@ export class WayfarerRoom extends Room {
         for (const [sid, q] of this.players) {
           if (sid === back.sessionId) continue;
           const pj = { sessionId: sid, name: q.name, hero: q.hero, a: q.a, dc: q.dc ? 1 : 0 };
-          if (q.agent) { pj.agent = 1; pj.ownerSid = q.ownerSid; }
+          if (q.agent) { pj.agent = 1; pj.ownerSid = q.ownerSid; if (q.hireling) { pj.hireling = 1; pj.intelligence = q.b?.intelligence || 1; } }
           this.sendTo(back, 'peer-join', pj);
         }
         this.sendDeadList(back, p.a);
@@ -343,7 +344,7 @@ export class WayfarerRoom extends Room {
       const ownerSid = agent && agent.ownerSid;
       if (!ownerSid || !this.agentStore) return;
       const owner = this.players.get(ownerSid);
-      if (!owner || !owner.token) return; // owner left: stop booking for this session
+      if (!owner || !owner.token || agent.hireling) return; // hired NPCs never accrue wallet-agent rewards
       const FIND = { wood: 6000, ore: 12000, stone: 8000, herb: 4000, fish: 5000 };
       const AR = nodeRequire('./agentRewards.cjs');
       this.agentStore.recordFind(owner.token, {
@@ -367,7 +368,7 @@ export class WayfarerRoom extends Room {
       const ent = await entitlementFor(this, sid);
       if (!ent || !ent.eligible) return null;
       const cur = this.players.get(sid);
-      if (!cur) return null; // left while the lookup was in flight
+      if (!cur || this.agents.list().some((a) => a && a.ownerSid === sid)) return null; // left or hired another companion during lookup
       const rec = this.agents.spawn({ ownerSid: sid, a: cur.a || 'ow', x: cur.x, y: cur.y });
       log.info('agent spawned for owner', { sid, name: rec && rec.name, reason: ent.reason });
       return rec;

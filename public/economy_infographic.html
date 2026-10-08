@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wayfarer Online — Dual-Layer Economy & Token Architecture</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Silkscreen:wght@400;700&family=JetBrains+Mono:wght@400;600;700&display=swap');
+
+    :root {
+      --bg: #070a12;
+      --panel: #0d1424;
+      --panel-border: #1a2540;
+      --sol-green: #14f195;
+      --sol-purple: #9945ff;
+      --sol-cyan: #03e1ff;
+      --sol-magenta: #dc1fff;
+      --gold: #ffd84a;
+      --white: #f0f6fc;
+      --muted: #8493b2;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #050811;
+      color: var(--white);
+      font-family: 'Silkscreen', monospace;
+      padding: 40px 20px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      overflow-x: auto;
+    }
+
+    .container {
+      width: 1440px;
+      background: radial-gradient(circle at center, #0e172e 0%, #060914 90%);
+      border: 3px solid var(--sol-purple);
+      border-radius: 20px;
+      box-shadow: 0 0 100px rgba(153, 69, 255, 0.25), inset 0 0 80px rgba(0, 0, 0, 0.85);
+      padding: 50px 60px;
+      position: relative;
+    }
+
+    /* Header */
+    .header {
+      text-align: center;
+      margin-bottom: 45px;
+    }
+
+    .pill-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: #111a30;
+      border: 2px solid var(--sol-cyan);
+      padding: 8px 22px;
+      border-radius: 30px;
+      font-size: 13px;
+      letter-spacing: 2px;
+      color: var(--sol-cyan);
+      box-shadow: 0 0 25px rgba(3, 225, 255, 0.35);
+      margin-bottom: 18px;
+    }
+
+    .pill-badge .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--sol-green);
+      box-shadow: 0 0 10px var(--sol-green);
+    }
+
+    .main-title {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 36px;
+      color: var(--white);
+      text-shadow: 0 0 35px var(--sol-green), 0 4px 0 #000;
+      letter-spacing: 2px;
+      margin-bottom: 14px;
+    }
+
+    .subtitle {
+      font-size: 17px;
+      color: var(--muted);
+      max-width: 900px;
+      margin: 0 auto;
+      line-height: 1.6;
+    }
+
+    /* Architecture Grid (3 Columns) */
+    .arch-grid {
+      display: grid;
+      grid-template-columns: 1fr 0.3fr 1fr;
+      gap: 24px;
+      align-items: stretch;
+      margin-bottom: 40px;
+      position: relative;
+    }
+
+    /* Section Pillar */
+    .pillar-card {
+      background: rgba(13, 20, 36, 0.95);
+      border-radius: 14px;
+      padding: 30px 26px;
+      display: flex;
+      flex-direction: column;
+      gap: 22px;
+      box-shadow: 0 0 40px rgba(0, 0, 0, 0.6);
+      position: relative;
+    }
+
+    .pillar-ingame {
+      border: 2px solid var(--sol-cyan);
+      box-shadow: 0 0 45px rgba(3, 225, 255, 0.2);
+    }
+
+    .pillar-crypto {
+      border: 2px solid var(--sol-purple);
+      box-shadow: 0 0 45px rgba(153, 69, 255, 0.2);
+    }
+
+    .pillar-header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding-bottom: 16px;
+      border-bottom: 2px solid #1a2542;
+    }
+
+    .pillar-icon {
+      font-size: 32px;
+      width: 54px;
+      height: 54px;
+      background: #121c33;
+      border: 2px solid #233458;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .pillar-title {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 17px;
+      letter-spacing: 1px;
+    }
+
+    .pillar-sub {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
+    /* Sub-Boxes within Pillars */
+    .box-group {
+      background: #090e1c;
+      border: 1px solid #1c2a4a;
+      border-radius: 10px;
+      padding: 18px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .box-title {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .flow-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      font-size: 14px;
+      line-height: 1.5;
+      padding: 8px 12px;
+      background: #111a30;
+      border-radius: 6px;
+    }
+
+    .flow-tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: bold;
+      padding: 3px 8px;
+      border-radius: 4px;
+      white-space: nowrap;
+    }
+
+    .tag-green { background: rgba(20,241,149,0.18); color: var(--sol-green); border: 1px solid var(--sol-green); }
+    .tag-purple { background: rgba(153,69,255,0.18); color: var(--sol-purple); border: 1px solid var(--sol-purple); }
+    .tag-cyan { background: rgba(3,225,255,0.18); color: var(--sol-cyan); border: 1px solid var(--sol-cyan); }
+    .tag-gold { background: rgba(255,216,74,0.18); color: var(--gold); border: 1px solid var(--gold); }
+    .tag-red { background: rgba(232,86,74,0.18); color: #e8564a; border: 1px solid #e8564a; }
+
+    /* Center Connector / Bridge */
+    .bridge-column {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 20px;
+      text-align: center;
+    }
+
+    .bridge-node {
+      background: #0f182e;
+      border: 2px solid var(--gold);
+      border-radius: 12px;
+      padding: 20px 14px;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      box-shadow: 0 0 30px rgba(255, 216, 74, 0.3);
+    }
+
+    .bridge-icon { font-size: 28px; }
+    .bridge-title { font-family: 'Press Start 2P', monospace; font-size: 11px; color: var(--gold); line-height: 1.4; }
+    .bridge-desc { font-size: 11px; color: var(--muted); line-height: 1.4; }
+
+    .arrow-sync {
+      font-size: 24px;
+      color: var(--sol-cyan);
+      animation: bounceSync 1.5s infinite alternate ease-in-out;
+    }
+
+    @keyframes bounceSync {
+      0% { transform: scale(1); opacity: 0.7; }
+      100% { transform: scale(1.2); opacity: 1; }
+    }
+
+    /* Bottom Summary Ledger Banner */
+    .ledger-banner {
+      background: rgba(10, 15, 28, 0.98);
+      border: 2px solid var(--sol-green);
+      border-radius: 12px;
+      padding: 24px 32px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 24px;
+      box-shadow: 0 0 50px rgba(20, 241, 149, 0.25);
+    }
+
+    .metric-box {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      border-left: 3px solid var(--sol-green);
+      padding-left: 14px;
+    }
+
+    .metric-label { font-size: 12px; color: var(--muted); }
+    .metric-val { font-family: 'Press Start 2P', monospace; font-size: 15px; color: var(--white); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <div class="pill-badge">
+        <span class="dot"></span>
+        <span>WAYFARER ONLINE · ECONOMIC BLUEPRINT</span>
+      </div>
+      <h1 class="main-title">DUAL-LAYER ECONOMY</h1>
+      <p class="subtitle">Complete visual architecture of in-game MMORPG progression loops, autonomous agent daemon mechanics, and on-chain $WAYFARER Solana tokenomics.</p>
+    </div>
+
+    <!-- 3-Column Architecture Grid -->
+    <div class="arch-grid">
+      
+      <!-- PILLAR 1: IN-GAME MMORPG ECONOMY -->
+      <div class="pillar-card pillar-ingame">
+        <div class="pillar-header">
+          <div class="pillar-icon">⚔️</div>
+          <div>
+            <div class="pillar-title" style="color: var(--sol-cyan);">IN-GAME MMORPG</div>
+            <div class="pillar-sub">Virtual Gameplay & Sinks</div>
+          </div>
+        </div>
+
+        <!-- Inflows (Sources) -->
+        <div class="box-group">
+          <div class="box-title" style="color: var(--sol-green);">
+            <span>GOLD & LOOT INFLOWS</span>
+            <span class="flow-tag tag-green">FAUCETS</span>
+          </div>
+          <div class="flow-item">
+            <span class="flow-tag tag-cyan">DUNGEONS</span>
+            <div>Monster slay drops, world boss treasure chests & $WAYFARER gold tokens.</div>
+          </div>
+          <div class="flow-item">
+            <span class="flow-tag tag-cyan">GATHERING</span>
+            <div>Herbs, iron/bone ore veins, oak logs & rare fishing catches.</div>
+          </div>
+          <div class="flow-item">
+            <span class="flow-tag tag-cyan">CRAFTING</span>
+            <div>Blacksmithing high-tier weapons, alchemy potions & cooking.</div>
+          </div>
+        </div>
+
+        <!-- Outflows (Sinks) -->
+        <div class="box-group">
+          <div class="box-title" style="color: #e8564a;">
+            <span>ECONOMIC SINKS</span>
+            <span class="flow-tag tag-red">DEFLATION</span>
+          </div>
+          <div class="flow-item">
+            <span class="flow-tag tag-red">NPC VENDORS</span>
+            <div>Gear repairs, potion consumables, return scrolls & town taxes.</div>
+          </div>
+          <div class="flow-item">
+            <span class="flow-tag tag-red">RESPEC / ANVIL</span>
+            <div>Gold sink fees for skill resets, gear reforging & gem socketing.</div>
+          </div>
+          <div class="flow-item">
+            <span class="flow-tag tag-red">HOUSING</span>
+            <div>Guild hall expansions, furniture blueprints & real estate fees.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PILLAR 2: THE BRIDGE & ESCROW LAYER -->
+      <div class="bridge-column">
+        <div class="bridge-node">
+          <div class="bridge-icon">🔒</div>
+          <div class="bridge-title">ESCROW PROTOCOL</div>
+          <div class="bridge-desc">Secure P2P Trading with 2.5% protocol fee deducted from gold volume.</div>
+        </div>
+
+        <div class="arrow-sync">⇄</div>
+
+        <div class="bridge-node">
+          <div class="bridge-icon">🤖</div>
+          <div class="bridge-title">AGENT BRIDGE</div>
+          <div class="bridge-desc">Verifies $5 USD token holding threshold to activate 24/7 daemon.</div>
+        </div>
+
+        <div class="arrow-sync">⇄</div>
+
+        <div class="bridge-node">
+          <div class="bridge-icon">🔥</div>
+          <div class="bridge-title">TREASURY / BURN</div>
+          <div class="bridge-desc">Collected trade fees split into deflationary burns & staker pools.</div>
+        </div>
+      </div>
+
+      <!-- PILLAR 3: CRYPTO & TOKEN ECONOMY -->
+      <div class="pillar-card pillar-crypto">
+        <div class="pillar-header">
+          <div class="pillar-icon">💎</div>
+          <div>
+            <div class="pillar-title" style="color: var(--sol-purple);">SOLANA & TOKEN LAYER</div>
+            <div class="pillar-sub">$WAYFARER Token & Agents</div>
+          </div>
+        </div>
+
+        <!-- Token Holder Privileges -->
+        <div class="box-group">
+          <div class="box-title" style="color: var(--sol-purple);">
+            <span>TOKEN UTILITY</span>
+            <span class="flow-tag tag-purple">ON-CHAIN</span>
+          </div>
+          <div class="flow-item">
+            <span class="flow-tag tag-purple">$WAYFARER</span>
+            <div>Governance, token staking, guild leaderboards & marketplace fees.</div>
+          </div>
+          <div class="flow-item">
+            <span class="flow-tag tag-purple">24/7 AGENTS</span>
+            <div>Token holders deploy autonomous AI gladiators that farm 24/7.</div>
+          </div>
+          <div class="flow-item">
+            <span class="flow-tag tag-purple">ARENA TOURNAMENTS</span>
+            <div>Agent-vs-Player (AvP) & Agent-vs-Agent (AvA) ranked Colosseum.</div>
+          </div>
+        </div>
+
+        <!-- Yield & Spoils Distribution -->
+        <div class="box-group">
+          <div class="box-title" style="color: var(--gold);">
+            <span>YIELD & CLAIMS</span>
+            <span class="flow-tag tag-gold">REWARDS</span>
+          </div>
+          <div class="flow-item">
+            <span class="flow-tag tag-gold">SOL FOUND</span>
+            <div>Auditable per-player reward ledger of SOL found during agent runs.</div>
+          </div>
+          <div class="flow-item">
+            <span class="flow-tag tag-gold">2-PHASE CLAIM</span>
+            <div>Honest idempotent claim verification directly into Solana wallet.</div>
+          </div>
+          <div class="flow-item">
+            <span class="flow-tag tag-gold">GLORY TROPHIES</span>
+            <div>Ranked Diamond/Master seasonal rewards & exclusive vanity mints.</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Bottom Metrics & Safety Summary -->
+    <div class="ledger-banner">
+      <div class="metric-box">
+        <div class="metric-label">ESCROW TRADE FEE</div>
+        <div class="metric-val" style="color: var(--sol-cyan);">2.5% FLAT</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-label">AGENT ACCESS THRESHOLD</div>
+        <div class="metric-val" style="color: var(--sol-purple);">$5.00 USD HOLD</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-label">CLAIM PROTOCOL</div>
+        <div class="metric-val" style="color: var(--sol-green);">2-PHASE IDEMPOTENT</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-label">SETTLEMENT NETWORK</div>
+        <div class="metric-val" style="color: var(--gold);">SOLANA HIGH-TPS</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

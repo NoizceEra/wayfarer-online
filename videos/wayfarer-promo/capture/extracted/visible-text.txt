@@ -1,0 +1,5 @@
+[h1] Wayfarer Online
+[div] A COZY OPEN WORLD
+[div] LOADING 100%
+[div] Tip: Skills 1-6 sit on the number keys. Press H any time for all hotkeys.
+[div] ○ Solo · server up (88 ms) · 0 online

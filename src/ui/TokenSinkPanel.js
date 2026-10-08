@@ -1,11 +1,13 @@
 import { econ } from '../net/economyNet.js';
 import { bus, Events } from '../core/events.js';
 import { el, panel } from './econDom.js';
+import { DYES, gearById } from '../data/gear.js';
 
 // TokenSinkPanel — bought with Wayfarer Tokens (server-authoritative balance).
 // Accessible via /sinks. Covers orb upgrades, premium revive (display only:
 // the actual offer comes from reviveSystem.js), pet rename, stash expansion,
-// and the daily token-claim cap.
+// and the daily token-claim cap. Gear dyes are cosmetic and paid from the
+// in-game Wayfarer Token balance, never directly from a connected wallet.
 export class TokenSinkPanel {
   constructor() {
     const { p, title } = panel('ec-sinks', 'WAYFARER TOKEN SINKS', () => this.close());
@@ -57,6 +59,10 @@ export class TokenSinkPanel {
     b.appendChild(el('div', 'ec-h', 'STASH EXPANSION'));
     this.stashBox = el('div', 'ec-row', '', { style: 'flex-direction:column;align-items:stretch;gap:6px' });
     b.appendChild(this.stashBox);
+
+    b.appendChild(el('div', 'ec-h', 'GEAR DYES'));
+    this.dyeBox = el('div', 'ec-row', '', { style: 'flex-direction:column;align-items:stretch;gap:6px' });
+    b.appendChild(this.dyeBox);
   }
 
   render() {
@@ -73,6 +79,7 @@ export class TokenSinkPanel {
     this._renderRevive(tokens);
     this._renderPetRename(tokens, p);
     this._renderStash(tokens);
+    this._renderDyes(tokens, p);
   }
 
   _orbStock(p) {
@@ -196,5 +203,51 @@ export class TokenSinkPanel {
     });
     row.appendChild(btn);
     b.appendChild(row);
+  }
+
+  _renderDyes(tokens, p) {
+    const b = this.dyeBox; b.innerHTML = '';
+    b.appendChild(el('div', 'ec-dim', 'Apply a permanent color to gear you own. Cosmetic only; 20 in-game Wayfarer Tokens per color change.'));
+    const inventory = p?.inventory || [];
+    const equipped = Object.values(p?.equipped || {});
+    const ids = [...new Set([...equipped, ...inventory])].filter((id) => gearById(id)?.dyeable !== false);
+    if (!ids.length) {
+      b.appendChild(el('div', 'ec-dim', 'Find or equip dyeable gear to use this service.'));
+      return;
+    }
+
+    const itemSelect = el('select', '');
+    const itemPlaceholder = document.createElement('option');
+    itemPlaceholder.value = ''; itemPlaceholder.textContent = 'Choose your gear'; itemSelect.appendChild(itemPlaceholder);
+    for (const id of ids) {
+      const option = document.createElement('option');
+      option.value = id; option.textContent = gearById(id).name;
+      itemSelect.appendChild(option);
+    }
+    const priorItem = ids.includes(this.dyeItem) ? this.dyeItem : ids[0];
+    itemSelect.value = priorItem;
+    this.dyeItem = priorItem;
+    itemSelect.addEventListener('change', () => { this.dyeItem = itemSelect.value; this.render(); });
+
+    const dyeSelect = el('select', '');
+    for (const dye of DYES) {
+      const option = document.createElement('option');
+      option.value = dye.id; option.textContent = dye.name;
+      dyeSelect.appendChild(option);
+    }
+    const currentDye = p?.dyes?.[priorItem];
+    const firstDifferent = DYES.find((dye) => dye.id !== currentDye)?.id || DYES[0].id;
+    if (!DYES.some((dye) => dye.id === this.dyeColor && dye.id !== currentDye)) this.dyeColor = firstDifferent;
+    dyeSelect.value = this.dyeColor;
+    dyeSelect.addEventListener('change', () => { this.dyeColor = dyeSelect.value; this.render(); });
+
+    const apply = el('button', '', `Apply color (20 tokens)`);
+    apply.disabled = !econ.online || tokens < 20 || !priorItem || !this.dyeColor || currentDye === this.dyeColor;
+    apply.addEventListener('click', () => {
+      if (apply.disabled) return;
+      econ.spendTokens('gear-dye', 20, { itemId: priorItem, dyeId: this.dyeColor });
+    });
+    b.append(itemSelect, dyeSelect, apply);
+    b.appendChild(el('div', 'ec-dim', 'This uses the game balance shown above. It does not send an SPL token transaction from your wallet.'));
   }
 }

@@ -25,6 +25,10 @@ export const CAPS = {
   matStack: 99, matGainBase: 30, matGainPerSec: 0.5,
 };
 
+// Server-side appearance allowlists for revisioned gear dye purchases.
+export const DYE_IDS = new Set(['crimson', 'ember', 'sun', 'moss', 'teal', 'sky', 'tide', 'violet', 'rose', 'cocoa', 'sand', 'snow', 'ash', 'night', 'gold', 'plum']);
+export const NON_DYEABLE_GEAR = new Set(['honed_edge', 'steel_brand', 'woodsman_axe', 'stonemaul', 'yew_bow', 'hunter_bow', 'oak_staff', 'bone_dagger', 'silver_rapier']);
+
 export function sanitizeProgress(p) {
   if (!p || typeof p !== 'object') return null;
   const ext = sanitizeExtras(p.ext);
@@ -177,12 +181,35 @@ export function validateSave(prev, progress, now = Date.now()) {
     // Subsequent saves: gold can only grow by time-based earnings (no flat per-save bonus)
     const maxGold = Math.min(CAPS.GOLD_MAX, pp.gold + Math.floor(dt * CAPS.goldPerSec));
     if (p.gold > maxGold) { clamped.push(`gold ${p.gold}>${maxGold}`); p.gold = maxGold; }
+    // Token balances and the shared bridge cap are changed only by server
+    // economy handlers. Client saves mirror them for compatibility, but must
+    // never mint balances, reset the cap, or roll a debit back.
+    for (const key of ['tokenPoints', 'wayfarerTokens']) {
+      const authoritative = Math.max(0, Math.floor(Number(pp[key])) || 0);
+      if (p[key] !== authoritative) clamped.push(`${key} ${p[key]}!=${authoritative}`);
+      p[key] = authoritative;
+    }
+    if (!p.ext || typeof p.ext !== 'object') p.ext = {};
+    const previousCap = pp.ext?.bridgeDailyClaimed;
+    const bridgeDailyClaimed = previousCap && typeof previousCap === 'object'
+      ? { date: String(previousCap.date || '').slice(0, 10), amount: Math.max(0, Math.floor(Number(previousCap.amount)) || 0) }
+      : { date: '', amount: 0 };
+    if (JSON.stringify(p.ext.bridgeDailyClaimed) !== JSON.stringify(bridgeDailyClaimed)) clamped.push('bridgeDailyClaimed server-owned');
+    p.ext.bridgeDailyClaimed = bridgeDailyClaimed;
+    // Online cosmetic ownership is written only by revisioned economy ops.
+    // Client saves can mirror these values but cannot mint or erase dyes.
+    p.dyes = Object.fromEntries(Object.entries(pp.dyes || {}).filter(([item, dye]) => isGearId(item) && DYE_IDS.has(dye)));
   } else {
     // First save: hard clamp to starter values
     if (p.gold > CAPS.goldBase) { clamped.push(`first-gold ${p.gold}>${CAPS.goldBase}`); p.gold = CAPS.goldBase; }
     if (p.level > 1) { clamped.push(`first-level ${p.level}>1`); p.level = 1; }
     const starter = p.inventory.filter(isGearId).slice(0, 3);
     if (p.inventory.length !== starter.length) { clamped.push(`first-inv ${p.inventory.length}>${starter.length}`); p.inventory = starter; }
+    p.dyes = {};
+    if (p.tokenPoints || p.wayfarerTokens) clamped.push('first-token-balances cleared');
+    p.tokenPoints = 0;
+    p.wayfarerTokens = 0;
+    if (p.ext && typeof p.ext === 'object') p.ext.bridgeDailyClaimed = { date: '', amount: 0 };
   }
   const invBefore = p.inventory.length;
   p.inventory = p.inventory.filter(isGearId);
@@ -268,7 +295,7 @@ export const ECON = {
   TOKEN_CLAIM_FEE: 0.05,     // platform fee on token claims (gold sink)
   TOKEN_WITHDRAW_FEE: 0.075, // platform fee on bridge withdrawals (in-game -> on-chain)
   TOKEN_WITHDRAW_DAILY_CAP: 500, // max Wayfarer Tokens claimable/withdrawable per wallet per day
-  TOKEN_SINK_TYPES: new Set(['orb-upgrade', 'revive', 'pet-rename', 'stash-tab']),
+  TOKEN_SINK_TYPES: new Set(['orb-upgrade', 'revive', 'pet-rename', 'stash-tab', 'gear-dye']),
 };
 
 export const isGearId = (id) => typeof id === 'string' && id.length <= 48 && Object.prototype.hasOwnProperty.call(GEAR_META, id);

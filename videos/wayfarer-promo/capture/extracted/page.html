@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en" style="--vv-top: 0px; --vv-h: 1080px;">
+<head>
+<style>
+      @font-face {
+        font-family: 'Jacquard12';
+        src: url('/assets/fonts/jacquard12/Jacquard12-Regular.ttf') format('truetype');
+        font-weight: normal;
+        font-style: normal;
+        font-display: block;
+      }
+      @font-face {
+        font-family: 'Jersey10';
+        src: url('/assets/fonts/jersey10/Jersey10-Regular.ttf') format('truetype');
+        font-weight: normal;
+        font-style: normal;
+        font-display: block;
+      }
+      @font-face {
+        font-family: 'PixelifySans';
+        src: url('/assets/fonts/pixelifysans/PixelifySans_wght_.ttf') format('truetype');
+        font-weight: 100 900;
+        font-style: normal;
+        font-display: block;
+      }
+      @font-face {
+        font-family: 'Silkscreen';
+        src: url('/assets/fonts/silkscreen/Silkscreen-Regular.ttf') format('truetype');
+        font-weight: normal;
+        font-style: normal;
+        font-display: block;
+      }
+      @font-face {
+        font-family: 'Silkscreen';
+        src: url('/assets/fonts/silkscreen/Silkscreen-Bold.ttf') format('truetype');
+        font-weight: bold;
+        font-style: normal;
+        font-display: block;
+      }
+      html, body {
+        margin: 0; padding: 0; background: #0a0e1a; height: 100%; overflow: hidden;
+        position: fixed; inset: 0; width: 100%;
+        overscroll-behavior: none;
+        touch-action: none;
+        -webkit-user-select: none; user-select: none;
+        -webkit-tap-highlight-color: transparent;
+        font-family: 'Silkscreen', monospace;
+      }
+      #bg-video, #bg-gif {
+        position: fixed; inset: 0; width: 100vw; height: 100vh; object-fit: cover; z-index: 0; opacity: 0.75;
+      }
+      /* canvas sits inside the safe area; transparent so HTML5 video shows through */
+      #game { position: fixed; top: env(safe-area-inset-top, 0px); right: env(safe-area-inset-right, 0px); bottom: env(safe-area-inset-bottom, 0px); left: env(safe-area-inset-left, 0px); background: transparent; z-index: 1; }
+      #game canvas {
+        image-rendering: pixelated; image-rendering: crisp-edges;
+        touch-action: none; display: block; width: 100% !important; height: 100% !important;
+        background: transparent !important;
+      }
+      #game canvas:focus-visible { outline: 3px solid #ffe66d; outline-offset: -4px; }
+      /* Instant DOM splash (painted before any JS runs); BootScene drives the bar and removes it. */
+      #splash {
+        position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center;
+        background: radial-gradient(ellipse at 50% 40%, #1a4d1a 0%, #0f380f 60%, #071c07 100%); color: #9bbc0f;
+        padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+        transition: opacity .35s ease; text-align: center;
+      }
+      #splash.out { opacity: 0; pointer-events: none; }
+      #splash h1 { margin: 0 0 6px; font: 400 clamp(34px, 9vw, 64px)/1 'Jacquard12', 'Silkscreen', monospace; letter-spacing: 1px; color: #9bbc0f; text-shadow: 0 3px 0 #051208, 0 0 18px rgba(155,188,15,.25); }
+      #splash .sub { font: 400 11px 'Silkscreen', monospace; color: #6b8c0f; letter-spacing: 2px; margin-bottom: 26px; }
+      #splash .bar { width: min(260px, 70vw); height: 14px; background: #051208; border: 2px solid #306230; box-shadow: 3px 3px 0 #0a1e0a; padding: 2px; box-sizing: border-box; }
+      #splash .bar > i { display: block; height: 100%; width: 4%; background: linear-gradient(#c8e030, #9bbc0f 60%, #7fa00f); transition: width .15s linear; }
+      #splash .pct { margin-top: 8px; font: 400 10px 'Silkscreen', monospace; color: #8bac0f; }
+      #splash .tip { margin-top: 22px; max-width: min(380px, 84vw); min-height: 32px; font: 400 13px/1.35 'PixelifySans', monospace; color: #c9a23a; }
+      /* Force font preload — invisible spans make browser fetch the files early */
+      #font-preload {
+        position: absolute; opacity: 0; pointer-events: none;
+        font-size: 1px; white-space: nowrap; overflow: hidden; width: 1px; height: 1px;
+      }
+    </style>
+<style>
+  #net-pill{position:fixed;left:6px;bottom:4px;z-index:50;pointer-events:none;font:9px "Silkscreen",monospace;
+    color:#cfe8a0;background:#0a1e0acc;border:1px solid #306230;padding:2px 6px;border-radius:2px;white-space:nowrap;opacity:.85}
+  #net-pill.off{color:#9aa38a}#net-pill.warn{color:#ffd84a;border-color:#8a6a1a}
+  #net-banner{position:fixed;left:50%;top:22%;transform:translateX(-50%);z-index:60;pointer-events:none;display:none;
+    font:14px "Silkscreen",monospace;color:#ffe9a8;background:#1a1024e6;border:2px solid #e67e22;padding:10px 18px;text-align:center}
+  #net-banner small{display:block;font:11px "PixelifySans",monospace;color:#d8c184;margin-top:4px}</style>
+<style>
+#wf-rotate{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 10px);transform:translateX(-50%);z-index:40;max-width:88vw;
+  background:rgba(5,18,8,.92);border:2px solid #c9a23a;color:#e8d48a;font:400 11px/1.4 'Silkscreen',monospace;padding:8px 12px;text-align:center;display:none}
+#wf-rotate button{margin-left:8px;background:#9bbc0f;border:1px solid #051208;color:#0f380f;font:inherit;padding:2px 6px}
+#wf-update{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);transform:translateX(-50%);z-index:60;background:rgba(5,18,8,.96);
+  border:2px solid #9bbc0f;color:#c8e030;font:400 11px 'Silkscreen',monospace;padding:8px 12px;display:flex;gap:10px;align-items:center}
+#wf-update button{background:#9bbc0f;border:1px solid #051208;color:#0f380f;font:inherit;padding:3px 8px;cursor:pointer}
+#wf-update button.ghost{background:transparent;color:#8bac0f;border-color:#306230}
+/* DOM social layer follows the VISUAL viewport (on-screen keyboard) and stays out of the notch */
+html.wf-kbd #wf-social .wf-chat{bottom:6px}
+html body #wf-social{inset:auto;left:env(safe-area-inset-left,0px);right:env(safe-area-inset-right,0px);
+  top:var(--vv-top,0px);height:calc(var(--vv-h,100%) - env(safe-area-inset-bottom,0px));}
+</style>
+<style id="wf-hud-polish">
+/* wf-hud-polish (additive): Solana accents + mobile readability floors. */
+:root{
+  --wf-bg:#0A0E1A; --wf-bg-light:#1A103C;
+  --wf-green:#14F195; --wf-purple:#9945FF;
+  --wf-cyan:#03E1FF; --wf-magenta:#DC1FFF;
+  --wf-white:#E1E8F0; --wf-muted:#6B7A99;
+}
+#wf-social .wf-display{font-family:"Jacquard12", "Silkscreen", monospace;}
+#wf-social .wf-polish-accent{color:var(--wf-green);border-color:var(--wf-green);}
+#wf-social button:focus-visible,#wf-social input:focus-visible,
+#wf-social select:focus-visible,#wf-social textarea:focus-visible{
+  outline:2px solid var(--wf-cyan);outline-offset:2px;
+}
+@media (max-width:560px){
+  #wf-social .wf-chat,#wf-social .wf-list,#wf-social .ec-panel{
+    width:min(340px,calc(100vw - 16px));
+  }
+  #wf-social .wf-log{height:90px;min-height:90px;font-size:11px;}
+  #wf-social .wf-inrow input,#wf-social .wf-foot input,#wf-social textarea{font-size:13px;}
+  #wf-social .wf-tabs button{min-width:44px;min-height:44px;}
+  #wf-social button{margin:0;}
+}
+</style>
+<script type="module" crossorigin="" src="/assets/index-A900u5HF.js"></script>
+</head>
+<body>
+
+    <!-- Force browser to fetch pixel fonts before Phaser starts -->
+    <div id="font-preload" aria-hidden="true">
+      <span style="font-family:'Jacquard12'">W</span>
+      <span style="font-family:'Jersey10'">W</span>
+      <span style="font-family:'PixelifySans'">W</span>
+      <span style="font-family:'Silkscreen'">W</span>
+    </div>
+    <div id="splash" role="status" aria-live="polite" class="out" style="display: none;">
+      <h1>Wayfarer Online</h1>
+      <div class="sub">A COZY OPEN WORLD</div>
+      <div class="bar"><i id="splash-bar" style="width: 100%;"></i></div>
+      <div class="pct" id="splash-pct">LOADING 100%</div>
+      <div class="tip" id="splash-tip">Tip: Skills 1-6 sit on the number keys. Press H any time for all hotkeys.</div>
+    </div>
+    <video id="bg-video" autoplay loop muted playsinline poster="https://wayfarer-online.vercel.app/trailer/wayfarer_login_bg.gif">
+      <source src="/trailer/wayfarer_login_bg.mp4" type="video/mp4">
+      <img id="bg-gif" src="https://wayfarer-online.vercel.app/trailer/wayfarer_login_bg.gif" alt="Wayfarer Online" autoplay loop muted playsinline>
+    </video>
+    <div id="game"><canvas width="1920" height="1080" style="image-rendering: pixelated;" tabindex="0" aria-label="Wayfarer Online game area"></canvas></div>
+  
+
+<div id="net-pill" class="off">○ Solo · server up (106 ms) · 0 online</div><div id="net-banner" style="display: none;"></div>
+</body>
+</html>

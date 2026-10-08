@@ -385,6 +385,12 @@ The bridge links a Solana wallet to a character and moves currency across the
 boundary. It is devnet-only and **honestly degrades**: when the Solana env is
 not configured nothing is minted and nothing is deducted.
 
+Gameplay token sinks, including the 20-token gear dye service, spend the
+character's server-held **in-game Wayfarer Token balance** through revisioned
+economy operations. They do not submit a wallet transaction and do not directly
+transfer SPL $WAYFARER. Dye ownership is a cosmetic save field that the server
+preserves from its own record; client saves cannot mint or remove online dyes.
+
 ### 12.1 Wallet binding (proof of ownership)
 
 Ownership is proven with an ed25519 signature over a server-issued challenge
@@ -416,9 +422,12 @@ Ownership is proven with an ed25519 signature over a server-issued challenge
 - Requires a bound wallet (`econ-error code 'wallet'` otherwise).
 - `fee = max(1, floor(amount * ECON.TOKEN_WITHDRAW_FEE))` with
   `ECON.TOKEN_WITHDRAW_FEE = 0.075` (7.5%); `net = amount - fee`.
-- The **daily cap shares the exact fields token-claim uses**
-  (`progress.ext.bridgeDailyClaimed`, `ECON.TOKEN_WITHDRAW_DAILY_CAP = 500`),
-  so claiming and withdrawing draw on the same daily allowance.
+- The daily cap is stored in the server-owned
+  `progress.ext.bridgeDailyClaimed` field (`ECON.TOKEN_WITHDRAW_DAILY_CAP = 500`).
+  It is reserved by a withdrawal and cannot be reset by a client save.
+- Withdrawals also require `ENABLE_TOKEN_WITHDRAWALS=true`. This switch is
+  false by default while reward issuance and payout settlement are hardened;
+  a paused request does not deduct tokens.
 - **Unconfigured** (`SOLANA_RPC` / `PROGRAM_ID` / `MINT_ADDRESS` /
   `ORACLE_KEYPAIR` missing): returns `status: 'unconfigured'` and **does not
   deduct** the player's tokens.
@@ -427,8 +436,12 @@ Ownership is proven with an ed25519 signature over a server-issued challenge
   signature, reason, created_at)`. `status` is `'sent'` when the on-chain
   `mint_withdraw` transaction confirmed (signature persisted) or `'pending'`
   when it could not be sent (reason recorded; an operator must settle it).
+- Token-point claims are currently paused because combat and daily reward
+  points are client-declared. Save submissions cannot grant token balances or
+  reset the server's daily cap. Re-enable claims only after rewards are issued
+  by a server-authoritative ledger.
 - **Fee split:** 50% of the fee is burned, 50% is credited to the fee treasury
-  via `referrals.recordFee` (same pattern as token-claim).
+  via `referrals.recordFee`.
 
 On-chain mint: the server dynamically imports `@solana/web3.js`, derives the
 `config` (`[b"config"]`) and `mint` (`[b"mint"]`) PDAs, reads the mint/treasury

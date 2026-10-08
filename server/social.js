@@ -258,16 +258,185 @@ export function installSocial(room) {
     }
   });
 
-  // ── duels (consensual PvP; active pairs tracked so hits can be validated) ──
+  // ── duels (server-validated PvP; no client-authored arena results) ──
   const duelKey = (a, b) => [a, b].sort().join('~');
   const inDuel = (sid) => { for (const d of room.social.duels.values()) if (d.a === sid || d.b === sid) return d; return null; };
+  const MAX_DUEL_HP = 600;
+  const DUEL_HIT_DAMAGE = 40;
+  const DUEL_HIT_COOLDOWN_MS = 700;
+  // Matchmaking may pair players anywhere in the same local area, but hits
+  // resolve only at melee range to match the autonomous agent combat loop.
+  const DUEL_MATCH_RANGE = 300;
+  const DUEL_HIT_RANGE = 40;
+  const arenaMatchForPair = (a, b) => {
+    for (const match of room.arenaMatches?.values() || []) {
+      if ((match.a === a && match.b === b) || (match.a === b && match.b === a)) return match;
+    }
+    return null;
+  };
+  const isArenaParticipant = (sid) => [...(room.arenaMatches?.values() || [])].some((match) =>
+    match.a === sid || match.b === sid || match.ownerA === sid || match.ownerB === sid);
+  const duelFor = (sid) => {
+    const regular = inDuel(sid);
+    if (regular) return regular;
+    for (const match of room.arenaMatches?.values() || []) {
+      if (match.a === sid || match.b === sid) {
+        match.combat ||= { a: match.a, b: match.b, arena: true, matchId: match.id, hp: new Map([[match.a, MAX_DUEL_HP], [match.b, MAX_DUEL_HP]]), lastHit: new Map(), resolved: false };
+        return match.combat;
+      }
+    }
+    return null;
+  };
+  const participantsReady = (a, b) => {
+    const pa = room.players?.get(a), pb = room.players?.get(b);
+    return !!(pa && pb && !pa.dc && !pb.dc && !pa.agent && !pb.agent && clientById(room, a) && clientById(room, b));
+  };
+  const ownerOf = (sid) => {
+    const p = room.players?.get(sid);
+    return p?.agent ? p.ownerSid : sid;
+  };
+  const arenaCombatantReady = (sid) => {
+    const p = room.players?.get(sid);
+    if (!p || p.dc) return false;
+    if (!p.agent) return !!clientById(room, sid);
+    const owner = room.players.get(p.ownerSid);
+    return !!(room.agents?.get?.(sid) === p && owner && !owner.agent && !owner.dc && clientById(room, p.ownerSid));
+  };
+  const sameArenaRange = (a, b, range = DUEL_MATCH_RANGE) => {
+    const pa = room.players?.get(a), pb = room.players?.get(b);
+    return !!(pa && pb && pa.a === pb.a && Math.hypot(pa.x - pb.x, pa.y - pb.y) <= range);
+  };
+  const ownerOnline = (sid) => {
+    const p = room.players?.get(sid);
+    return !!(p && !p.agent && !p.dc && clientById(room, sid));
+  };
+  const canArenaAgentDuel = (a, b, ownerA, ownerB, matchId = '') => {
+    const pa = room.players?.get(a), pb = room.players?.get(b);
+    if (!pa || !pb || a === b || (!pa.agent && !pb.agent)) return false;
+    const resolvedOwnerA = ownerOf(a), resolvedOwnerB = ownerOf(b);
+    if (resolvedOwnerA !== ownerA || resolvedOwnerB !== ownerB || !ownerA || !ownerB || ownerA === ownerB) return false;
+    if (!ownerOnline(ownerA) || !ownerOnline(ownerB) || !arenaCombatantReady(a) || !arenaCombatantReady(b)) return false;
+    if (inDuel(a) || inDuel(b)) return false;
+    const reserved = isArenaParticipant(a) || isArenaParticipant(b);
+    if (reserved) {
+      const match = arenaMatchForPair(a, b);
+      if (!match || match.id !== matchId) return false;
+    }
+    return sameArenaRange(a, b);
+  };
+  room._canArenaAgentDuel = canArenaAgentDuel;
+  const sendArenaState = (match, d) => {
+    if (!match || !d) return;
+    const sides = [
+      [match.ownerA || ownerOf(match.a), match.a, match.b],
+      [match.ownerB || ownerOf(match.b), match.b, match.a],
+    ];
+    for (const [recipient, fighter, opponent] of sides) {
+      clientById(room, recipient)?.send('arena:combat-state', {
+        matchId: match.id, youHp: d.hp.get(fighter), opponentHp: d.hp.get(opponent), maxHp: MAX_DUEL_HP,
+      });
+    }
+  };
+  room._startArenaAgentDuel = (a, b, options = {}) => {
+    const match = arenaMatchForPair(a, b);
+    const ownerA = options.ownerA || ownerOf(a), ownerB = options.ownerB || ownerOf(b);
+    if (!match || String(options.matchId || '') !== match.id || !canArenaAgentDuel(a, b, ownerA, ownerB, match.id)) return false;
+    const d = { a, b, arena: true, matchId: match.id, hp: new Map([[a, MAX_DUEL_HP], [b, MAX_DUEL_HP]]), lastHit: new Map(), resolved: false };
+    match.combat = d;
+    for (const sid of [a, b]) {
+      const fighter = room.players.get(sid);
+      if (!fighter?.agent) continue;
+      if (!room.agents?.assignArenaOpponent?.(sid, sid === a ? b : a, match.id)) {
+        for (const agentSid of [a, b]) room.agents?.clearArenaOpponent?.(agentSid, match.id);
+        match.combat = null;
+        return false;
+      }
+    }
+    for (const sid of [a, b]) {
+      if (!room.players.get(sid)?.agent) clientById(room, sid)?.send('duel-start', { a, b, arena: true, matchId: match.id });
+    }
+    sendArenaState(match, d);
+    return true;
+  };
+  room._agentArenaAttack = (agentSid, targetSid, matchId) => {
+    const match = [...(room.arenaMatches?.values() || [])].find((m) => m.id === matchId && (m.a === agentSid || m.b === agentSid));
+    const d = match?.combat;
+    const target = d && (d.a === agentSid ? d.b : d.b === agentSid ? d.a : null);
+    if (!d || !d.arena || d.resolved || target !== targetSid || !room.players.get(agentSid)?.agent || !arenaCombatantReady(agentSid) || !arenaCombatantReady(targetSid) || !sameArenaRange(agentSid, targetSid, 40)) return false;
+    const now = Date.now();
+    if (now - (d.lastHit.get(agentSid) || 0) < 650) return false;
+    d.lastHit.set(agentSid, now);
+    d.hp.set(targetSid, Math.max(0, (d.hp.get(targetSid) ?? MAX_DUEL_HP) - DUEL_HIT_DAMAGE));
+    const attacker = room.players.get(agentSid);
+    if (!room.players.get(targetSid)?.agent) clientById(room, targetSid)?.send('pvp-hit', { from: agentSid, dmg: DUEL_HIT_DAMAGE, x: Math.round(attacker.x), y: Math.round(attacker.y), hp: d.hp.get(targetSid), maxHp: MAX_DUEL_HP });
+    sendArenaState(match, d);
+    if (d.hp.get(targetSid) === 0) finishDuel(d, agentSid, 'ko');
+    return true;
+  };
+  const canStartDuel = (a, b, matchId = '') => {
+    if (a === b || !participantsReady(a, b) || inDuel(a) || inDuel(b)) return false;
+    const pa = room.players.get(a), pb = room.players.get(b);
+    if (pa.a !== pb.a || Math.hypot(pa.x - pb.x, pa.y - pb.y) > DUEL_MATCH_RANGE) return false;
+    const reserved = isArenaParticipant(a) || isArenaParticipant(b);
+    if (!reserved) return !matchId;
+    const match = arenaMatchForPair(a, b);
+    return !!(match && match.id === matchId && match.a !== match.b);
+  };
+  room._canStartDuel = (a, b) => canStartDuel(a, b);
+  const sendDuelStart = (d) => {
+    const payload = { a: d.a, b: d.b, ...(d.arena ? { arena: true, matchId: d.matchId } : {}) };
+    for (const sid of [d.a, d.b]) {
+      clientById(room, sid)?.send('duel-start', payload);
+      if (d.arena) clientById(room, sid)?.send('arena:combat-state', { matchId: d.matchId, youHp: d.hp.get(sid), opponentHp: d.hp.get(sid === d.a ? d.b : d.a), maxHp: MAX_DUEL_HP });
+    }
+  };
+  const finishDuel = (d, winner, reason) => {
+    if (!d || d.resolved) return false;
+    d.resolved = true;
+    if (!d.arena) room.social.duels.delete(duelKey(d.a, d.b));
+    const match = d.arena ? [...(room.arenaMatches?.values() || [])].find((m) => m.id === d.matchId) : null;
+    const payload = { a: d.a, b: d.b, reason: reason || '' };
+    if (winner) payload.winner = winner;
+    for (const sid of [d.a, d.b]) if (!room.players.get(sid)?.agent) clientById(room, sid)?.send('duel-end', payload);
+    if (d.arena && winner) {
+      const result = { matchId: d.matchId, winner, loser: winner === d.a ? d.b : d.a, reason };
+      // Arena module consumes this trusted in-process result and settles ratings.
+      try { room._onArenaCombatResult?.(result); } catch (e) { console.error('[social] arena result hook failed', e); }
+      const ownerA = match?.ownerA || ownerOf(d.a), ownerB = match?.ownerB || ownerOf(d.b);
+      const ownerWinner = winner === d.a ? ownerA : ownerB;
+      const resultForOwners = { matchId: d.matchId, a: ownerA, b: ownerB, winner: ownerWinner, fighterWinner: winner, reason };
+      for (const sid of new Set([ownerA, ownerB])) clientById(room, sid)?.send('arena:combat-result', resultForOwners);
+    }
+    for (const sid of [d.a, d.b]) room.agents?.clearArenaOpponent?.(sid, d.matchId);
+    return true;
+  };
+
+  // Arena module calls this only after its own matchmaking/challenge checks.
+  // No warp is performed: the match is live, but combat requires both clients
+  // to be in the same area and within the server-checked attack radius.
+  room._startDuel = (a, b, options = {}) => {
+    const arena = options.arena === true;
+    if (arena) {
+      if (!canStartDuel(a, b, String(options.matchId || ''))) return false;
+    } else if (a === b || !participantsReady(a, b) || inDuel(a) || inDuel(b) || isArenaParticipant(a) || isArenaParticipant(b)) return false;
+    let d;
+    if (arena) {
+      const match = arenaMatchForPair(a, b);
+      if (!match || String(options.matchId || '') !== match.id) return false;
+      d = match.combat || { a, b, arena: true, matchId: match.id, hp: new Map([[a, MAX_DUEL_HP], [b, MAX_DUEL_HP]]), lastHit: new Map(), resolved: false };
+      match.combat = d;
+    } else d = { a, b, arena: false, hp: new Map([[a, MAX_DUEL_HP], [b, MAX_DUEL_HP]]), lastHit: new Map(), resolved: false };
+    if (!arena) room.social.duels.set(duelKey(a, b), d);
+    sendDuelStart(d);
+    return true;
+  };
   room.onMessage('duel-challenge', (client, m) => {
     const p = info(room, client.sessionId); if (!p) return;
     if (!bucket(room, client.sessionId)) { err(client, 'Slow down.'); return; }
     const sid = room.social.players.has(m?.to) ? m.to : findByName(room, m?.to);
     if (!sid || sid === client.sessionId) { err(client, 'No such duelist.'); return; }
-    if (inDuel(client.sessionId)) { err(client, 'Finish your current duel first.'); return; }
-    if (inDuel(sid)) { err(client, `${info(room, sid)?.name || '???'} is already dueling.`); return; }
+    if (inDuel(client.sessionId) || isArenaParticipant(client.sessionId)) { err(client, 'Finish your current duel first.'); return; }
+    if (inDuel(sid) || isArenaParticipant(sid)) { err(client, `${info(room, sid)?.name || '???'} is already dueling.`); return; }
     clientById(room, sid)?.send('duel-challenge', { from: client.sessionId, fromName: p.name });
     client.send('party-msg', { text: `Duel challenge sent to ${info(room, sid)?.name || '???'}.` });
   });
@@ -276,25 +445,46 @@ export function installSocial(room) {
     const sid = m?.to;
     if (!sid || !room.social.players.has(sid)) { err(client, 'That challenger is gone.'); return; }
     if (!m?.accept) { clientById(room, sid)?.send('duel-decline', { from: client.sessionId, fromName: p.name }); return; }
-    if (inDuel(client.sessionId) || inDuel(sid)) { err(client, 'Someone is already dueling.'); return; }
-    const d = { a: sid, b: client.sessionId, at: Date.now() };
+    if (inDuel(client.sessionId) || inDuel(sid) || isArenaParticipant(client.sessionId) || isArenaParticipant(sid)) { err(client, 'Someone is already dueling.'); return; }
+    if (!participantsReady(sid, client.sessionId)) { err(client, 'Both players must be in the world to duel.'); return; }
+    const d = { a: sid, b: client.sessionId, at: Date.now(), arena: false, hp: new Map([[sid, MAX_DUEL_HP], [client.sessionId, MAX_DUEL_HP]]), lastHit: new Map(), resolved: false };
     room.social.duels.set(duelKey(sid, client.sessionId), d);
-    for (const s of [sid, client.sessionId]) clientById(room, s)?.send('duel-start', { a: d.a, b: d.b });
+    sendDuelStart(d);
   });
   const endDuel = (sid, reason) => {
-    const d = inDuel(sid); if (!d) return false;
-    room.social.duels.delete(duelKey(d.a, d.b));
-    for (const s of [d.a, d.b]) clientById(room, s)?.send('duel-end', { a: d.a, b: d.b, reason: reason || '' });
-    return true;
+    const d = duelFor(sid); if (!d) return false;
+    // Only a participant's explicit duel-end is a forfeit. Disconnect and room
+    // cleanup end the duel without awarding a winner.
+    const winner = reason === 'forfeit' ? (sid === d.a ? d.b : d.a) : null;
+    return finishDuel(d, winner, reason);
   };
-  room.onMessage('duel-end', (client, m) => { endDuel(client.sessionId, m?.reason || 'ended'); });
-  // Recipient-validated PvP hits: only the recorded opponent's hits land.
+  room.onMessage('duel-end', (client) => { endDuel(client.sessionId, 'forfeit'); });
+  // Server checks pairing, area, accepted positions, range, hit cadence and its
+  // own HP ledger. Payload coordinates and damage are deliberately ignored.
   room.onMessage('pvp-hit', (client, m) => {
-    const d = inDuel(client.sessionId); if (!d) return;
+    const d = duelFor(client.sessionId); if (!d || d.resolved) return;
     const target = d.a === client.sessionId ? d.b : d.a;
-    const dmg = Math.max(1, Math.min(500, Math.round(+m?.dmg || 0)));
-    if (!dmg) return;
-    clientById(room, target)?.send('pvp-hit', { from: client.sessionId, dmg, x: +m?.x | 0, y: +m?.y | 0 });
+    // Keep ordinary consensual duels on their established client-combat relay.
+    // Only arena fights consume the server-owned HP ledger used for rated results.
+    if (!d.arena) {
+      const dmg = Math.max(1, Math.min(500, Math.round(+m?.dmg || 0)));
+      clientById(room, target)?.send('pvp-hit', { from: client.sessionId, dmg, x: +m?.x | 0, y: +m?.y | 0 });
+      return;
+    }
+    if (m?.to !== target) return;
+    const attacker = room.players?.get(client.sessionId), defender = room.players?.get(target);
+    if (!arenaCombatantReady(client.sessionId) || !arenaCombatantReady(target) || !attacker || !defender || attacker.a !== defender.a) return;
+    const distance = Math.hypot(attacker.x - defender.x, attacker.y - defender.y);
+    if (!Number.isFinite(distance) || distance > DUEL_HIT_RANGE) return;
+    const now = Date.now();
+    if (now - (d.lastHit.get(client.sessionId) || 0) < DUEL_HIT_COOLDOWN_MS) return;
+    d.lastHit.set(client.sessionId, now);
+    const hp = Math.max(0, (d.hp.get(target) ?? MAX_DUEL_HP) - DUEL_HIT_DAMAGE);
+    d.hp.set(target, hp);
+    clientById(room, target)?.send('pvp-hit', { from: client.sessionId, dmg: DUEL_HIT_DAMAGE, x: Math.round(attacker.x), y: Math.round(attacker.y), hp, maxHp: MAX_DUEL_HP });
+    client.send('pvp-hit-confirm', { target, dmg: DUEL_HIT_DAMAGE, hp, maxHp: MAX_DUEL_HP });
+    if (d.arena) sendArenaState(arenaMatchForPair(d.a, d.b), d);
+    if (hp === 0) finishDuel(d, client.sessionId, 'ko');
   });
   room._endDuel = endDuel;
 

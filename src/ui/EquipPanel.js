@@ -3,6 +3,7 @@ import { BAG_SIZE } from '../core/save.js';
 import { ModularPlayer } from '../entities/ModularPlayer.js';
 import { audio } from '../systems/audio.js';
 import { GOLD, label, box, addIcon, itemLines, Tip } from './gearUI.js';
+import { econ } from '../net/economyNet.js';
 
 // Equipment panel (key I or B, or the BAG button): paper doll showing the hero
 // in all four facings, 8 slot boxes, a 30-slot bag with procedural icons,
@@ -234,13 +235,16 @@ export class EquipPanel {
     if (this.dyeOpen && item.dyeable !== false) {
       const sw = 14, sy = by - sw - 6;
       c.add(box(s, x + 4, sy - 4, w - 8, sw + 8, 0x140e1f, 0.95, 0x5a3a7a, 1));
-      const swatches = [{ id: null, tint: 0x555555 }, ...DYES];
+      const swatches = DYES;
       swatches.forEach((d, i) => {
         const cx = x + 12 + i * (sw + 4) + sw / 2;
         const r = s.add.rectangle(cx, sy + sw / 2, sw, sw, d.tint).setStrokeStyle(dye === d.id || (!dye && !d.id) ? 2 : 1, dye === d.id || (!dye && !d.id) ? 0xffffff : 0x000000).setInteractive({ useHandCursor: true });
-        if (!d.id) c.add(label(s, cx, sy + sw / 2, '×', 10, '#fff').setOrigin(0.5));
-        r.on('pointerdown', () => { audio.play('ui', 0.6); p.setDye(item.id, d.id); this.hooks.changed(); this.build(); this.hooks.say(d.id ? `${item.name} dyed ${dyeById(d.id).name}.` : `${item.name} dye removed.`); });
-        r.on('pointerover', (ptr) => { this.tip.show([{ t: d.id ? dyeById(d.id).name : 'Original colour', c: '#e0b8ff', s: 9 }], ptr.x, ptr.y); });
+        r.on('pointerdown', () => {
+          audio.play('ui', 0.6);
+          if (p.dyes[item.id] === d.id) { this.hooks.say(`${item.name} already has that color.`); return; }
+          econ.spendTokens('gear-dye', 20, { itemId: item.id, dyeId: d.id });
+        });
+        r.on('pointerover', (ptr) => { this.tip.show([{ t: `${dyeById(d.id).name} · 20 tokens`, c: '#e0b8ff', s: 9 }], ptr.x, ptr.y); });
         r.on('pointerout', () => this.tip.hide());
         c.add(r);
       });

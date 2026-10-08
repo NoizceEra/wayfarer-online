@@ -1,6 +1,7 @@
 import { agentsNet } from '../net/agentsNet.js';
 import { bus, Events } from '../core/events.js';
 import { audio } from '../systems/audio.js';
+import { econ } from '../net/economyNet.js';
 
 // Player-facing panel for the autonomous agent system (docs/AGENT_CLIENT.md).
 //
@@ -106,6 +107,12 @@ export class AgentPanel {
     this.entitlement = s.entitlement;
     this.agent = s.agent;
     this.lastClaim = s.lastClaim;
+    this.hireling = s.hireling;
+    this.hirelingOptions = s.hirelingOptions || [];
+    this.hirePending = false;
+    this.hireCurrency = 'gold';
+    this.hireTimer = null;
+    this.hireResult = s.lastHire;
   }
 
   get visible() { return !!this.container; }
@@ -120,17 +127,27 @@ export class AgentPanel {
       entitlement: (m) => this.applyEntitlement(m),
       state: (m) => this.applyState(m),
       claim: (m) => this.applyClaimResult(m),
+      hireState: (m) => this.applyHireState(m),
+      hireResult: (m) => this.applyHireResult(m),
     };
     this.unsubs = [
       agentsNet.onEntitlement(apply.entitlement),
       agentsNet.onState(apply.state),
       agentsNet.onClaimResult(apply.claim),
+      agentsNet.onHireState(apply.hireState),
+      agentsNet.onHireResult(apply.hireResult),
       agentsNet.onAgents(() => this.render()),
+      econ.on('error', (m) => this.onHireError(m)),
+      econ.on('sync', () => this.render()),
+      econ.on('status', () => this.render()),
     ];
+    agentsNet.requestHirelingState();
     this.render();
   }
   close() {
     this._clearTimer();
+    if (this.hireTimer) clearTimeout(this.hireTimer);
+    this.hireTimer = null;
     for (const u of this.unsubs) { try { u(); } catch { /* gone */ } }
     this.unsubs = [];
     if (!this.container) return;
@@ -138,12 +155,50 @@ export class AgentPanel {
     this.container = null;
     this.text = null;
     this.claimBtn = null;
+    this.hireBtns = null;
   }
   destroy() { this.close(); }
 
   // ─── state application (also the entry point used by tests) ────────────
   applyEntitlement(m) { this.entitlement = m && typeof m === 'object' ? m : null; this.render(); }
   applyState(m) { this.agent = m && typeof m === 'object' ? m : null; this.render(); }
+  applyHireState(m) {
+    this.hireling = m?.agent || null;
+    this.hirelingOptions = Array.isArray(m?.tiers) ? m.tiers : this.hirelingOptions;
+    this.render();
+  }
+  applyHireResult(m) {
+    this.hirePending = false;
+    if (this.hireTimer) clearTimeout(this.hireTimer);
+    this.hireTimer = null;
+    this.hireResult = m && typeof m === 'object' ? m : null;
+    if (m?.ok) this.hireling = m.agent || this.hireling;
+    if (Array.isArray(m?.tiers)) this.hirelingOptions = m.tiers;
+    this.render();
+  }
+  onHireError(m) {
+    if (!this.hirePending) return;
+    this.hirePending = false;
+    if (this.hireTimer) clearTimeout(this.hireTimer);
+    this.hireTimer = null;
+    this.hireResult = { ok: false, reason: m?.msg || 'Hire request failed.' };
+    this.render();
+  }
+  hire(tier) {
+    if (this.hirePending || this.hireling || !econ.usable) return;
+    audio.play?.('ui', 0.55);
+    this.hirePending = true;
+    this.hireResult = null;
+    this.render();
+    const sent = econ.send('agent-hire', { tier, currency: this.hireCurrency }, { rev: true, sync: true });
+    if (!sent) { this.hirePending = false; this.render(); return; }
+    this.hireTimer = setTimeout(() => {
+      if (!this.hirePending) return;
+      this.hirePending = false;
+      this.hireResult = { ok: false, reason: 'No response from the server.' };
+      this.render();
+    }, 8000);
+  }
   applyClaimResult(m) {
     this._clearTimer();
     this.pending = false;
@@ -191,7 +246,7 @@ export class AgentPanel {
       const { w: VW, h: VH } = s.view ? s.view() : { w: s.scale.width, h: s.scale.height };
       const narrow = VW <= 560; // <=560px: single column, full-width panel
       const pw = Math.min(VW - 16, narrow ? 340 : 372);
-      const ph = Math.min(VH - 12, 452);
+      const ph = Math.min(VH - 12, 540);
       const c = this.container = s.add.container(Math.round(VW / 2), Math.round(VH / 2)).setDepth(230);
       const left = -pw / 2, right = pw / 2, pad = 12;
 
@@ -201,7 +256,7 @@ export class AgentPanel {
       const bg = s.add.rectangle(0, 0, pw, ph, SOL.bgN, 0.97).setStrokeStyle(2, SOL.greenN).setInteractive();
       bg.on('pointerdown', (_p, _lx, _ly, ev) => ev?.stopPropagation?.());
       const bar = s.add.rectangle(0, -ph / 2 + 15, pw - 8, 26, SOL.bar, 1);
-      const title = s.add.text(left + pad, -ph / 2 + 15, 'AGENT', L(11, SOL.green, { fontStyle: 'bold' })).setOrigin(0, 0.5);
+      const title = s.add.text(left + pad, -ph / 2 + 15, 'AGENT & COMPANIONS', L(10, SOL.green, { fontStyle: 'bold' })).setOrigin(0, 0.5);
       const x = s.add.text(right - pad, -ph / 2 + 15, 'X', L(12, '#ff7a7a', { fontStyle: 'bold' })).setOrigin(0.5).setInteractive({ useHandCursor: true });
       x.on('pointerdown', (_p, _lx, _ly, ev) => { ev?.stopPropagation?.(); audio.play?.('ui', 0.5); this.close(); });
       c.add([dim, bg, bar, title, x]);
@@ -266,7 +321,35 @@ export class AgentPanel {
       T.claimResult = s.add.text(0, y, '', B(9, SOL.muted, { align: 'center', wordWrap: { width: pw - pad * 2 } })).setOrigin(0.5, 0);
       c.add(T.claimResult);
 
-      T.hint = s.add.text(0, ph / 2 - 10, 'Agent runs on the server · claim pays only when the relay enables it',
+      y += 31;
+      c.add(this._divider(s, left, right, y)); y += 12;
+      T.hireTitle = s.add.text(left + pad, y, 'HIRE AN AUTONOMOUS COMPANION', L(8, SOL.cyan)).setOrigin(0, 0.5);
+      c.add(T.hireTitle); y += 16;
+      T.hireStatus = s.add.text(left + pad, y, '', B(8, SOL.cyan)).setOrigin(0, 0.5).setInteractive({ useHandCursor: true });
+      T.hireStatus.on('pointerdown', (_p, _lx, _ly, ev) => {
+        ev?.stopPropagation?.();
+        if (this.hirePending || this.hireling) return;
+        this.hireCurrency = this.hireCurrency === 'gold' ? 'wayfarer' : 'gold';
+        audio.play?.('ui', 0.45);
+        this.render();
+      });
+      c.add(T.hireStatus); y += 19;
+      const gap = 5, tileW = (pw - pad * 2 - gap * 2) / 3, tileH = 38;
+      this.hireBtns = [];
+      for (let i = 0; i < 3; i++) {
+        const tier = ['scout', 'tactician', 'veteran'][i];
+        const x0 = left + pad + i * (tileW + gap) + tileW / 2;
+        const bgTile = s.add.rectangle(x0, y + tileH / 2, tileW, tileH, SOL.bar, 1).setStrokeStyle(1, SOL.line);
+        const label = s.add.text(x0, y + 11, ['SCOUT', 'TACTICIAN', 'VETERAN'][i], L(7, SOL.white, { align: 'center' })).setOrigin(0.5);
+        const price = s.add.text(x0, y + 26, '—', B(8, SOL.green, { align: 'center' })).setOrigin(0.5);
+        bgTile.on('pointerdown', (_p, _lx, _ly, ev) => { ev?.stopPropagation?.(); this.hire(tier); });
+        this.hireBtns.push({ tier, bg: bgTile, label, price, x: x0, y: y });
+        c.add([bgTile, label, price]);
+      }
+      T.hireResult = s.add.text(0, y + tileH + 8, '', B(8, SOL.muted, { align: 'center', wordWrap: { width: pw - pad * 2 } })).setOrigin(0.5, 0);
+      c.add(T.hireResult);
+
+      T.hint = s.add.text(0, ph / 2 - 10, 'WAYFARER here means in-game balance · not an on-chain transfer',
         B(7, SOL.muted, { align: 'center', wordWrap: { width: pw - pad * 2 } })).setOrigin(0.5);
       c.add(T.hint);
 
@@ -291,9 +374,9 @@ export class AgentPanel {
       const e = this.entitlement;
       const eligible = e?.eligible === true;
 
-      if (!e) { T.status.setText('Checking agent status…').setColor(SOL.muted); }
-      else if (eligible) { T.status.setText('AGENTS ENABLED').setColor(SOL.green); }
-      else { T.status.setText('AGENTS UNAVAILABLE').setColor(SOL.magenta); }
+      if (!e) { T.status.setText('Checking wallet-agent eligibility…').setColor(SOL.muted); }
+      else if (eligible) { T.status.setText('WALLET AGENT ENTITLED').setColor(SOL.green); }
+      else { T.status.setText('WALLET AGENT NOT ENTITLED').setColor(SOL.magenta); }
 
       const line = !e ? 'Waiting for the server…' : (reasonLine(e) || 'You are eligible to run an agent.');
       T.reason.setText(line).setColor(!e ? SOL.muted : eligible ? SOL.cyan : SOL.white);
@@ -316,6 +399,7 @@ export class AgentPanel {
       for (const cell of T.cells) cell.v.setText(vals[cell.key] ?? '—');
 
       this._renderClaim(e);
+      this._renderHirelings();
 
       const r = this.claimResult;
       if (!r) T.claimResult.setText('');
@@ -337,5 +421,42 @@ export class AgentPanel {
       b.bg.disableInteractive().setFillStyle(SOL.offN, 1).setStrokeStyle(1, SOL.line);
       b.text.setText(this.pending ? 'CLAIMING…' : 'CLAIM DISABLED').setColor(SOL.muted);
     }
+  }
+
+  _renderHirelings() {
+    if (!this.hireBtns || !this.text?.hireStatus) return;
+    const T = this.text;
+    const gold = econ.player()?.gold;
+    const wayfarer = econ.player()?.wayfarerTokens;
+    const options = new Map((this.hirelingOptions || []).map((o) => [o.id, o]));
+    if (this.hireling) {
+      const h = this.hireling;
+      if (h.kind === 'agent') T.hireStatus.setText(`${h.name} · owned autonomous agent already active`).setColor(SOL.green);
+      else {
+        const minutes = Math.max(1, Math.ceil((h.remainingMs || 0) / 60_000));
+        T.hireStatus.setText(`${h.name} · ${String(h.tier || 'scout').toUpperCase()} · ${minutes}m remaining`).setColor(SOL.green);
+      }
+    } else if (!econ.usable) {
+      T.hireStatus.setText('Online saved character required · tap to change payment').setColor(SOL.muted);
+    } else {
+      const balance = this.hireCurrency === 'wayfarer' ? fmtNum(wayfarer || 0, 0) : fmtNum(gold || 0, 0);
+      T.hireStatus.setText(`PAY WITH ${this.hireCurrency === 'wayfarer' ? 'IN-GAME WAYFARER' : 'GOLD'} · ${balance}  ↻`).setColor(this.hireCurrency === 'wayfarer' ? SOL.cyan : SOL.green);
+    }
+    for (const btn of this.hireBtns) {
+      const spec = options.get(btn.tier);
+      const price = this.hireCurrency === 'wayfarer' ? spec?.wayfarerCost : spec?.goldCost ?? spec?.cost;
+      btn.price.setText(spec ? `${fmtNum(price, 0)}${this.hireCurrency === 'wayfarer' ? ' WF' : 'g'} · ${Math.round(spec.durationMs / 60_000)}m` : 'Unavailable');
+      const balance = this.hireCurrency === 'wayfarer' ? wayfarer : gold;
+      const affordable = Number.isFinite(+balance) && +balance >= (price ?? Infinity);
+      const active = !!(spec && econ.usable && !this.hireling && !this.hirePending && affordable);
+      if (active) btn.bg.setFillStyle(SOL.bar, 1).setStrokeStyle(1, SOL.purpleN).setInteractive({ useHandCursor: true });
+      else btn.bg.disableInteractive().setFillStyle(SOL.offN, 1).setStrokeStyle(1, SOL.line);
+      btn.label.setColor(active ? SOL.white : SOL.muted);
+      btn.price.setColor(active ? (this.hireCurrency === 'wayfarer' ? SOL.cyan : SOL.green) : SOL.muted);
+    }
+    if (!this.hireResult) T.hireResult.setText('');
+    else if (this.hireResult.ok) T.hireResult.setText(`${this.hireling?.name || 'Companion'} hired — follows you and adapts to threats.`).setColor(SOL.green);
+    else T.hireResult.setText(String(this.hireResult.reason || 'Hire failed.')).setColor('#ff9a90');
+    if (this.hirePending) T.hireStatus.setText('Hiring companion…').setColor(SOL.cyan);
   }
 }

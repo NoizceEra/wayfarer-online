@@ -463,19 +463,24 @@ class Social {
   onDuelStart(m) {
     const peerId = m.a === this.id ? m.b : m.a;
     const peer = this.roster.get(peerId) || this.findPlayer(peerId);
-    this.duel = { peerId, peerName: peer?.name || '???' };
+    this.duel = { peerId, peerName: peer?.name || '???', arena: m?.arena === true, matchId: m?.matchId || null };
     this.system(`DUEL vs ${this.duel.peerName}! First to fall loses. (/dtend to yield)`);
     bus.emit(Events.SOCIAL_ROSTER, this.players());
   }
   onDuelEnd(m) {
     if (!this.duel) return;
-    const reason = m?.reason === 'death' ? `${this.duel.peerName} won the duel.` : m?.reason === 'left' ? `${this.duel.peerName} left — duel over.` : 'Duel over.';
+    const reason = m?.winner === this.id ? 'You won the duel.'
+      : m?.winner ? `${this.duel.peerName} won the duel.`
+        : m?.reason === 'death' ? `${this.duel.peerName} won the duel.`
+          : m?.reason === 'left' ? `${this.duel.peerName} left — duel over.` : 'Duel over.';
     this.duel = null;
     this.system(reason);
     bus.emit(Events.SOCIAL_ROSTER, this.players());
   }
   endDuel(reason = 'ended') {
     if (!this.duel) return;
+    // The server records this as a forfeit and ends the duel for both players.
+    if (this.online) net.send('duel-end', {});
     petDuel.forfeit();
     this.duel = null;
     this.system('You ended the duel.');
@@ -484,6 +489,10 @@ class Social {
   onPvpHit(m) {
     // Only the recorded opponent's hits land.
     if (!this.duel || m.from !== this.duel.peerId) return;
+    // Arena life is tracked by the server and drawn from arena:combat-state.
+    // Applying these hits to normal RPG health would let armor, local healing,
+    // and client-side death diverge from the match result.
+    if (this.duel.arena) return;
     const w = this.world;
     if (!w?.combat || w.player.dead) return;
     const dmg = Math.max(1, Math.min(500, Math.round(+m.dmg || 0)));

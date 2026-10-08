@@ -10,7 +10,7 @@ const {
   GUILD_PERKS,
   GUILD_RANKS,
   GUILD_MAX_LEVEL,
-} = require('../../src/data/guilds.cjs');
+} = require('../shared/guilds.cjs');
 
 const GUILD_CREATE_COST = 2000;
 const MAX_MEMBERS = 50;

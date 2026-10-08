@@ -150,7 +150,9 @@ export class TokenBridgePanel {
     if (!online) {
       this._banner('bad', 'Play Online to use the token bridge.');
     } else if (econ.bridge && st.configured === false) {
-      this._banner('warn', 'Bridge unconfigured on this server — withdrawals are disabled and nothing is deducted. Wallet linking and deposits may still be unavailable.');
+      this._banner('warn', st.withdrawalsPaused
+        ? 'Token withdrawals are temporarily paused while reward accounting is secured. No tokens are deducted.'
+        : 'Bridge unconfigured on this server — withdrawals are disabled and nothing is deducted. Wallet linking and deposits may still be unavailable.');
     } else if (econ.bridge && st.configured) {
       this._banner('ok', `Bridge live on ${escapeHtml(st.network || 'devnet')}. Withdraw fee ${Math.round((st.withdrawFee ?? 0.075) * 100)}%.`);
     } else {
@@ -174,7 +176,7 @@ export class TokenBridgePanel {
 
     const configured = !!st.configured;
     this.wBtn.disabled = this._busy || !online || !configured || !addr;
-    this.wBtn.title = !configured ? 'The bridge is not configured on this server.' : !addr ? 'Link a wallet first.' : '';
+    this.wBtn.title = !configured ? (st.withdrawalsPaused ? 'Withdrawals are temporarily paused.' : 'The bridge is not configured on this server.') : !addr ? 'Link a wallet first.' : '';
     this.dBtn.disabled = this._busy || !online || st.depositConfigured === false || !addr;
     this.dBtn.title = !addr ? 'Link the wallet that sent the deposit first.' : '';
     this.dHint.textContent = addr

@@ -21,17 +21,33 @@ room's player map is already visible and moving with **no client work**. This
 change adds nothing to remote traversal — it only (1) tags *which* peers are
 agents and (2) shows the owning player a panel for their own agent.
 
-## Wire contract (fixed)
+## Wire contract
 
 Server → client, to the **owning player only**:
 
 - `agent-entitlement { eligible, reason, held, requiredUsd, priceUsd }`
 - `agent-state { sid, name, action, zone, gathers:{...}, kills, solFound, uptimeMs }`
 - `agent-claim-result { ok, amount, reason }`
+- `agent-hire-state { agent, tiers }` — current owned companion and server-priced hire tiers.
+- `agent-hire-result { ok, tier, currency, cost, rev, agent, tiers }` — successful hire.
 
 Client → server:
 
 - `agent-claim {}`
+- `agent-hire-state {}` — request companion status and current tiers.
+- `agent-hire { tier, currency, rev }` — hire a temporary Scout, Tactician, or Veteran (`currency` is `gold` or `wayfarer`).
+
+Hires are charged through the saved-character economy revision protocol. Server
+prices are Scout 300g or 10 in-game WAYFARER/30m, Tactician 900g or 30
+in-game WAYFARER/60m, and Veteran 2,400g or 75 in-game WAYFARER/120m. The
+WAYFARER option spends the server's in-game balance; it does not transfer SPL
+tokens from a wallet. A player can have one owned companion at a time; a
+token-entitled agent and a hired companion share that slot. Hires use the same autonomous runtime,
+follow across areas, and despawn when the contract expires or the owner leaves
+the room. They do not accrue SOL/token rewards. Combat intelligence tiers
+improve owner-follow distance, threat prioritization, engagement distance, and
+action cadence. These NPCs inherit the existing agent combat model and do not
+simulate authoritative enemy damage.
 
 Agent identity travels out of band on the existing broadcast messages:
 
@@ -55,12 +71,13 @@ API:
 | --- | --- |
 | `onEntitlement(fn)` / `onState(fn)` / `onClaimResult(fn)` | Subscribe; returns an unsubscribe. |
 | `claim()` | Send `agent-claim {}`. No-op offline (`false`). |
-| `state` | Read-only snapshot `{ entitlement, agent, lastClaim, agents, connected }`. |
+| `requestHirelingState()` | Refresh current companion + server tier prices. |
+| `state` | Read-only snapshot `{ entitlement, agent, lastClaim, hireling, hirelingOptions, lastHire, agents, connected }`. |
 | `isAgent(id)` / `agentIds()` / `onAgents(fn)` | Which remote sessionIds are agents (from `peer-join` / `snap`). Used by the minimap mark. |
 
-`NetworkManager.attach()` now forwards `agent-entitlement` / `agent-state` /
-`agent-claim-result` to `net.on(...)` consumers (with the same `sessionId`
-echo guard); it is otherwise untouched.
+Hire state/result handlers attach directly per room connection and reject
+generic-relay echoes, while hire purchases go through `econ.send()` with the
+current `rev` and server-owned gold balance.
 
 ## `AgentPanel.js` — states
 
@@ -92,6 +109,11 @@ Live fields: agent name, action, zone, gathered total (+ breakdown), kills,
 SOL found, uptime — re-rendered from `agentsNet.onState`/`onEntitlement`/
 `onClaimResult` with **no polling loop**. A claim shows `Claimed N SOL` or
 `Could not claim — <reason>` and a toast.
+
+The panel also offers three temporary contracts payable with gold or in-game
+WAYFARER when the saved-character economy is online. The server returns tier
+prices, checks the character revision and selected balance, prevents multiple
+companions, and reports hire and expiry state privately to the owner.
 
 ## UIScene integration
 

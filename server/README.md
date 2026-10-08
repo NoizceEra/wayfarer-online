@@ -137,9 +137,10 @@ back to the socket address when no trusted proxy count is configured.
 
 ## Deploy (Railway)
 
-- The root `railway.json` builds only `server/` and starts `npm --prefix server start`.
-  Its healthcheck is `/health`. You can also point a service at `server/` and use the
-  `Dockerfile`.
+- Deploy the relay from the repository root with `railway up ./server --path-as-root`.
+  The server bundle has its own `railway.json` and `Dockerfile`; its healthcheck is
+  `/health`. Shared guild and season data are mirrored under `server/shared` so the
+  relay is self-contained. The Vercel frontend deployment excludes the server.
 - Add a **Volume** mounted at `/data`, then set `DATA_DIR=/data`. Without a volume,
   characters are lost on every redeploy. Clients still keep their localStorage copy.
 - A redeploy sends SIGTERM. The server then saves every player, closes rooms with code
