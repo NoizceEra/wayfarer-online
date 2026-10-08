@@ -722,8 +722,20 @@ export class UIScene extends Phaser.Scene {
     this.dailyPanel = new DailyRewardPanel();
     this.dailyRewards = new DailyRewards(this.world());
 
-    // Listen for auto-open request from DailyRewards boot check.
+    // Daily reward lifecycle. `ready` is the boot check announcing that a claim
+    // is available: notify with a non-blocking toast and pulse the HUD button,
+    // but never force the modal open — it would sit over the canvas and swallow
+    // world input. `open` remains for deliberate opens (HUD 🎁 button / callers).
     this.dailyRewardOff = bus.on(Events.DAILY_REWARD, (e) => {
+      if (e?.ready && !this.dailyPanel.isOpen) {
+        this.dailyPulse?.resume();
+        this.toast?.push({
+          title: 'Daily Reward',
+          text: 'A daily reward is ready — tap 🎁 to claim',
+          color: '#ffd84a',
+          icon: '🎁',
+        });
+      }
       if (e?.open && !this.dailyPanel.isOpen) this.openDailyReward();
     });
     this.offs.push(this.dailyRewardOff);

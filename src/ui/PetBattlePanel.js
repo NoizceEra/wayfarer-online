@@ -50,7 +50,11 @@ export class PetBattlePanel {
     if (!this.isOpen) return;
     this.isOpen = false;
     input.popModal('petBattle');
-    this.battle?.destroy();
+    // Capture the finished battle BEFORE nulling it: the engine is deliberately
+    // side-effect-free (it only ever mutates its clone), so the caller that opened
+    // the panel is the one that persists XP/levels back onto the real roster.
+    const finished = this.battle;
+    finished?.destroy();
     this.battle = null;
     this.switchMenu?.destroy();
     this.switchMenu = null;
@@ -64,7 +68,7 @@ export class PetBattlePanel {
     this.hintT = null;
     this.moveBtns = [];
     this.queue = [];
-    this.hooks.onClose?.(this);
+    this.hooks.onClose?.(this, finished);
   }
 
   build() {

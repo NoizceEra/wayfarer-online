@@ -109,10 +109,30 @@
       <div class="pct" id="splash-pct">LOADING 0%</div>
       <div class="tip" id="splash-tip"></div>
     </div>
-    <video id="bg-video" autoplay loop muted playsinline poster="/trailer/wayfarer_login_bg.gif">
+    <video id="bg-video" autoplay loop muted playsinline poster="/trailer/wayfarer_login_poster.webp">
       <source src="/trailer/wayfarer_login_bg.mp4" type="video/mp4">
-      <img id="bg-gif" src="/trailer/wayfarer_login_bg.gif" alt="Wayfarer Online" autoplay loop muted playsinline />
+      <!-- Static still paints instantly and is the fallback if the video cannot play.
+           The animated GIF is swapped in below ONLY when the trailer errors, so a
+           normal visit never fetches it. -->
+      <img id="bg-gif" src="/trailer/wayfarer_login_poster.webp" alt="Wayfarer Online" />
     </video>
+    <script>
+      /* Keep the animated trailer GIF as the real fallback without paying for it
+         on every visit: only fetch it if the <video> (or its <source>) errors. */
+      (function () {
+        var v = document.getElementById('bg-video');
+        var img = document.getElementById('bg-gif');
+        var gif = '/trailer/wayfarer_login_bg.gif';
+        function upgrade() {
+          if (img && img.getAttribute('src') !== gif) img.setAttribute('src', gif);
+        }
+        if (v) {
+          v.addEventListener('error', upgrade);
+          var s = v.querySelector('source');
+          if (s) s.addEventListener('error', upgrade);
+        }
+      })();
+    </script>
     <div id="game"></div>
     <script type="module" src="/src/main.js"></script>
   </body>

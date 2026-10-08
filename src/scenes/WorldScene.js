@@ -168,6 +168,9 @@ export class WorldScene extends Phaser.Scene {
     on('attack', () => this.attack());
     on('potion', () => this.drinkPotion());
     on('interact', () => this.interact());
+    // Wild pet battle: challenge the nearest wisp (or conjure one) into the
+    // turn-based PET BATTLE panel. Action registered by PetEncounterSystem.
+    on('petBattle', () => this.petEncounter?.challengeWild());
     on('bag', () => { if (!this.chatOpen) bus.emit(Events.GEAR, { open: 'inventory' }); });
     on('minimap', () => bus.emit(Events.SYSTEM, 'toggle-minimap'));
     this.input.on('pointerdown', (p) => {

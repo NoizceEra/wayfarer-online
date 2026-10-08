@@ -95,7 +95,12 @@ export class DailyRewards {
     if (this._shouldDeferOnboarding()) return;
     if (!this.isClaimableToday()) return;
     this.autoOpened = true;
-    bus.emit(Events.DAILY_REWARD, { open: true, auto: true });
+    // Do NOT force the modal open here. The reward card is a centred DOM panel
+    // with pointer-events:auto that sits over the canvas, so an unrequested
+    // auto-open silently swallows every world click/attack until the player
+    // notices and dismisses it. Announce readiness instead; the pulsing 🎁 HUD
+    // button (UIScene.buildDailyReward) opens the panel on demand.
+    bus.emit(Events.DAILY_REWARD, { ready: true, auto: true });
   }
 
   _shouldDeferOnboarding() {
