@@ -3,26 +3,21 @@ import { input } from '../core/input.js';
 import { net } from '../net/NetworkManager.js';
 import { bus, Events } from '../core/events.js';
 import { loadProfile, saveProfile } from '../core/save.js';
+// Provider lookup, connect flow and the persisted wallet record are shared with
+// the login-screen [Connect Wallet] button (ui/LoginWallet.js) so the two wallet
+// surfaces can never drift apart.
+import {
+  getProvider, connectWallet, disconnectProvider,
+  loadWallet, saveWallet, clearWallet, truncateAddress,
+} from './walletConnect.js';
 
 // WalletPanel v2 \u2014 real Solana integration with @solana/web3.js
 const FONT = '"Silkscreen", monospace';
-const STORAGE_KEY = 'wayfarer.wallet.v1';
 
 const NETWORKS = {
   mainnet: { name: 'Mainnet', url: 'https://api.mainnet-beta.solana.com' },
   devnet:  { name: 'Devnet',  url: clusterApiUrl('devnet') },
 };
-
-function loadWallet() { try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || null; } catch { return null; } }
-function saveWallet(w) { localStorage.setItem(STORAGE_KEY, JSON.stringify(w)); }
-function clearWallet() { localStorage.removeItem(STORAGE_KEY); }
-
-function getProvider() {
-  if (typeof window === 'undefined') return null;
-  const p = window.phantom?.solana || window.solflare || window.solana;
-  if (p?.isPhantom || p?.isSolflare) return p;
-  return null;
-}
 
 export class WalletPanel {
   constructor(scene) {
@@ -135,9 +130,8 @@ export class WalletPanel {
     }
     try {
       this.statusT.setText('Connecting...'); this.statusT.setColor('#03e1ff');
-      const resp = await provider.connect();
-      const addr = resp.publicKey.toString();
-      this.wallet = { addr, provider: provider.isPhantom ? 'phantom' : 'solflare', network: this.network };
+      const { addr, provider: kind } = await connectWallet(provider);
+      this.wallet = { addr, provider: kind, network: this.network };
       saveWallet(this.wallet);
       this.syncToProfile(addr);
       this.refresh();
@@ -151,8 +145,7 @@ export class WalletPanel {
   }
 
   disconnect() {
-    const provider = getProvider();
-    if (provider?.disconnect) provider.disconnect().catch(() => {});
+    disconnectProvider();
     clearWallet();
     this.wallet = null;
     this.balance = null;
@@ -204,7 +197,7 @@ export class WalletPanel {
     if (this.netT?.active) this.netT.setText((this.network || 'devnet').toUpperCase());
     if (this.wallet) {
       const addr = this.wallet.addr;
-      const short = addr.slice(0, 6) + '...' + addr.slice(-4);
+      const short = truncateAddress(addr, 6, 4, '...');
       const bal = this.balance !== null ? (this.balance / 1e9).toFixed(4) + ' SOL' : '...';
       const stake = this.activeStake();
       const stakeLine = stake ? `Stake: ${stake.tier.toUpperCase()} (+${Math.round(stake.dropRate * 100)}% drops)` : '';

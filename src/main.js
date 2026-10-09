@@ -56,6 +56,7 @@ input.install(game);
 installMobile();
 installPwa();
 import { installPwaInstall } from './ui/PwaInstall.js'; installPwaInstall(); // DOM PWA install pill (src/ui/PwaInstall.js): only when installable, never over the login UI
+import { installLoginWallet } from './ui/LoginWallet.js'; installLoginWallet(); // DOM [Connect Wallet] button on the login screen (shares ui/walletConnect.js with the HUD WalletPanel)
 installPerf(game);
 injectPolishCss(); // additive HUD readability/mobile floors (ui/hudPolish.js; id-guarded, safe to call once)
 // Specialization catalogue (skill trees + adv gates) for the spec runtime.
