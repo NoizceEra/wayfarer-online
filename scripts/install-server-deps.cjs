@@ -2,6 +2,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
+// Vercel builds the CLIENT only. Installing the relay's dependencies here is pure
+// waste - it pulls native modules (better-sqlite3) into a build that never runs the
+// server - and it is a needless failure point. Vercel sets VERCEL=1 during builds.
+if (process.env.VERCEL) {
+  console.log('Skipping server dependencies: this is a client-only Vercel build.');
+  process.exit(0);
+}
+
 const lockfile = path.resolve(__dirname, '..', 'server', 'package-lock.json');
 if (!fs.existsSync(lockfile)) {
   console.log('Skipping server dependencies: server files are not part of this deployment.');
