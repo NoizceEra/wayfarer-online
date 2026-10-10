@@ -112,6 +112,11 @@ const CUSTOM_FX = [
   ['fx.arcaneBeam', 'assets/custom/fx/arcane_beam.png', 32, 64, 18],
   ['fx.voidCleave', 'assets/custom/fx/void_cleave.png', 40, 40, 18],
   ['fx.healingBloom', 'assets/custom/fx/healing_bloom.png', 32, 32, 16],
+  // Blender-baked VFX (tools/blender_bake_vfx.py): posterised + 1px-outlined pixel
+  // sheets, 8 frames each, played through the same Phaser anims path as the above.
+  ['fx.bakedExplosion', 'assets/custom/fx/baked_explosion.png', 64, 64, 18],
+  ['fx.bakedIceShatter', 'assets/custom/fx/baked_ice_shatter.png', 64, 64, 20],
+  ['fx.bakedHealSparkle', 'assets/custom/fx/baked_heal_sparkle.png', 64, 64, 16],
 ];
 const PROJ_SHEETS = [
   ['proj.energyBall', 'FX/Projectile/EnergyBall.png', 16, 16, 12],

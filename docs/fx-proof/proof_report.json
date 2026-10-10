@@ -1,0 +1,836 @@
+{
+  "steps": [
+    {
+      "name": "explosion",
+      "texKey": "fx.bakedExplosion",
+      "sprites_before": 0,
+      "frames": [
+        [],
+        [],
+        [
+          {
+            "frame": 1,
+            "playing": true,
+            "x": 950,
+            "y": 740,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 2,
+            "playing": true,
+            "x": 950,
+            "y": 740,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 3,
+            "playing": true,
+            "x": 950,
+            "y": 740,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 3,
+            "playing": true,
+            "x": 950,
+            "y": 740,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 4,
+            "playing": true,
+            "x": 950,
+            "y": 740,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 4,
+            "playing": true,
+            "x": 950,
+            "y": 740,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 5,
+            "playing": true,
+            "x": 950,
+            "y": 740,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 5,
+            "playing": true,
+            "x": 950,
+            "y": 740,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 5,
+            "playing": true,
+            "x": 950,
+            "y": 740,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 6,
+            "playing": true,
+            "x": 950,
+            "y": 740,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 6,
+            "playing": true,
+            "x": 950,
+            "y": 740,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 7,
+            "playing": true,
+            "x": 950,
+            "y": 740,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ]
+      ],
+      "maxFrame": 7,
+      "sawAdvance": true,
+      "shotTaken": true
+    },
+    {
+      "name": "preexisting_earthShatter",
+      "texKey": "fx.earthShatter",
+      "sprites_before": 0,
+      "frames": [
+        [],
+        [],
+        [
+          {
+            "frame": 1,
+            "playing": true,
+            "x": 950,
+            "y": 746,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 2,
+            "playing": true,
+            "x": 950,
+            "y": 746,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 3,
+            "playing": true,
+            "x": 950,
+            "y": 746,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 3,
+            "playing": true,
+            "x": 950,
+            "y": 746,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 4,
+            "playing": true,
+            "x": 950,
+            "y": 746,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 4,
+            "playing": true,
+            "x": 950,
+            "y": 746,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 4,
+            "playing": true,
+            "x": 950,
+            "y": 746,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 5,
+            "playing": true,
+            "x": 950,
+            "y": 746,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 5,
+            "playing": true,
+            "x": 950,
+            "y": 746,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 6,
+            "playing": true,
+            "x": 950,
+            "y": 746,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 6,
+            "playing": true,
+            "x": 950,
+            "y": 746,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        []
+      ],
+      "maxFrame": 6,
+      "sawAdvance": true,
+      "shotTaken": true
+    },
+    {
+      "name": "heal_sparkle",
+      "texKey": "fx.bakedHealSparkle",
+      "sprites_before": 0,
+      "frames": [
+        [
+          {
+            "frame": 1,
+            "playing": true,
+            "x": 950,
+            "y": 742,
+            "visible": true,
+            "alpha": 1,
+            "blend": 1
+          }
+        ],
+        [
+          {
+            "frame": 2,
+            "playing": true,
+            "x": 950,
+            "y": 742,
+            "visible": true,
+            "alpha": 1,
+            "blend": 1
+          }
+        ],
+        [
+          {
+            "frame": 2,
+            "playing": true,
+            "x": 950,
+            "y": 742,
+            "visible": true,
+            "alpha": 1,
+            "blend": 1
+          }
+        ],
+        [
+          {
+            "frame": 3,
+            "playing": true,
+            "x": 950,
+            "y": 742,
+            "visible": true,
+            "alpha": 1,
+            "blend": 1
+          }
+        ],
+        [
+          {
+            "frame": 3,
+            "playing": true,
+            "x": 950,
+            "y": 742,
+            "visible": true,
+            "alpha": 1,
+            "blend": 1
+          }
+        ],
+        [
+          {
+            "frame": 4,
+            "playing": true,
+            "x": 950,
+            "y": 742,
+            "visible": true,
+            "alpha": 1,
+            "blend": 1
+          }
+        ],
+        [
+          {
+            "frame": 4,
+            "playing": true,
+            "x": 950,
+            "y": 742,
+            "visible": true,
+            "alpha": 1,
+            "blend": 1
+          }
+        ],
+        [
+          {
+            "frame": 4,
+            "playing": true,
+            "x": 950,
+            "y": 742,
+            "visible": true,
+            "alpha": 1,
+            "blend": 1
+          }
+        ],
+        [
+          {
+            "frame": 5,
+            "playing": true,
+            "x": 950,
+            "y": 742,
+            "visible": true,
+            "alpha": 1,
+            "blend": 1
+          }
+        ],
+        [
+          {
+            "frame": 5,
+            "playing": true,
+            "x": 950,
+            "y": 742,
+            "visible": true,
+            "alpha": 1,
+            "blend": 1
+          }
+        ],
+        [
+          {
+            "frame": 5,
+            "playing": true,
+            "x": 950,
+            "y": 742,
+            "visible": true,
+            "alpha": 1,
+            "blend": 1
+          }
+        ],
+        [
+          {
+            "frame": 6,
+            "playing": true,
+            "x": 950,
+            "y": 742,
+            "visible": true,
+            "alpha": 1,
+            "blend": 1
+          }
+        ],
+        [
+          {
+            "frame": 6,
+            "playing": true,
+            "x": 950,
+            "y": 742,
+            "visible": true,
+            "alpha": 1,
+            "blend": 1
+          }
+        ],
+        [
+          {
+            "frame": 7,
+            "playing": true,
+            "x": 950,
+            "y": 742,
+            "visible": true,
+            "alpha": 1,
+            "blend": 1
+          }
+        ]
+      ],
+      "maxFrame": 7,
+      "sawAdvance": true,
+      "shotTaken": true
+    },
+    {
+      "name": "explosion_sunburst",
+      "texKey": "fx.bakedExplosion",
+      "sprites_before": 0,
+      "frames": [
+        [
+          {
+            "frame": 1,
+            "playing": true,
+            "x": 950,
+            "y": 742,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 2,
+            "playing": true,
+            "x": 950,
+            "y": 742,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 3,
+            "playing": true,
+            "x": 950,
+            "y": 742,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 3,
+            "playing": true,
+            "x": 950,
+            "y": 742,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 4,
+            "playing": true,
+            "x": 950,
+            "y": 742,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 4,
+            "playing": true,
+            "x": 950,
+            "y": 742,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 4,
+            "playing": true,
+            "x": 950,
+            "y": 742,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 5,
+            "playing": true,
+            "x": 950,
+            "y": 742,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 5,
+            "playing": true,
+            "x": 950,
+            "y": 742,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 6,
+            "playing": true,
+            "x": 950,
+            "y": 742,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 6,
+            "playing": true,
+            "x": 950,
+            "y": 742,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 7,
+            "playing": true,
+            "x": 950,
+            "y": 742,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 7,
+            "playing": true,
+            "x": 950,
+            "y": 742,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 8,
+            "playing": true,
+            "x": 950,
+            "y": 742,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ]
+      ],
+      "maxFrame": 8,
+      "sawAdvance": true,
+      "shotTaken": true
+    },
+    {
+      "name": "ice_shatter",
+      "texKey": "fx.bakedIceShatter",
+      "sprites_before": 0,
+      "frames": [
+        [
+          {
+            "frame": 1,
+            "playing": true,
+            "x": 976,
+            "y": 739,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 2,
+            "playing": true,
+            "x": 976,
+            "y": 739,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 3,
+            "playing": true,
+            "x": 976,
+            "y": 739,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 3,
+            "playing": true,
+            "x": 976,
+            "y": 739,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 4,
+            "playing": true,
+            "x": 976,
+            "y": 739,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 4,
+            "playing": true,
+            "x": 976,
+            "y": 739,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 5,
+            "playing": true,
+            "x": 976,
+            "y": 739,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 5,
+            "playing": true,
+            "x": 976,
+            "y": 739,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 6,
+            "playing": true,
+            "x": 976,
+            "y": 739,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 6,
+            "playing": true,
+            "x": 976,
+            "y": 739,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 7,
+            "playing": true,
+            "x": 976,
+            "y": 739,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 7,
+            "playing": true,
+            "x": 976,
+            "y": 739,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 8,
+            "playing": true,
+            "x": 976,
+            "y": 739,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ],
+        [
+          {
+            "frame": 8,
+            "playing": true,
+            "x": 976,
+            "y": 739,
+            "visible": true,
+            "alpha": 1,
+            "blend": 0
+          }
+        ]
+      ],
+      "maxFrame": 8,
+      "sawAdvance": true,
+      "shotTaken": true
+    }
+  ],
+  "animKeys": [
+    "fx.arcaneBeam",
+    "fx.aura",
+    "fx.bakedExplosion",
+    "fx.bakedHealSparkle",
+    "fx.bakedIceShatter",
+    "fx.boost",
+    "fx.circleOrange",
+    "fx.circleSpark",
+    "fx.circleWhite",
+    "fx.circular",
+    "fx.claw",
+    "fx.cut",
+    "fx.cutX",
+    "fx.dust",
+    "fx.earthShatter",
+    "fx.explosion",
+    "fx.flake",
+    "fx.flam",
+    "fx.frostNova",
+    "fx.healingBloom",
+    "fx.holyRadiance",
+    "fx.ice",
+    "fx.iceB",
+    "fx.pillar",
+    "fx.plant",
+    "fx.poisonBloom",
+    "fx.rockSpike",
+    "fx.shadowVortex",
+    "fx.shieldBlue",
+    "fx.shieldYellow",
+    "fx.slash01",
+    "fx.slashArc",
+    "fx.slashCurved",
+    "fx.slashDouble",
+    "fx.smoke",
+    "fx.spark",
+    "fx.spirit",
+    "fx.thunder",
+    "fx.thunderStrike",
+    "fx.voidCleave",
+    "fx.water",
+    "fx.whirlwind",
+    "proj.energyBall",
+    "proj.fireball",
+    "proj.holyLance",
+    "proj.iceShard",
+    "proj.lightningSpear",
+    "proj.natureSeed",
+    "proj.shuriken",
+    "proj.voidArrow"
+  ],
+  "texExists": {
+    "bakedExplosion": true,
+    "bakedIceShatter": true,
+    "bakedHealSparkle": true,
+    "frameTotal": {
+      "bakedExplosion": 9,
+      "bakedIceShatter": 9,
+      "bakedHealSparkle": 9
+    }
+  }
+}

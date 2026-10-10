@@ -168,6 +168,8 @@ export const MONSTER_FILES = {
 export const CUSTOM_MONSTER_FILES = {
   beach_coralcrab: 'beach_coralcrab.png',
   beach_reefjelly: 'beach_reefjelly.png',
+  cavern_emberling: 'cavern_emberling.png',
+  cavern_gemgolem: 'cavern_gemgolem.png',
   cavern_magmacrab: 'cavern_magmacrab.png',
   crypt_bonehound: 'crypt_bonehound.png',
   crypt_shadowwraith: 'crypt_shadowwraith.png',

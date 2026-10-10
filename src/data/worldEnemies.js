@@ -213,7 +213,7 @@ AREAS.desert.enemies = AREAS.desert.enemies || [];
 AREAS.desert.enemies.push(['desert_sandstalker', 4, 'any']);
 AREAS.caverns = AREAS.caverns || { enemies: [] };
 AREAS.caverns.enemies = AREAS.caverns.enemies || [];
-AREAS.caverns.enemies.push(['cavern_magmacrab', 4, 'any']);
+AREAS.caverns.enemies.push(['cavern_magmacrab', 4, 'any'], ['cavern_emberling', 5, 'any'], ['cavern_gemgolem', 3, 'any']);
 AREAS.hollow = AREAS.hollow || { enemies: [] };
 AREAS.hollow.enemies = AREAS.hollow.enemies || [];
 AREAS.hollow.enemies.push(['hollow_abysseye', 4, 'any']);

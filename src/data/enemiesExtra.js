@@ -61,6 +61,10 @@ X('forgelord', 'Forgelord Ignar', 'Beast', ['caverns'], 19, 1450, 38, 1100, [320
   items: [{ id: 'bar_mithril', chance: 1 }, { id: 'chest_big', chance: 0.6 }, { id: 'scroll_fire', chance: 0.8 }],
 });
 X('cavern_magmacrab', 'Magma Crab', 'cavern_magmacrab', ['caverns'], 16, 180, 29, 78, [10, 20], { ai: 'melee', aggro: 90, inflict: { id: 'burn', chance: 0.3 }, items: [{ id: 'fire_crystal', chance: 0.05 }, { id: 'magma_core', chance: 0.03 }] });
+// Blender-baked cavern monsters (tools/blender_bake_monster_sheet.py): flat posterised
+// 16x16 sheets in public/assets/custom/monsters, wired through CUSTOM_MONSTER_FILES.
+X('cavern_emberling', 'Magma Emberling', 'cavern_emberling', ['caverns'], 15, 150, 28, 74, [9, 20], { ai: 'hopper', aggro: 90, social: true, spd: 1.05, inflict: { id: 'burn', chance: 0.4 }, items: [{ id: 'magma_core', chance: 0.05 }, { id: 'scroll_fire', chance: 0.04 }], deathFx: 'fire' });
+X('cavern_gemgolem', 'Crystal Gem Golem', 'cavern_gemgolem', ['caverns'], 17, 250, 32, 92, [14, 28], { ai: 'melee', aggro: 95, social: true, spd: 0.82, inflict: { id: 'stun', chance: 0.2 }, items: [{ id: 'gem_purple', chance: 0.06 }, { id: 'fire_crystal', chance: 0.04 }], drops: [{ id: 'stonemaul', chance: 0.03 }, { id: 'tower_shield', chance: 0.03 }], deathFx: 'bones' });
 
 
 // ——— Hollow Depths (level is set per floor by world/dungeons.js) ———

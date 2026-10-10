@@ -164,6 +164,12 @@ function anim(scene, x, y, key, o = {}) {
   s.once('animationcomplete', () => s.destroy());
   return s;
 }
+// Baked Blender sheets (tools/blender_bake_vfx.py) are registered in the loader's
+// CUSTOM_FX list and play through the same Phaser anims path as every other FX sheet.
+// If a baked sheet is missing (older build) we fall back to the original key.
+function animBaked(scene, x, y, baked, fallback, o = {}) {
+  return anim(scene, x, y, scene.anims.exists(baked) ? baked : fallback, o);
+}
 function afterimage(scene, p, tint = 0x9fd0ff, alpha = 0.55, life = 260) {
   const sp = p.sprite;
   if (!sp || !sp.texture) return;
@@ -532,7 +538,7 @@ const SK = {
     windup(scene, p, 0xffe070, 140);
     const R = c.radius || 78;
     glow(scene, p.x, p.y - 6, { r: R * 0.9, color: 0xfff0b0, dur: 380, a: 0.8, from: 0.2 });
-    anim(scene, p.x, p.y - 8, 'fx.explosion', { scale: Math.min(2, R / 38), tint: 0xffe8a0 });
+    animBaked(scene, p.x, p.y - 8, 'fx.bakedExplosion', 'fx.explosion', { scale: Math.min(1.6, R / 44), tint: 0xffe8a0 });
     sweepRing(scene, p.x, p.y, R, 0xffe070, 520);
     ring(scene, p.x, p.y + 2, { r: R * 0.5, color: 0xffffff, dur: 340 });
     radial(scene, p.x, p.y - 6, 14, 14, R * 0.75, { color: 0xfff0a0, dur: 360, w: 1.6 });
@@ -633,7 +639,7 @@ const SK = {
       },
       onComplete: () => {
         f.destroy(); m && release(scene, m);
-        anim(scene, x, y - 10, 'fx.explosion', { scale: Math.min(2, R / 34) });
+        animBaked(scene, x, y - 10, 'fx.bakedExplosion', 'fx.explosion', { scale: Math.min(1.7, R / 42) });
         earthShatterVfx(scene, x, y);
         anim(scene, x, y - 6, 'fx.flam', { scale: R / 28 });
         sweepRing(scene, x, y, R, 0xff7a20, 480);
@@ -892,7 +898,7 @@ export function deathFx(e) {
       burst(s, x, y, { n: 14, color: f.c, speed: [30, 100], up: 40, g: -30, life: [400, 800], size: [0.7, 1.3] });
       return false;
     case 'ice':
-      anim(s, x, y, 'fx.ice', { scale: 1.3 * sc });
+      animBaked(s, x, y, 'fx.bakedIceShatter', 'fx.ice', { scale: 1.1 * sc });
       burst(s, x, y, { n: 12, key: 'vfx.star', color: f.c, speed: [40, 110], up: 30, g: 160, life: [500, 800], size: [0.8, 1.4], rot: 300 });
       return false;
     case 'water':
@@ -1074,7 +1080,7 @@ export function voidCleaveVfx(scene, x, y) {
 
 export function healingBloomVfx(scene, x, y) {
   setEl(scene, 'holy');
-  anim(scene, x, y - 8, 'fx.healingBloom', { scale: 1.5, blend: ADD });
+  animBaked(scene, x, y - 8, 'fx.bakedHealSparkle', 'fx.healingBloom', { scale: 1.5, blend: ADD });
 }
 
 // ── Periodic Status Effect Visuals ─────────────────────────────────────────
