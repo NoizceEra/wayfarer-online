@@ -49,6 +49,11 @@ const game = new Phaser.Game({
 
 // Debug/testing handle (also used by automated smoke tests).
 window.__wayfarer = game;
+// Normal-mapped 2D lighting SPIKE (one sprite) — opt in with ?nlspike=1.
+// See src/systems/normalLight.js (Phaser Light2D + a Blender-baked normal map).
+if (new URLSearchParams(window.location.search).has('nlspike')) {
+  import('./systems/normalLight.js').then((m) => m.install(game));
+}
 installLazyScenes(game);
 // Central keyboard/gamepad input (core/input.js): one window listener, canvas focus, rebindable actions.
 input.install(game);
