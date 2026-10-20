@@ -239,6 +239,15 @@ def generate_slime_frame(direction: str, state: str) -> PixelCanvas:
     spec_y = int(cy - ry + 1.5)
     c.set(5, spec_y, 'W')
     c.set(6, spec_y, 'W')
+    c.set(4, spec_y + 1, 'W')  # extends the gleam into an L so it reads as glossy, not a flat dot
+    # a couple of internal bubble speckles (1px each) break up the flat midtone
+    # fill without adding a new palette colour — reuses 'H'/'D' already assigned above
+    bub_y = int(cy + 0.5)
+    if 0 <= bub_y < 16 and c.grid[bub_y][9] == 'M':
+        c.grid[bub_y][9] = 'H'
+    bub_y2 = int(cy + ry - 2)
+    if 0 <= bub_y2 < 16 and c.grid[bub_y2][6] == 'M':
+        c.grid[bub_y2][6] = 'D'
     c.auto_outline('K')
 
     eye_y = int(cy - 0.5)

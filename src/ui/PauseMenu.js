@@ -160,6 +160,7 @@ export class PauseMenu {
     if (navigator.vibrate) toggle('haptics', 'Haptic vibration');
     toggle('shake', 'Screen shake');
     toggle('reduceMotion', 'Reduce motion');
+    toggle('colorblind', 'Colorblind-friendly icons');
     const by = ph / 2 - 36;
     this.button(-62, by, 110, 22, 'DEFAULTS', () => {
       const scale = settings.get('uiScale');

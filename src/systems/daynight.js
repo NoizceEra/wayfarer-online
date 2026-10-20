@@ -27,6 +27,31 @@ const GRADE = [ // [t, r, g, b]  (multiply colour, 255 = neutral)
 ];
 const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
+// Per-biome ambient tint, multiplied into the grade alongside the day/night curve
+// and weather's `extra` (daynight.js:9). Subtle on purpose — this reads as "this
+// place has a mood", not a filter slapped over the art. Keyed by zone/area id
+// (src/data/zones.js ZONES, src/data/areas.js AREAS); falls back to the parent
+// area id (zoneHere()'s `.area`, src/world/areas.js:162) then to neutral.
+const BIOME_TINT = {
+  meadow: [1.00, 1.03, 0.97],   // bright open field, barely warm
+  woods: [0.92, 1.00, 0.93],    // mossy green-cool
+  ruins: [0.97, 0.94, 0.88],    // dusty amber-grey
+  inn: [1.05, 0.98, 0.90],      // warm hearth-lit interior
+  cottage_a: [1.05, 0.98, 0.90],
+  cottage_b: [1.05, 0.98, 0.90],
+  dock: [0.93, 0.99, 1.05],     // cool coastal blue
+  crypt: [0.80, 0.82, 0.95],    // cold violet-blue dungeon
+  frost: [0.88, 0.95, 1.08],    // icy blue
+  desert: [1.08, 0.97, 0.82],   // warm sand/amber
+  marsh: [0.88, 0.96, 0.86],    // murky green
+  caverns: [0.90, 0.85, 0.95],  // volcanic purple-pink
+  hollow: [0.82, 0.86, 0.90],   // eerie cold grey-blue
+};
+const NEUTRAL_TINT = [1, 1, 1];
+export function biomeTintFor(id, areaId) {
+  return BIOME_TINT[id] || BIOME_TINT[areaId] || NEUTRAL_TINT;
+}
+
 export function gradeAt(t, out = [255, 255, 255]) {
   t = ((t % 1) + 1) % 1;
   let i = 0;
@@ -65,6 +90,8 @@ export class DayNight {
     this.t = 0.3; // start mid-morning
     this.frozen = false;
     this.extra = [1, 1, 1]; // weather tint (multiplied into the grade)
+    this.biome = [1, 1, 1]; // current (smoothed) per-zone ambient tint
+    this.biomeTarget = [1, 1, 1]; // goal tint, set by setBiomeTint() on zone change
     this.indoor = 0;
     this._rgb = [255, 255, 255];
     this.nightColor = [255, 255, 255]; // light-map base colour (used by lighting.js)
@@ -118,10 +145,15 @@ export class DayNight {
     const nc = this.nightColor, k = n * (1 - this.indoor);
     nc[0] = 255 + (52 - 255) * k; nc[1] = 255 + (64 - 255) * k; nc[2] = 255 + (122 - 255) * k;
     if (lit) { const f = sstep(0.45, 1, n); rgb[0] += (255 - rgb[0]) * f; rgb[1] += (255 - rgb[1]) * f; rgb[2] += (255 - rgb[2]) * f; }
+    // Biome tint eases toward its target over ~0.5s so crossing a zone border
+    // never pops (same smoothing style as `indoor` just above).
+    const bt = this.biomeTarget, bc = this.biome, brate = Math.min(1, dt * 2);
+    bc[0] += (bt[0] - bc[0]) * brate; bc[1] += (bt[1] - bc[1]) * brate; bc[2] += (bt[2] - bc[2]) * brate;
+
     const e = this.extra, ind = this.indoor;
-    const r = (rgb[0] * (1 - 0.4 * deep * 0.95) * e[0]) * (1 - ind) + 255 * ind * 0.96;
-    const g = (rgb[1] * (1 - 0.4 * deep) * e[1]) * (1 - ind) + 255 * ind * 0.93;
-    const b = (rgb[2] * (1 - 0.25 * deep) * e[2]) * (1 - ind) + 255 * ind * 0.88;
+    const r = (rgb[0] * (1 - 0.4 * deep * 0.95) * e[0] * bc[0]) * (1 - ind) + 255 * ind * 0.96;
+    const g = (rgb[1] * (1 - 0.4 * deep) * e[1] * bc[1]) * (1 - ind) + 255 * ind * 0.93;
+    const b = (rgb[2] * (1 - 0.25 * deep) * e[2] * bc[2]) * (1 - ind) + 255 * ind * 0.88;
     const col = ((Math.min(255, r) | 0) << 16) | ((Math.min(255, g) | 0) << 8) | (Math.min(255, b) | 0);
     const neutral = r > 251 && g > 251 && b > 251;
     this.grade.setVisible(!neutral);
@@ -130,6 +162,10 @@ export class DayNight {
     this.fitQuads();
     bus.emit(Events.TIME, { t: this.t, night: n * 0.42, nightAmt: n, isNight: this.isNight });
   }
+  // Called on zone change (WorldScene.js, where `this.zoneId` is tracked) with
+  // the new zone's [r,g,b] tint, e.g. `biomeTintFor(z.id, z.area)`.
+  setBiomeTint(rgb) { this.biomeTarget = rgb; }
+
   // `isNight` stays a property for existing callers; `nightAmount()` / `night()` for new code.
   get isNight() { return this.nightA > 0.5; }
   night() { return this.isNight; }

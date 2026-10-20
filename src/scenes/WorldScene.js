@@ -8,7 +8,7 @@ import { Enemy } from '../entities/Enemy.js';
 import { bus, Events } from '../core/events.js';
 import { WorldSync } from '../net/WorldSync.js';
 import { net } from '../net/NetworkManager.js';
-import { DayNight } from '../systems/daynight.js';
+import { DayNight, biomeTintFor } from '../systems/daynight.js';
 import { Fx } from '../systems/fx.js';
 import { audio } from '../systems/audio.js';
 import { installWorldZoom } from '../core/display.js';
@@ -709,6 +709,7 @@ export class WorldScene extends Phaser.Scene {
     const z = this.zoneHere(this.player.x, this.player.y);
     if (z.id !== this.zoneId) {
       this.zoneId = z.id;
+      this.daynight?.setBiomeTint(biomeTintFor(z.id, z.area));
       audio.musicFor(z.id);
       bus.emit(Events.ZONE, z);
       bus.emit(Events.SYSTEM, `${z.safe ? '— ' : ''}${z.name}: ${z.desc}`);

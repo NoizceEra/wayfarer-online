@@ -169,17 +169,27 @@ def build_gemgolem():
 
 
 def build_emberling():
-    """Molten imp: charred rock shell, glowing magma core, white-hot eyes, flame spikes."""
+    """Molten imp: charred rock shell with soot joints and glowing ember cracks,
+    magma belly, white-hot eyes, flame spikes. The posterize palette already
+    budgets 9 colours for this creature (PALETTES['emberling'] below) but the
+    original 3-material build (char/magma/glow) only ever used 7 of them —
+    `soot` and `ember` use the remaining budget instead of adding new palette
+    entries, raising internal colour breaks without changing the silhouette."""
     char = flat_material('char', (0.14, 0.13, 0.16))
+    soot = flat_material('soot', (0.07, 0.06, 0.08))
     magma = flat_material('magma', (0.92, 0.34, 0.12))
+    ember = flat_material('ember', (1.0, 0.55, 0.18))
     glow = flat_material('glow', (1.0, 0.84, 0.42))
     objs = []
     objs.append(_add(_ico(1, 0.48, (0, 0, 0.60), (1.02, 0.9, 1.06)), char))           # body shell
     objs.append(_add(_ico(1, 0.34, (0, -0.18, 0.54), (1.0, 0.72, 1.0)), magma))        # molten belly
     objs.append(_add(_ico(0, 0.26, (0, 0, 1.12), (1.0, 0.92, 1.0)), char))             # head
+    # ember cracks: small glowing blobs embedded in the shell, breaking up the flat char tone
+    for (cx, cy, cz, s) in ((0.26, -0.30, 0.78, 0.09), (-0.30, -0.22, 0.46, 0.08), (0.08, -0.34, 0.34, 0.07)):
+        objs.append(_add(_ico(0, s, (cx, cy, cz), (1, 1, 1)), ember))
     for sx in (-1, 1):
         objs.append(_add(_cube(0.11, (sx * 0.10, -0.21, 1.16), (1, 1, 1)), glow))      # eyes
-        objs.append(_add(_cube(1.0, (sx * 0.22, 0.0, 0.09), (0.17, 0.21, 0.20)), char))  # feet
+        objs.append(_add(_cube(1.0, (sx * 0.22, 0.0, 0.09), (0.17, 0.21, 0.20)), soot))  # feet (soot, darker than shell)
         objs.append(_add(_cone(5, 0.11, 0.40, (sx * 0.42, 0.06, 0.92),
                                (0, math.radians(sx * 62), 0)), magma))                 # shoulder spikes
     objs.append(_add(_cone(5, 0.12, 0.36, (0.0, 0.02, 1.40), (math.radians(-14), 0, 0)), magma))  # crown spike

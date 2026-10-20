@@ -30,6 +30,13 @@ import { settings } from '../core/settings.js';
 //             the established "Shielded" float text is 0xd0a0ff, combat.js:147)
 const HUE = { burn: 0xff8a30, poison: 0x7fe06a, slow: 0x9fe0ff, stun: 0xffee55, shield: 0x9945ff };
 
+// Colorblind-friendly mode (settings.js `colorblind`): the overhead status glyph
+// shows a letter instead of a plain tinted diamond, so a status reads by shape
+// too, not colour alone. Same letters as the hero's buff tray (CombatHudScene.js
+// `drawBuffs` glyph map) so the two readouts agree.
+const GLYPH_LETTER = { poison: 'P', burn: 'B', bleed: 'b', slow: 'S', stun: '*', shield: 'W' };
+const cbOn = () => !!settings.get('colorblind');
+
 const MOBILE = !!CONFIG.isMobile;                 // config.js:13 (coarse pointer / <620px)
 const CAP = MOBILE ? 48 : 160;                    // pooled images per scene
 const calm = () => !!settings.get('reduceMotion'); // settings.js:13 — no pulse when on
@@ -62,6 +69,20 @@ function ensureTex(scene) {
       g.addColorStop(0.82, 'rgba(255,255,255,0.95)'); g.addColorStop(1, 'rgba(255,255,255,0)');
       c.fillStyle = g; c.fillRect(0, 0, 24, 24); t.refresh(); }
   }
+}
+// One 9x9 canvas texture per letter (same dark-rim-on-white style as the
+// diamond above, so tinting looks identical) — baked lazily, cached forever.
+function ensureLetterTex(scene, letter) {
+  const key = `wf.status.glyph.${letter}`;
+  if (!scene.textures.exists(key)) {
+    const t = scene.textures.createCanvas(key, 9, 9);
+    if (t) { const c = t.getContext(); c.clearRect(0, 0, 9, 9);
+      c.textAlign = 'center'; c.textBaseline = 'middle'; c.font = 'bold 8px monospace';
+      c.fillStyle = '#000000'; c.fillText(letter, 4.6, 5.1);  // dark rim (offset)
+      c.fillStyle = '#ffffff'; c.fillText(letter, 4.5, 4.7);  // tinted body
+      t.refresh(); }
+  }
+  return key;
 }
 function grab(scene, s, key) {
   let im = s.free.pop();
@@ -100,8 +121,11 @@ function eachStatus(st, id) {
   const e = r.ent;
   const col = HUE[id] != null ? HUE[id] : ((STATUS[id] && STATUS[id].color) || 0xffffff);
   if (r.col < 0) r.col = col;
+  const letter = GLYPH_LETTER[id];
+  const texKey = (letter && cbOn()) ? ensureLetterTex(r.scene, letter) : 'wf.status.glyph';
   let it = r.items[r.n];
-  if (!it) { it = grab(r.scene, r.pool, 'wf.status.glyph'); if (!it) return; r.items[r.n] = it; }
+  if (!it) { it = grab(r.scene, r.pool, texKey); if (!it) return; r.items[r.n] = it; }
+  else if (it.texture.key !== texKey) it.setTexture(texKey); // mode toggled mid-session
   const count = r.set.map.size || 1;
   const spread = MOBILE ? 5 : 6;
   const sc = (MOBILE ? 0.85 : 1) * (r.strong ? 1.45 : 1) * (e.vscale || 1);

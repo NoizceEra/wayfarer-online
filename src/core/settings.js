@@ -12,6 +12,7 @@ export const DEFAULT_SETTINGS = {
   shake: true,        // camera shake
   reduceMotion: false, // no shake, no flashing vignette / pulses
   uiScale: 1,         // HUD + panels zoom (0.75..2)
+  colorblind: false,  // status effects/buffs show a letter glyph, not colour alone
 };
 export const UI_SCALES = [0.75, 1, 1.25, 1.5, 2];
 
