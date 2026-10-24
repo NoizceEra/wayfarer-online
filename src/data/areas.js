@@ -1,4 +1,5 @@
 import { EXTRA_AREAS, EXTRA_PORTALS, EXTRA_WAYSTONES, EXTRA_SIGNS } from "./areasExtra.js";
+import { LAYOUT_SIGNS } from "./worldLayout.js";
 // Expansion: enterable interiors + separate maps ("areas"). Re-exported by zones.js.
 // Areas live in the SAME Phaser world but at far-apart origins (px, y≈0), so:
 //  · co-op peers in a different space are simply never on screen (their world
@@ -129,3 +130,4 @@ Object.assign(AREAS, EXTRA_AREAS);
 PORTALS.push(...EXTRA_PORTALS);
 WAYSTONES.push(...EXTRA_WAYSTONES);
 SIGNS.push(...EXTRA_SIGNS);
+SIGNS.push(...LAYOUT_SIGNS);

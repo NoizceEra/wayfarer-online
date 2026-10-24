@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { ZONES, AREAS, PORTALS, WAYSTONES } from '../data/zones.js';
+import { ROADS, RIVERS, LANDMARKS, BRIDGES } from '../data/worldLayout.js';
 import { CONFIG } from '../config.js';
 import { DialogBox } from '../ui/DialogBox.js';
 import { input } from '../core/input.js';
@@ -203,6 +204,22 @@ export class OverlayScene extends Phaser.Scene {
       g.fillStyle(ZONE_COL[z.id] || 0x888888, 1).fillRect(mx + z.rect.x * s, my + z.rect.y * s, z.rect.w * s, z.rect.h * s);
       g.lineStyle(1, 0x000000, 0.35).strokeRect(mx + z.rect.x * s, my + z.rect.y * s, z.rect.w * s, z.rect.h * s);
     }
+    // rivers then roads (tile polylines)
+    for (const rv of RIVERS) {
+      g.lineStyle(3, 0x2f6fb0, 0.9);
+      g.beginPath();
+      rv.pts.forEach(([x, y], i) => { const px = mx + x * s, py = my + y * s; if (i === 0) g.moveTo(px, py); else g.lineTo(px, py); });
+      g.strokePath();
+    }
+    for (const rd of ROADS) {
+      g.lineStyle(rd.kind === 'track' ? 1.2 : 2, rd.kind === 'cobble' ? 0xb8b0a4 : 0xc4a06a, 0.95);
+      g.beginPath();
+      rd.pts.forEach(([x, y], i) => { const px = mx + x * s, py = my + y * s; if (i === 0) g.moveTo(px, py); else g.lineTo(px, py); });
+      g.strokePath();
+    }
+    for (const b of BRIDGES) {
+      g.fillStyle(0x8d6a3a, 1).fillRect(mx + b.x * s - 3, my + b.y * s - 2, 6, 4);
+    }
     g.lineStyle(2, 0x000000, 0.6).strokeRect(mx, my, S, S);
     const lab = (x, y, str, color = '#fff', size = '8px') => { const t = this.add.text(x, y, str, { fontFamily: FONT, fontSize: size, color, stroke: '#000', strokeThickness: 3, align: 'center' }).setOrigin(0.5); items.push(t); return t; };
     lab(mx + 28 * s, my + 62 * s, 'Meadowfield\nLv 1-4', '#eaffd0');
@@ -210,6 +227,13 @@ export class OverlayScene extends Phaser.Scene {
       if (z.id === 'meadow') continue;
       const lv = z.lv[0] === z.lv[1] ? '' : `\nLv ${z.lv[0]}-${z.lv[1]}`;
       lab(mx + (z.rect.x + z.rect.w / 2) * s, my + (z.rect.y + z.rect.h / 2) * s, `${z.name}${lv}`, '#fff');
+    }
+    const LMCOL = { light: 0xffe8a0, mill: 0xe8d8b0, tower: 0xc8d0d8, camp: 0xff9a4a, shrine: 0xfff0c0, troll: 0xc09070 };
+    for (const m of LANDMARKS) {
+      const x = mx + m.tx * s, y = my + m.ty * s;
+      g.fillStyle(LMCOL[m.type] || 0xffffff, 1).fillCircle(x, y, 3);
+      g.lineStyle(1, 0x000000, 0.7).strokeCircle(x, y, 3);
+      if (m.type === 'light' || m.type === 'mill' || m.type === 'tower' || m.type === 'shrine') lab(x, y - 10, m.name, '#ffe8a0', '7px');
     }
     // portals
     const here = w.areas?.current?.id || null;
@@ -253,7 +277,7 @@ export class OverlayScene extends Phaser.Scene {
       row(`${z.n}  ${z.lv[0] === z.lv[1] ? 'safe' : `Lv ${z.lv[0]}-${z.lv[1]}`}${z.safe && z.lv[0] !== z.lv[1] ? ' (town)' : ''}`, col);
     }
     ly += 4;
-    if (wide) { row('Red = above your level', '#ff9a7a'); row('Gold = on level', '#ffe8a0'); row('Grey = outlevelled', '#9aa0a8'); row('Waystone (cyan): fast travel', '#5ad1ff'); }
+    if (wide) { row('Red = above your level', '#ff9a7a'); row('Gold = on level', '#ffe8a0'); row('Grey = outlevelled', '#9aa0a8'); row('Waystone (cyan): fast travel', '#5ad1ff'); row('Tan lines: roads  ·  Blue: rivers  ·  Dots: landmarks', '#c4a06a'); }
     const hint = this.add.text(cx, cy + ph / 2 - 12, `${input.labelFor('worldMap')} / ${input.labelFor('close')} / ESC to close`, { fontFamily: FONT, fontSize: '8px', color: '#9b8a70' }).setOrigin(0.5);
     items.push(hint);
     this.mapC.add(items);

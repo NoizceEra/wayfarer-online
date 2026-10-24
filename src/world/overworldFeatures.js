@@ -1,8 +1,13 @@
 import Phaser from 'phaser';
 import { CONFIG } from '../config.js';
 import { DOORS, PORTALS, SIGNS, WAYSTONES, AREAS } from '../data/zones.js';
+import { LANDMARKS, BRIDGES } from '../data/worldLayout.js';
 import { makeProps } from './propsExtra.js';
+import { makePropsBiome } from './propsBiome.js';
 import { installTownfolk } from './townfolk.js';
+import { bus, Events } from '../core/events.js';
+import { audio } from '../systems/audio.js';
+import { LIGHTHOUSE } from './waterways.js';
 
 const T = CONFIG.tile;
 const FONT = '"Silkscreen", monospace';
@@ -14,6 +19,8 @@ export function overworldClearings(spawn) {
   out.push({ x: spawn.x + ws.offset.x, y: spawn.y + ws.offset.y, r: 52 });
   for (const p of PORTALS) out.push({ x: p.tile.x * T + 8, y: p.tile.y * T + 8, r: 44 });
   for (const s of SIGNS) out.push({ x: s.tx * T + 8, y: s.ty * T + 8, r: 22 });
+  for (const m of LANDMARKS) out.push({ x: m.tx * T, y: m.ty * T, r: m.type === 'light' ? 64 : m.type === 'mill' || m.type === 'tower' ? 48 : 32 });
+  for (const b of BRIDGES) out.push({ x: b.x * T, y: b.y * T, r: Math.max(b.len * 8, 28) });
   return out;
 }
 
@@ -96,5 +103,139 @@ export function buildOverworldFeatures(scene, areas, info) {
   ];
   for (const v of vill) areas.addNpc(null, { name: v.name, tex: v.tex, x: spawn.x + v.dx, y: spawn.y + v.dy, wander: v.r, text: v.text }, solids);
   installTownfolk(scene, areas, info); // data-driven NPC roster + ambient life (data/npcs.js, world/ambient.js)
+  buildLandmarks(scene, areas, P, solids);
   void Phaser;
+}
+
+function px(m) { return { x: m.tx * T, y: m.ty * T }; }
+
+function buildLandmarks(scene, areas, P, solids) {
+  const B = makePropsBiome(scene, solids);
+  const byId = Object.fromEntries(LANDMARKS.map((m) => [m.id, m]));
+  const chest = (id, x, y, gold, pots, line) => {
+    const opened = !!areas.qs.opened[id];
+    let ch = P.chest(x, y, opened);
+    areas.addInteract({
+      area: null, x, y, r: 26, label: 'Open chest',
+      onUse: () => {
+        if (areas.qs.opened[id]) { bus.emit(Events.SYSTEM, 'The chest is empty.'); return; }
+        areas.qs.opened[id] = true;
+        audio.play('chest');
+        scene.player.gold += gold; scene.player.potions += pots;
+        bus.emit(Events.SYSTEM, line);
+        bus.emit(Events.PLAYER_HP, scene.hpPayload());
+        scene.saveNow?.();
+        ch.destroy(); ch = P.chest(x, y, true);
+      },
+    });
+  };
+
+  // Mara's lighthouse (north-coast headland). Glow scale 2.4 is picked up as a rotating night beam.
+  {
+    const m = byId.lighthouse, x = LIGHTHOUSE.x, y = LIGHTHOUSE.y;
+    P.lighthouse(x, y);
+    areas.addProximity({ area: null, x, y, r: 90, obj: txt(scene, x, y - 118, m.name, '#ffe8a0') });
+    areas.addInteract({
+      area: null, x, y: y + 8, r: 34, label: 'Read the keeper\'s log',
+      onUse: () => areas.say('Keeper\'s Log', 'Night 412. Beam still turns. Mara swears she saw a sail past Frostpeak — no harbour record of it. The rocks below take what the sea does not want.'),
+    });
+    chest('lm_light', x - 22, y + 10, 40, 1, "Lighthouse chest: +40g and a potion. Mara shrugs. 'Storm stores.'");
+    scene.gather?.addNode('driftwood', x - 36, y + 18, null);
+  }
+
+  // Meadowfield windmill (turning sails)
+  {
+    const m = byId.windmill, { x, y } = px(m);
+    B.windmill(x, y);
+    areas.addProximity({ area: null, x, y, r: 80, obj: txt(scene, x, y - 78, m.name, '#ffe8a0') });
+    areas.addNpc(null, {
+      name: 'Miller Oat', tex: 'Caveman', x: x + 28, y: y + 8, wander: 28,
+      text: ['Wind\'s been kind this week. Flour for the inn, chaff for the hens.', 'Stay on the packed earth if you\'re headed north. The mill pond is only a puddle, the Silverrun is not.'],
+    }, solids);
+    scene.gather?.addNode('dewberry', x - 30, y + 14, null);
+    scene.gather?.addNode('sunpetal', x + 40, y + 18, null);
+  }
+
+  // Ruined watchtower
+  {
+    const m = byId.tower, { x, y } = px(m);
+    B.ruinTower(x, y);
+    areas.addProximity({ area: null, x, y, r: 80, obj: txt(scene, x, y - 82, m.name, '#d8e0e8') });
+    areas.addNpc(null, {
+      name: 'Scout Elin', tex: 'Hunter', x: x + 26, y: y + 10, wander: 20,
+      text: ['Hollow Depths opened under the hill last winter. The stairs still smell of wet stone.', 'I keep the fire at Hollow Road Rest. If the tower groans, I leave.'],
+    }, solids);
+    chest('lm_tower', x - 18, y + 8, 55, 2, 'Watchtower chest: +55g and 2 potions. The lock was rust, not a ward.');
+    scene.gather?.addNode('iron', x + 22, y + 16, null);
+  }
+
+  // Dawnstone Circle: once-per-hour blessing
+  {
+    const m = byId.shrine, { x, y } = px(m);
+    const g = scene.add.graphics().setDepth(y);
+    g.fillStyle(0x000000, 0.22).fillEllipse(x, y + 4, 54, 16);
+    g.fillStyle(0xc8b898, 1).fillCircle(x, y, 18);
+    g.fillStyle(0xe8dcc0, 1).fillCircle(x, y - 2, 12);
+    g.fillStyle(0xf4e8c8, 0.9).fillCircle(x, y - 4, 4);
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 - 0.4, sx = x + Math.cos(a) * 26, sy = y + Math.sin(a) * 14;
+      g.fillStyle(0x9aa4ae, 1).fillRect(sx - 3, sy - 16, 6, 18);
+      g.fillStyle(0xc5cdd4, 1).fillRect(sx - 3, sy - 16, 2, 18);
+    }
+    P.glow(x, y - 8, 1.4, 0.4, 0xffe9a0);
+    solids.add(scene.add.rectangle(x, y - 4, 22, 14, 0xffffff, 0));
+    areas.addProximity({ area: null, x, y, r: 72, obj: txt(scene, x, y - 36, m.name, '#ffe8a0') });
+    areas.addInteract({
+      area: null, x, y, r: 32, label: 'Kneel at the Dawnstone',
+      onUse: () => blessShrine(scene, areas),
+    });
+  }
+
+  const camps = [
+    ['camp1', 'Ranger Willa', 'Hunter', 'Hollow Road Rest. North to the Depths, south to town. Keep the fire fed.', 'sunpetal'],
+    ['camp2', 'Hunter Cal', 'Hunter', 'Mosswood after dark belongs to the willowisps. Sit. The fire keeps them polite.', 'moonmoss'],
+    ['camp3', 'Shepherd Brin', 'Caveman2', 'Emberdeep wind comes up this valley. Lambs hate it. I hate it. Tea?', 'oak'],
+    ['camp4', 'Dockhand Noll', 'Villager', 'Harbour Gate is just down the cobbles. If Orla shouts, I was never here.', 'driftwood'],
+  ];
+  for (const [id, name, tex, line, node] of camps) {
+    const m = byId[id], { x, y } = px(m);
+    P.tent(x - 16, y, 0xb5651d);
+    P.campfire(x + 10, y + 4);
+    areas.addProximity({ area: null, x, y, r: 64, obj: txt(scene, x, y - 40, m.name, '#ffd27a', '7px') });
+    areas.addNpc(null, { name, tex, x: x + 22, y: y + 10, wander: 22, text: [line, 'Roads are packed earth until the gates. Follow the posts.'] }, solids);
+    scene.gather?.addNode(node, x - 28, y + 12, null);
+  }
+
+  // Troll of the Northway
+  {
+    const m = byId.troll, { x, y } = px(m);
+    areas.addNpc(null, {
+      name: 'Grum', tex: 'Tengu', x: x + 18, y: y + 12, wander: 16,
+      text: ['Toll is a kind word. "Please" works. "Move" does not.', 'I keep the Northway. Frostpeak that way, Hollow the other. Nobody falls in on my watch.'],
+    }, solids);
+  }
+}
+
+function txt(scene, x, y, s, color = '#fff', size = '8px') {
+  return scene.add.text(x, y, s, { fontFamily: FONT, fontSize: size, color, backgroundColor: '#00000088' }).setOrigin(0.5).setDepth(2790);
+}
+
+const HOUR = 60 * 60 * 1000;
+function blessShrine(scene, areas) {
+  const now = Date.now();
+  const last = areas.qs.shrineAt || 0;
+  if (now - last < HOUR) {
+    const mins = Math.max(1, Math.ceil((HOUR - (now - last)) / 60000));
+    areas.say('Dawnstone Circle', `The stones are still warm from the last blessing. Return in ${mins} minute${mins === 1 ? '' : 's'}.`);
+    return;
+  }
+  areas.qs.shrineAt = now;
+  const p = scene.player;
+  p.buff = { until: scene.time.now + 8 * 60 * 1000, atkMul: 1.18, spdMul: 1.12, name: 'Dawnstone' };
+  p.hp = Math.min(p.effMaxHp(), p.hp + 25);
+  audio.play('quest');
+  bus.emit(Events.PLAYER_HP, scene.hpPayload());
+  bus.emit(Events.TOAST, { title: 'Dawnstone Blessing', text: '+ATK +SPD for 8 minutes. Once an hour.', color: '#ffe8a0' });
+  areas.say('Dawnstone Circle', 'Warmth climbs your arms. For a little while the road feels shorter.');
+  scene.saveNow?.();
 }

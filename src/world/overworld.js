@@ -2,6 +2,8 @@ import { CONFIG } from '../config.js';
 import { makeTreeTextures } from './treeArt.js';
 import { bakeGround } from './ground.js';
 import { makeProps } from './props.js';
+import { BRIDGES } from '../data/worldLayout.js';
+import { waterAt, onBridge, waterRects, network, riverPoint, riverHalfWidth } from './waterways.js';
 
 // Builds one large open world (128×128 tiles) from a baked procedural ground +
 // scattered props. Zones: town (safe), meadow, woods, ruins.
@@ -44,6 +46,13 @@ export function buildOverworld(scene, ZONES, extras = {}) {
   const rnd = () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let z = Math.imul(seed ^ (seed >>> 15), 1 | seed); z = (z + Math.imul(z ^ (z >>> 7), 61 | z)) ^ z; return ((z ^ (z >>> 14)) >>> 0) / 4294967296; };
   const solids = scene.physics.add.staticGroup();
   const P = makeProps(scene, solids, ground);
+  const wet = (x, y, m = 6) => waterAt(x, y, m) || onBridge(x, y, 8);
+
+  // Open-water collision (bridge decks stay dry). 16px cells keep the static body count modest.
+  for (const r of waterRects(16)) {
+    solids.add(scene.add.rectangle(r.x + r.w / 2, r.y + r.h / 2, r.w, r.h, 0xffffff, 0));
+  }
+  drawBridges(scene, solids, t);
 
   // Ruins pillars use real tiles; everything else is procedural.
   const useRuins  = scene.textures.exists('ts.ruins');
@@ -150,7 +159,7 @@ export function buildOverworld(scene, ZONES, extras = {}) {
         const edge = Math.min(x - town.x * t, (town.x + town.w) * t - x, y - town.y * t, (town.y + town.h) * t - y);
         const ok = !housePositions.some((p) => Math.hypot(p.x - x, p.y - y) < HOUSE_MIN_DIST)
           && !blockers.some((b) => Math.hypot(b.x - x, b.y - y) < b.r)
-          && !cleared(x, y) && fixedDist(x, y) > 130 && ground.roadDist(x, y) > 44 && edge > 52;
+          && !cleared(x, y) && !wet(x, y, 12) && fixedDist(x, y) > 130 && ground.roadDist(x, y) > 44 && edge > 52;
         if (ok) {
           const w = 34 + (v % 4) * 8, h = 22 + (v % 3) * 3;
           const roof = [0xb03a2e, 0x2e86c1, 0x7d3c98, 0x1e8449, 0xca6f1e, 0x566573][v % 6];
@@ -163,7 +172,7 @@ export function buildOverworld(scene, ZONES, extras = {}) {
       continue;
     }
     const r = rnd();
-    if (cleared(x, y)) { if (zone.id === 'ruins' && r >= 0.40 && r < 0.46) rnd(); continue; } // keeps the RNG stream identical
+    if (cleared(x, y) || wet(x, y, 8)) { if (zone.id === 'ruins' && r >= 0.40 && r < 0.46) rnd(); continue; } // keeps the RNG stream identical
     if (zone.id === 'woods' ? r < 0.24 : r < 0.06) {
       // Meadow keeps only ~1 in 3 of its trees (few trees); woods stay dense.
       if (zone.id !== 'meadow' || v % 3 === 0) P.tree(x, y, treeKind(zone.id, v), zone.id === 'woods' && r < 0.08);
@@ -192,7 +201,7 @@ export function buildOverworld(scene, ZONES, extras = {}) {
   // ruins pass further down (which uses its own seed so the main layout
   // never shifts). Function declaration so it hoists above the 900-loop.
   function buildPillar(x, y, h, v) {
-    if (cleared(x, y)) return;
+    if (cleared(x, y) || wet(x, y, 10)) return;
     const c = scene.add.container(x, y).setDepth(y);
     ground.D.shadow(x + 3, y + 1, 18, 7, 0.22);
     if (useRuins) {
@@ -241,12 +250,12 @@ export function buildOverworld(scene, ZONES, extras = {}) {
     const mr = mk(31415);
     for (let i = 0; i < 170; i++) {
       const x = 140 + mr() * (W - 280), y = 140 + mr() * (H - 280), v = Math.floor(mr() * 7);
-      if (!inZone(x, y, 'meadow') || ground.roadDist(x, y) < 18) continue;
+      if (!inZone(x, y, 'meadow') || ground.roadDist(x, y) < 18 || wet(x, y, 10)) continue;
       D.flowerPatch(Math.round(x), Math.round(y), v, mr);
     }
     for (let i = 0; i < 90; i++) {
       const x = 140 + mr() * (W - 280), y = 140 + mr() * (H - 280), v = Math.floor(mr() * 9);
-      if (!inZone(x, y, 'meadow') || ground.roadDist(x, y) < 18) continue;
+      if (!inZone(x, y, 'meadow') || ground.roadDist(x, y) < 18 || wet(x, y, 10)) continue;
       D.bush(Math.round(x), Math.round(y), v, false);
     }
     const corral = (cx, cy, w, h, gap) => {
@@ -257,10 +266,10 @@ export function buildOverworld(scene, ZONES, extras = {}) {
       if (gap !== 'e') P.fence(cx + w, cy, cx + w, cy + h);
       for (let k = 0; k < 7; k++) D.flower(cx + 8 + Math.round(mr() * (w - 16)), cy + 8 + Math.round(mr() * (h - 14)), k + 2);
     };
-    corral(560, 540, 104, 70, 's');
-    corral(1500, 1520, 120, 76, 'w');
-    corral(470, 900, 90, 64, 'n');
-    corral(1560, 1160, 96, 64, 's');
+    if (!wet(560, 540, 20)) corral(560, 540, 104, 70, 's');
+    if (!wet(1500, 1520, 20)) corral(1500, 1520, 120, 76, 'w');
+    if (!wet(470, 900, 20)) corral(470, 900, 90, 64, 'n');
+    if (!wet(1560, 1160, 20)) corral(1560, 1160, 96, 64, 's');
   }
   // Mosswood: mushrooms, ferns, fallen logs, dark bushes, fireflies
   {
@@ -269,6 +278,7 @@ export function buildOverworld(scene, ZONES, extras = {}) {
     for (let i = 0; i < 260; i++) {
       const x = wx + 10 + wr() * (ww - 20), y = wy + 10 + wr() * (wh - 20);
       const k = wr(); const v = Math.floor(wr() * 100);
+      if (wet(x, y, 8)) continue;
       if (k < 0.4) { D.mushroom(Math.round(x), Math.round(y), v); if (wr() < 0.6) D.mushroom(Math.round(x + 5), Math.round(y + 2), v + 1); }
       else if (k < 0.75) D.fern(Math.round(x), Math.round(y), v);
       else if (k < 0.9) D.bush(Math.round(x), Math.round(y), v, true);
@@ -277,7 +287,7 @@ export function buildOverworld(scene, ZONES, extras = {}) {
     let placed = 0;
     for (let i = 0; i < 80 && placed < 28; i++) {
       const x = wx + 24 + wr() * (ww - 48), y = wy + 24 + wr() * (wh - 48), len = 24 + Math.floor(wr() * 14), fl = wr() < 0.5;
-      if (ground.roadDist(x, y) < 26) continue;
+      if (ground.roadDist(x, y) < 26 || wet(x, y, 10)) continue;
       P.log(Math.round(x), Math.round(y), len, fl);
       placed++;
     }
@@ -359,8 +369,52 @@ export function buildOverworld(scene, ZONES, extras = {}) {
   for (const [dx, dy] of [[-92, -30], [-28, -20], [28, -20], [92, -30]]) {
     for (let k = 0; k < 4; k++) D.flower(S.x + dx + (k - 2) * 4, S.y + dy + (k % 2) * 3, k + dx);
   }
+  // Bank reeds (baked into the ground texture; skip bridge decks)
+  {
+    const rivers = network().rivers;
+    for (let i = 0; i < rivers.length; i++) {
+      const r = rivers[i];
+      for (let s = 24; s < r.len; s += 16) {
+        const [x, y, tx, ty] = riverPoint(i, s);
+        if (onBridge(x, y, 48)) continue;
+        const nx = -ty, ny = tx, hw = riverHalfWidth(i, s);
+        const side = ((s / 16) | 0) % 2 ? 1 : -1;
+        D.reed(Math.round(x + nx * (hw + 5) * side), Math.round(y + ny * (hw + 5) * side), (s | 0));
+      }
+    }
+  }
   ground.finish();
 
   scene.physics.world.setBounds(32, 32, W - 64, H - 64);
   return { spawn, solids, W, H, windows, glows, houses: housePositions.slice(0, 3) };
+}
+
+function drawBridges(scene, solids, t) {
+  for (const b of BRIDGES) {
+    const x = b.x * t, y = b.y * t, len = b.len * t, w = b.w || 36;
+    const g = scene.add.graphics().setDepth(y - 4);
+    g.fillStyle(0x1a1420, 0.28).fillEllipse(x + 6, y + 7, len + 10, w * 0.55);
+    if (b.kind === 'stone') {
+      g.fillStyle(0x5c6570, 1).fillRect(x - len / 2, y - w / 2 + 5, len, w - 10);
+      g.fillStyle(0x8a96a0, 1).fillRect(x - len / 2, y - w / 2 + 5, len, 3);
+      for (let i = 0; i < 6; i++) g.fillStyle(0x4a5460, 1).fillRect(x - len / 2 + 4 + i * (len / 6), y - w / 2 + 7, 1, w - 14);
+    } else {
+      g.fillStyle(0x5a3416, 1).fillRect(x - len / 2, y - w / 2 + 5, len, w - 10);
+      g.fillStyle(0x8d5a2b, 1);
+      for (let i = 0; i < len; i += 8) g.fillRect(x - len / 2 + i, y - w / 2 + 5, 6, w - 10);
+      g.fillStyle(0xc99a5a, 1).fillRect(x - len / 2, y - w / 2 + 5, len, 2);
+    }
+    const rail = scene.add.graphics().setDepth(y + 8);
+    rail.fillStyle(0x3d2712, 1);
+    rail.fillRect(x - len / 2, y - w / 2, len, 3);
+    rail.fillRect(x - len / 2, y + w / 2 - 3, len, 3);
+    for (let i = 0; i <= 8; i++) {
+      const px = x - len / 2 + (i / 8) * len;
+      rail.fillRect(px - 1, y - w / 2 - 8, 2, 11);
+      rail.fillRect(px - 1, y + w / 2 - 3, 2, 11);
+    }
+    rail.fillStyle(0x6d3f10, 1).fillRect(x - len / 2, y - w / 2 - 9, len, 2).fillRect(x - len / 2, y + w / 2 + 6, len, 2);
+    solids.add(scene.add.rectangle(x, y - w / 2 + 1, len, 5, 0xffffff, 0));
+    solids.add(scene.add.rectangle(x, y + w / 2 - 1, len, 5, 0xffffff, 0));
+  }
 }

@@ -2,6 +2,7 @@
 // (biome colours with ragged, noise-jittered borders, dirt roads, town cobbles,
 // puddles) plus a tiny painter API (decals, soft shadows) that the overworld
 // uses for flowers, bushes, reeds, mushrooms etc. Everything is deterministic.
+import { network, roadAt, riverAt, coastSD, roadDist as wwRoadDist, shoreY } from './waterways.js';
 
 export const hash2 = (x, y, s = 0) => {
   let h = (Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263) + Math.imul(s | 0, 1442695041)) | 0;
@@ -18,29 +19,10 @@ const step = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))
 const mix = (c1, c2, t) => [c1[0] + (c2[0] - c1[0]) * t, c1[1] + (c2[1] - c1[1]) * t, c1[2] + (c2[2] - c1[2]) * t];
 const rgb = (c, d = 0) => `rgb(${Math.max(0, Math.min(255, c[0] + d)) | 0},${Math.max(0, Math.min(255, c[1] + d)) | 0},${Math.max(0, Math.min(255, c[2] + d)) | 0})`;
 
-function segDist(px, py, ax, ay, bx, by) {
-  const dx = bx - ax, dy = by - ay;
-  const l2 = dx * dx + dy * dy || 1;
-  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l2));
-  return Math.hypot(px - (ax + dx * t), py - (ay + dy * t));
-}
-
-// Road polylines relative to the town centre S. Runs out through the town
-// and fades into the meadow toward the woods (east) and the ruins (south).
-export function makeRoads(S) {
-  const rel = [
-    [[-420, 0], [-200, 0], [0, 0], [200, 0], [330, -14], [470, -70], [600, -150]],
-    [[0, -330], [0, -160], [0, 0], [0, 180], [-30, 290], [-110, 350], [-230, 410]],
-  ];
-  return rel.map((line) => line.map(([x, y]) => [S.x + x, S.y + y]));
-}
-export function roadDist(roads, x, y) {
-  let best = 1e9;
-  for (const line of roads) for (let i = 0; i < line.length - 1; i++) {
-    best = Math.min(best, segDist(x, y, line[i][0], line[i][1], line[i + 1][0], line[i + 1][1]));
-  }
-  return best;
-}
+// Roads, rivers and the north-coast bay now come from world/waterways.js (data/worldLayout.js).
+// makeRoads / roadDist keep their old signatures (systems/fx.js uses them for footstep surfaces).
+export function makeRoads() { return network().roads; }
+export function roadDist(roads, x, y) { return wwRoadDist(x, y); }
 
 const BIOME = {
   meadow: { base: [122, 196, 78], hi: [150, 214, 96], lo: [104, 178, 66] },
@@ -57,6 +39,7 @@ export function bakeGround(scene, ZONES, S, tile) {
   const tex = scene.textures.createCanvas('world.ground', WW, HH);
   const ctx = tex.getContext();
   const roads = makeRoads(S);
+  const RD = {};
   const inside = (r, px, py) => Math.min(px - r.x, r.x + r.w - px, py - r.y, r.y + r.h - py);
 
   const colorAt = (px, py) => {
@@ -96,11 +79,32 @@ export function bakeGround(scene, ZONES, S, tile) {
       if (g > 0.66) c = mix(c, [146, 186, 92], Math.min(0.7, (g - 0.66) * 4));
       col = mix(col, c, tW);
     }
-    // Roads: packed lighter earth, ragged verge
-    const rd = roadDist(roads, px, py);
-    const hw = 11 + (vnoise(px / 16, py / 16, 16) - 0.5) * 7;
-    const roadW = step(hw + 2, hw - 3, rd);
-    if (roadW > 0) col = mix(col, mix([208, 184, 132], [182, 158, 110], vnoise(px / 8, py / 8, 17)), roadW * 0.95);
+    // Banks (wet sand), then roads (earth / flagstone / track with a darker rim), then water on top
+    const rv = riverAt(px, py), sd = Math.min(rv.sd, coastSD(px, py));
+    if (sd < 12 && sd > -2) {
+      const bw = step(9 + (vnoise(px / 12, py / 12, 43) - 0.5) * 8, 0.5, sd);
+      if (bw > 0) col = mix(col, mix([198,178,124], [168,148,102], vnoise(px / 6, py / 6, 44)), bw * 0.85);
+    }
+    const rd = roadAt(px, py, RD);
+    if (rd.e < 2) {
+      const roadW = step(2, -3, rd.e);
+      let rc;
+      if (rd.kind === 'cobble') rc = rd.id === 'crypt' ? mix([112, 118, 124], [92, 98, 106], vnoise(px / 6, py / 6, 18)) : mix([152, 146, 134], [128, 122, 110], vnoise(px / 6, py / 6, 18));
+      else if (rd.kind === 'track') rc = mix([190, 170, 116], [150, 150, 96], vnoise(px / 7, py / 7, 17));
+      else rc = mix([208, 184, 132], [182, 158, 110], vnoise(px / 8, py / 8, 17));
+      const rimK = step(-6, -2.5, rd.e) * step(2, -1, rd.e);
+      const f = 1 - rimK * (rd.kind === 'cobble' ? 0.26 : 0.15);
+      rc = [rc[0] * f, rc[1] * f, rc[2] * f];
+      col = mix(col, rc, roadW * (rd.kind === 'track' ? 0.8 : 0.95));
+    }
+    if (sd < 1.2) {
+      const depth = Math.min(1, -sd / 15);
+      let wc = mix([96, 178, 220], [38, 116, 174], depth);
+      const rip = vnoise(px / 10 + 3, py / 5, 45);
+      if (rip > 0.68) wc = mix(wc, [150, 210, 238], Math.min(1, (rip - 0.68) * 3.2) * 0.8);
+      if (sd > -4.5) wc = mix(wc, [228, 245, 252], step(-4.5, -1.5, sd) * (vnoise(px / 5, py / 5, 46) > 0.36 ? 0.9 : 0.4));
+      col = mix(col, wc, step(1.2, -1.2, sd));
+    }
     return col;
   };
 
@@ -144,6 +148,7 @@ export function bakeGround(scene, ZONES, S, tile) {
   for (let i = 0; i < 38; i++) {
     const x = R.ruins.x + 28 + pr2() * (R.ruins.w - 56), y = R.ruins.y + 56 + pr2() * (R.ruins.h - 84);
     const w = 10 + pr2() * 20, h = w * (0.42 + pr2() * 0.2);
+    if (riverAt(x, y).sd < w + 26 || roadAt(x, y).e < w + 8) continue; // keep puddles off rivers and roads
     puddles.push({ x, y, w, h });
     ctx.fillStyle = 'rgba(40,60,78,0.45)'; ctx.beginPath(); ctx.ellipse(x, y, w + 2, h + 2, 0, 0, 7); ctx.fill();
     ctx.fillStyle = 'rgb(72,102,128)'; ctx.beginPath(); ctx.ellipse(x, y, w, h, 0, 0, 7); ctx.fill();

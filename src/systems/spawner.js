@@ -5,6 +5,7 @@ import { zoneAt } from '../world/overworld.js';
 import { RANKS } from '../data/combatMath.js';
 import { ENEMY_TABLE } from '../data/jobs.js';
 import { EXTRA_OVERWORLD_SPAWNS } from '../data/worldEnemies.js';
+import { waterAt, onBridge } from '../world/waterways.js';
 
 // Overworld population per zone: [type, cap, zoneId]. Each entry is a set of
 // spawn "slots"; a slain enemy's slot respawns after a timer somewhere else in
@@ -57,6 +58,7 @@ export class Spawner {
       if (zoneAt(tx, ty, ZONES).id !== zoneId) continue; // keep out of town / nested zones
       const x = tx * T + 8, y = ty * T + 8;
       if (this.nearSafe(x, y)) continue;
+      if (waterAt(x, y, 10) || onBridge(x, y, 8)) continue;
       if (avoidPlayer && !this.s.areas?.current && p && Phaser.Math.Distance.Between(p.x, p.y, x, y) < MIN_PLAYER_DIST) continue;
       return { x, y };
     }
