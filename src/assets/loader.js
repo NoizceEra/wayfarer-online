@@ -5,6 +5,7 @@ import { CHAR_SHEETS, MONSTER_FILES, CUSTOM_MONSTER_FILES } from './catalog.js';
 import { NPC_SHEETS } from '../data/npcs.js';
 import { ENEMY_TABLE } from '../data/jobs.js';
 import { ITEM_LIST } from '../data/items.js';
+import { BUILDING_ATLAS } from '../data/buildings.js'; // generated: cell size + frame map for the bld sheet
 import '../data/worldEnemies.js'; // registers the expanded monster roster into ENEMY_TABLE before we read it
 import '../data/deathFx.js'; // tags every monster def with its death / hit-reaction family (deathFx)
 import { PETS } from '../data/pets.js'; // pet lines reuse monster sheets by `mon.<Name>` (see PETS[*].sprite)
@@ -219,6 +220,10 @@ export function preloadWorld(scene) {
   L.spritesheet('ts.nature', `${NA}/Backgrounds/Tilesets/TilesetNature.png`, { frameWidth: 16, frameHeight: 16 });
   L.spritesheet('ts.house',  `${NA}/Backgrounds/Tilesets/TilesetHouse.png`,  { frameWidth: 16, frameHeight: 16 });
   L.spritesheet('ts.ruins',  `${NA}/Backgrounds/Tilesets/TilesetVillageAbandoned.png`, { frameWidth: 16, frameHeight: 16 });
+  // Generated parametric building atlas — cell size comes from the generated index so the
+  // sheet can be re-baked at a different scale without touching this line.
+  L.spritesheet('bld', 'assets/custom/buildings/buildings_atlas.png',
+    { frameWidth: BUILDING_ATLAS.cell, frameHeight: BUILDING_ATLAS.cell });
   L.image('fx.glow', 'assets/light/light_soft.png');
   for (const [folder, keys] of Object.entries(AUDIO)) {
     for (const key of keys) L.audio(key, `assets/audio/${folder}/${key}.ogg`);

@@ -2,8 +2,11 @@ import { CONFIG } from '../config.js';
 import { makeTreeTextures } from './treeArt.js';
 import { bakeGround } from './ground.js';
 import { makeProps } from './props.js';
+import { BRIDGES } from '../data/worldLayout.js';
+import { waterAt, onBridge, waterRects, network, riverPoint, riverHalfWidth } from './waterways.js';
+import { placeBuilding } from './buildingArt.js';
 
-// Builds one large open world (128×128 tiles) from a baked procedural ground +
+// Builds one large open world from a baked procedural ground +
 // scattered props. Zones: town (safe), meadow, woods, ruins.
 // Gameplay reads zoneAt(); visuals can be re-skinned without touching rules.
 export function zoneAt(tx, ty, ZONES) {
@@ -93,6 +96,31 @@ export function buildOverworld(scene, ZONES, extras = {}) {
   P.well(S.x - 78, S.y + 26);
   P.board(S.x - 118, S.y - 22);
   blockers.push({ x: S.x - 78, y: S.y + 26, r: 40 }, { x: S.x - 118, y: S.y - 22, r: 40 });
+
+  // ---------- Civic ring: generated parametric buildings ----------
+  // Frames come from the baked atlas (src/data/buildings.js). placeBuilding() returns null
+  // when the atlas texture is missing, so a build without the sheet still renders the old
+  // graphics-only town instead of throwing.
+  {
+    // Positions are offsets from the plaza centre. Buildings are 32/48/64 px (1:1 with the
+    // game's pixels, so nothing is scaled at run time); spacing keeps their footprints apart
+    // inside the town fence (≈±234 px) without crowding the plaza, stalls or the inn.
+    const civic = [
+      [-160, -110, 'town/jiangnan_temple', 90],
+      [10, -170, 'town/jiangnan_guild', 90],
+      [155, -125, 'town/jiangnan_library', 85],
+      [-180, 35, 'town/jiangnan_forge', 70],
+      [175, 65, 'town/jiangnan_granary', 75],
+      [-125, 150, 'town/jiangnan_academy', 80],
+      [65, 165, 'town/jiangnan_watchtower', 70],
+      [-60, 185, 'town/jiangnan_posthouse', 55],
+    ];
+    for (const [dx, dy, name, r] of civic) {
+      if (placeBuilding(scene, solids, ground, S.x + dx, S.y + dy, name)) {
+        blockers.push({ x: S.x + dx, y: S.y + dy, r });
+      }
+    }
+  }
 
   // Town fence runs along the inside edge: ragged, with gaps, roads stay open
   {
