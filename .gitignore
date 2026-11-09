@@ -18,3 +18,14 @@ test-ledger/
 
 asset-staging/
 __pycache__/
+
+# Local agent/tool state and scratch (never tracked)
+.claude/
+.hyperframes/
+.probe/
+.scratch-blender/
+
+# Generated video render projects + HyperFrames working state
+videos/gameplay-*/
+videos/*/renders/
+videos/*/.hyperframes/
