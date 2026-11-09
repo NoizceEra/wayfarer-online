@@ -211,7 +211,27 @@ export class EquipPanel {
     c.add(box(s, x, y, w, h, 0x0b0f0a, 0.92, 0x3a3a2a, 1));
     const item = this.selItem();
     if (!item) {
-      c.add(label(s, x + 10, y + 10, 'Click an item for details.\nDouble-click or drag to equip.\nEquipped gear shows on your hero.', 8, '#7d8a78', { wordWrap: { width: w - 20 } }));
+      c.add(label(s, x + 10, y + 8, 'Click gear for details · double-click or drag to equip.', 8, '#7d8a78', { wordWrap: { width: w - 20 } }));
+      const drawRow = (yy, verb, action, fill) => {
+        c.add(label(s, x + 10, yy + 4, verb, 7, '#9aa88f'));
+        for (let i = 0; i < 3; i++) {
+          const exists = !!p.loadouts?.[i];
+          const b = label(s, x + 58 + i * 54, yy, `${i + 1}${exists ? ' •' : ''}`, 8, '#f3f0d0', { backgroundColor: fill, padding: { x: 8, y: 4 } }).setInteractive({ useHandCursor: true });
+          b.on('pointerdown', () => {
+            audio.play('ui', 0.6);
+            if (action === 'save') {
+              p.saveLoadout(i); this.hooks.changed(); this.hooks.say(`Saved current gear to Loadout ${i + 1}.`); this.build();
+            } else if (p.applyLoadout(i)) {
+              this.hooks.changed(); this.hooks.say(`Equipped Loadout ${i + 1}.`); this.build();
+            } else {
+              audio.play('error', 0.6); this.hooks.say(`Loadout ${i + 1}: ${p.lastBlock || 'unavailable'}.`);
+            }
+          });
+          c.add(b);
+        }
+      };
+      drawRow(y + 38, 'LOAD', 'load', '#28442e');
+      drawRow(y + 66, 'SAVE', 'save', '#49365d');
       return;
     }
     const R = RARITY[item.rarity], dye = p.dyes[item.id];

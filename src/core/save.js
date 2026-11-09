@@ -38,7 +38,18 @@ export function normalizeGearState(s) {
   if (s?.dyes && typeof s.dyes === 'object') {
     for (const [id, d] of Object.entries(s.dyes)) if (gearById(id) && typeof d === 'string') dyes[id] = d;
   }
-  return { inventory, equipped, dyes, tokenPoints: Math.max(0, Math.floor(Number(s?.tokenPoints)) || 0), wayfarerTokens: Math.max(0, Math.floor(Number(s?.wayfarerTokens)) || 0) };
+  const loadouts = Array.from({ length: 3 }, (_, i) => {
+    const raw = Array.isArray(s?.loadouts) ? s.loadouts[i] : null;
+    if (!raw || typeof raw !== 'object') return null;
+    const worn = Object.fromEntries(SLOTS.map((slot) => [slot, null]));
+    for (const slot of SLOTS) {
+      const id = raw.equipped?.[slot];
+      const g = typeof id === 'string' && gearById(id);
+      if (g?.slot === slot) worn[slot] = id;
+    }
+    return { name: typeof raw.name === 'string' ? raw.name.slice(0, 20) : `Loadout ${i + 1}`, equipped: worn };
+  });
+  return { inventory, equipped, dyes, loadouts, tokenPoints: Math.max(0, Math.floor(Number(s?.tokenPoints)) || 0), wayfarerTokens: Math.max(0, Math.floor(Number(s?.wayfarerTokens)) || 0) };
 }
 
 // Per-hero progress (solo + guest-local): survives reloads, resumes Continue.

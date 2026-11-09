@@ -1,4 +1,5 @@
 import { EXTRA_AREAS, EXTRA_PORTALS, EXTRA_WAYSTONES, EXTRA_SIGNS } from "./areasExtra.js";
+import { WORLD_BOSS_AREAS } from './worldBossArenas.js';
 // Expansion: enterable interiors + separate maps ("areas"). Re-exported by zones.js.
 // Areas live in the SAME Phaser world but at far-apart origins (px, y≈0), so:
 //  · co-op peers in a different space are simply never on screen (their world
@@ -88,9 +89,9 @@ export const DOORS = [
   { area: 'inn', house: 2, label: 'Sleepy Lantern Inn' },
 ];
 
-// Overworld gates into the big maps (tile coords on the 128x128 overworld)
+// Overworld gates into the big maps (tile coords)
 export const PORTALS = [
-  { id: 'p_dock', area: 'dock', tile: { x: 104, y: 98 }, label: 'Harbour Gate', color: 0x5ad1ff },
+  { id: 'p_dock', area: 'dock', tile: { x: 124, y: 116 }, label: 'Harbour Gate', color: 0x5ad1ff },
   { id: 'p_crypt', area: 'crypt', tile: { x: 40, y: 87 }, label: 'Crypt Stairs', color: 0xb37cff },
   { id: 'p_frost', area: 'frost', tile: { x: 18, y: 18 }, label: 'Frostpeak Pass', color: 0xdff6ff },
 ];
@@ -108,7 +109,7 @@ export const SIGNS = [
   { tx: 83, ty: 62, planks: [{ dir: 'e', text: 'Mosswood', lv: 'Lv 4-8' }, { dir: 's', text: 'Harbour Gate - Dock Town', lv: 'Lv 2-5' }] },
   { tx: 46, ty: 52, planks: [{ dir: 'w', text: 'Frostpeak Pass', lv: 'Lv 11-15' }, { dir: 'n', text: 'Frostpeak Pass', lv: 'Lv 11-15' }] },
   { tx: 43, ty: 81, planks: [{ dir: 's', text: 'Crypt Stairs - Ashenmoor', lv: 'Lv 9-13' }, { dir: 'w', text: 'Tidehollow Ruins', lv: 'Lv 8-12' }] },
-  { tx: 100, ty: 94, planks: [{ dir: 's', text: 'Harbour Gate', lv: 'Lv 2-5' }, { dir: 'w', text: 'Thistle Town', lv: 'safe' }] },
+  { tx: 116, ty: 109, planks: [{ dir: 's', text: 'Harbour Gate', lv: 'Lv 2-5' }, { dir: 'w', text: 'Thistle Town', lv: 'safe' }] },
   { tx: 22, ty: 22, planks: [{ dir: 'n', text: 'Frostpeak Pass', lv: 'Lv 11-15' }, { dir: 'e', text: 'Thistle Town', lv: 'safe' }] },
 ];
 
@@ -126,6 +127,7 @@ export const SIDE_QUESTS = [
 // ─── World expansion (additive): Sunscorch Desert, Whisperfen Marsh, Emberdeep Caverns, Hollow Depths ───
 // Defined in data/areasExtra.js; built by world/areaBuildersExtra.js + world/dungeons.js.
 Object.assign(AREAS, EXTRA_AREAS);
+Object.assign(AREAS, WORLD_BOSS_AREAS);
 PORTALS.push(...EXTRA_PORTALS);
 WAYSTONES.push(...EXTRA_WAYSTONES);
 SIGNS.push(...EXTRA_SIGNS);

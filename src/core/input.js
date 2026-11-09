@@ -34,6 +34,10 @@ export const DEFAULT_ACTIONS = [
   { id: 'moveLeft', label: 'Move left', group: 'Movement', keys: ['KeyA', 'ArrowLeft'], hold: true, gameplay: true },
   { id: 'moveRight', label: 'Move right', group: 'Movement', keys: ['KeyD', 'ArrowRight'], hold: true, gameplay: true },
   { id: 'attack', label: 'Attack', group: 'Combat', keys: ['KeyJ'], gameplay: true },
+  { id: 'parry', label: 'Parry', group: 'Combat', keys: ['KeyZ'], gameplay: true },
+  { id: 'ultimate', label: 'Class ultimate', group: 'Combat', keys: ['Digit7'], gameplay: true },
+  { id: 'dodge', label: 'Dodge roll', group: 'Combat', keys: ['ShiftLeft', 'ShiftRight'], gameplay: true },
+  { id: 'target', label: 'Cycle target', group: 'Combat', keys: ['Tab'], gameplay: true },
   { id: 'skill1', label: 'Skill 1', group: 'Combat', keys: ['Digit1'], gameplay: true },
   { id: 'skill2', label: 'Skill 2', group: 'Combat', keys: ['Digit2'], gameplay: true },
   { id: 'skill3', label: 'Skill 3', group: 'Combat', keys: ['Digit3'], gameplay: true },
@@ -66,7 +70,7 @@ export const PAD_MAP = {
 };
 export const PAD_LABELS = {
   attack: 'A', back: 'B', interact: 'X', potion: 'Y', skill1: 'LB', skill2: 'RB', skill3: 'LT', skill4: 'RT',
-  skill5: 'L3', skill6: 'R3', bag: 'SELECT', menu: 'START',
+  skill5: 'L3', skill6: 'R3', parry: 'LB+RB', ultimate: 'L3+R3', target: 'RS', bag: 'SELECT', menu: 'START',
 };
 
 // Keys whose browser default (scroll, focus-move, quick-find, help) we stop
@@ -158,7 +162,7 @@ class InputManager {
     this.layoutMap = null;             // navigator.keyboard layout labels (Chromium)
     this.enabled = true;
     this.seq = 0;
-    this.pad = { prev: [], axis: { x: 0, y: 0 }, navT: 0, navDir: 0, id: null };
+    this.pad = { prev: [], axis: { x: 0, y: 0 }, navT: 0, navDir: 0, id: null, pending: {}, targetHeld: false };
     this.lastSource = 'keyboard';
     for (const a of DEFAULT_ACTIONS) this.registerAction(a, { silent: true });
     this.loadBindings();
@@ -404,17 +408,21 @@ class InputManager {
     const pads = (typeof navigator !== 'undefined' && navigator.getGamepads) ? navigator.getGamepads() : [];
     let gp = null;
     for (const p of pads || []) if (p && p.connected) { gp = p; break; }
-    if (!gp) { this.pad.axis = { x: 0, y: 0 }; this.pad.prev = []; return; }
+    if (!gp) { this.pad.axis = { x: 0, y: 0 }; this.pad.prev = []; this.pad.pending = {}; this.pad.targetHeld = false; return; }
     const pressed = gp.buttons.map((b) => (typeof b === 'object' ? b.pressed || b.value > 0.5 : b > 0.5));
     const prev = this.pad.prev;
     const edge = (i) => pressed[i] && !prev[i];
     const dz = (v) => (Math.abs(v) < 0.25 ? 0 : (v - Math.sign(v) * 0.25) / 0.75);
     let ax = dz(gp.axes[0] || 0), ay = dz(gp.axes[1] || 0);
+    const rx = dz(gp.axes[2] || 0), ry = dz(gp.axes[3] || 0);
+    const targetHeld = gp.mapping === 'standard' && Math.hypot(rx, ry) > 0.72;
     if (pressed[14]) ax = -1; if (pressed[15]) ax = 1;
     if (pressed[12]) ay = -1; if (pressed[13]) ay = 1;
-    if (pressed.some(Boolean) || ax || ay) this.lastSource = 'gamepad';
+    if (pressed.some(Boolean) || ax || ay || targetHeld) this.lastSource = 'gamepad';
     if (this.nav || this.capture) {
       this.pad.axis = { x: 0, y: 0 };
+      this.pad.pending = {};
+      this.pad.targetHeld = targetHeld;
       // menu navigation with d-pad / stick (auto-repeat), A = activate, B = back
       const dir = Math.abs(ay) > 0.5 ? Math.sign(ay) : 0;
       const hdir = Math.abs(ax) > 0.5 ? Math.sign(ax) : 0;
@@ -430,10 +438,33 @@ class InputManager {
       }
     } else {
       this.pad.axis = { x: ax, y: ay };
+      if (targetHeld && !this.pad.targetHeld) this.fire('target', { source: 'gamepad' });
+      this.pad.targetHeld = targetHeld;
+      // Shoulder/stick actions wait a few frames so a two-button chord can be
+      // recognized without also casting one of its component skills.
+      const pair = { 4: [5, 'parry'], 5: [4, 'parry'], 10: [11, 'ultimate'], 11: [10, 'ultimate'] };
+      const consumed = new Set();
+      for (const [raw, spec] of Object.entries(pair)) {
+        const i = Number(raw), other = spec[0];
+        if (!edge(i) || consumed.has(i)) continue;
+        if (pressed[other] || this.pad.pending[other]) {
+          delete this.pad.pending[i]; delete this.pad.pending[other];
+          consumed.add(i); consumed.add(other);
+          this.fire(spec[1], { source: 'gamepad' });
+        } else {
+          this.pad.pending[i] = { id: PAD_MAP[i], at: now + 80 };
+        }
+      }
       for (const [i, id] of Object.entries(PAD_MAP)) {
-        if (!edge(Number(i))) continue;
+        const n = Number(i);
+        if (!edge(n) || pair[n]) continue;
         if (id === 'back') this.closeTopmost();
         else this.fire(id, { source: 'gamepad' });
+      }
+      for (const [raw, pending] of Object.entries(this.pad.pending)) {
+        if (now < pending.at) continue;
+        delete this.pad.pending[raw];
+        this.fire(pending.id, { source: 'gamepad' });
       }
     }
     this.pad.prev = pressed;

@@ -35,7 +35,7 @@ export function mobDmgMul(playerLv, mobLv) { return clamp(1 + 0.08 * (mobLv - pl
 // should feel reliable; the meaningful accuracy pressure starts once a foe
 // outlevels the hero, then caps before a red enemy becomes untouchable.
 export function heroMissChance(playerLv, mobLv) {
-  return clamp(0.01 + 0.04 * Math.max(0, mobLv - playerLv), 0, 0.35);
+  return clamp(0.04 * Math.max(0, mobLv - playerLv), 0, 0.35);
 }
 // XP multiplier (grey mobs give a token 10%).
 export function xpMul(playerLv, mobLv) {
@@ -69,6 +69,20 @@ export const RANKS = {
   elite:    { id: 'elite',    prefix: 'Elite ',    scale: 1.3,  hp: 2.2, atk: 1.35, xp: 2.5, gold: 2.5, lv: 1, tint: 0xffd36a, loot: 1 },
   champion: { id: 'champion', prefix: 'Champion ', scale: 1.55, hp: 4,   atk: 1.7, xp: 5,   gold: 4,   lv: 2, tint: 0xd08cff, loot: 2 },
 };
+
+// Ranked enemies also roll one readable behavior modifier. Normal enemies do
+// not use affixes, so common encounters stay easy to parse.
+export const AFFIXES = Object.freeze({
+  berserker: { id: 'berserker', name: 'Berserker', color: 0xff5a4a, desc: 'Faster and stronger below half health.' },
+  vampiric: { id: 'vampiric', name: 'Vampiric', color: 0xdc1fff, desc: 'Heals when its attacks connect.' },
+  frostbound: { id: 'frostbound', name: 'Frostbound', color: 0x65d8ff, desc: 'Attacks can slow their target.' },
+});
+
+export function rollAffix(rank, rnd = Math.random) {
+  if (!rank || rank === RANKS.normal || rank.id === 'normal') return null;
+  const pool = Object.values(AFFIXES);
+  return pool[Math.floor(rnd() * pool.length)] || null;
+}
 export function rollRank(rnd = Math.random) {
   const r = rnd();
   if (r < 0.015) return RANKS.champion;

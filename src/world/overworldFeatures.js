@@ -3,6 +3,7 @@ import { CONFIG } from '../config.js';
 import { DOORS, PORTALS, SIGNS, WAYSTONES, AREAS } from '../data/zones.js';
 import { makeProps } from './propsExtra.js';
 import { installTownfolk } from './townfolk.js';
+import { WORLD_BOSS_AREAS, WORLD_BOSS_RIFT } from '../data/worldBossArenas.js';
 
 const T = CONFIG.tile;
 const FONT = '"Silkscreen", monospace';
@@ -12,6 +13,7 @@ export function overworldClearings(spawn) {
   const out = [];
   const ws = WAYSTONES.find((w) => !w.area);
   out.push({ x: spawn.x + ws.offset.x, y: spawn.y + ws.offset.y, r: 52 });
+  out.push({ x: spawn.x + WORLD_BOSS_RIFT.offset.x, y: spawn.y + WORLD_BOSS_RIFT.offset.y, r: 70 });
   for (const p of PORTALS) out.push({ x: p.tile.x * T + 8, y: p.tile.y * T + 8, r: 44 });
   for (const s of SIGNS) out.push({ x: s.tx * T + 8, y: s.ty * T + 8, r: 22 });
   return out;
@@ -86,6 +88,28 @@ export function buildOverworldFeatures(scene, areas, info) {
   P.waystone(wx, wy);
   txt(wx, wy - 52, 'Waystone', '#9fe8ff', '7px');
   areas.addInteract({ area: null, x: wx, y: wy, r: 36, label: 'Touch waystone', onUse: () => areas.openWaystone('town') });
+
+  // One calm overworld landmark routes scheduled bosses into dedicated maps.
+  // The target is resolved at interaction time because WorldEvents starts after
+  // the static overworld features are constructed.
+  const rx = spawn.x + WORLD_BOSS_RIFT.offset.x, ry = spawn.y + WORLD_BOSS_RIFT.offset.y;
+  P.archway(rx, ry, WORLD_BOSS_RIFT.color, 0x5f4a48);
+  txt(rx, ry - 54, 'WORLD RIFT', '#ffb08a');
+  const riftHint = txt(rx, ry - 43, 'Dormant', '#a9a0a0', '7px');
+  scene._worldBossRiftHint = riftHint;
+  areas.addProximity({ area: null, x: rx, y: ry, r: 100, obj: riftHint });
+  for (const areaId of Object.keys(WORLD_BOSS_AREAS)) areas.returnPos[areaId] = { x: rx, y: ry + 30 };
+  areas.addInteract({
+    area: null, x: rx, y: ry - 4, r: 42, label: 'Inspect the World Rift',
+    onUse: () => {
+      const boss = scene.worldEvents?.boss;
+      if (!boss || boss.over) {
+        areas.say('World Rift', 'The arch is dormant. It will ignite when a world boss awakens.');
+        return;
+      }
+      areas.enter(boss.arena.area);
+    },
+  });
 
   // — ambient villagers wandering the plaza —
   const vill = [

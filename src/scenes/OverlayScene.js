@@ -3,6 +3,8 @@ import { ZONES, AREAS, PORTALS, WAYSTONES } from '../data/zones.js';
 import { CONFIG } from '../config.js';
 import { DialogBox } from '../ui/DialogBox.js';
 import { input } from '../core/input.js';
+import { network } from '../world/waterways.js';
+import { LANDMARKS } from '../data/worldLayout.js';
 
 const FONT = '"Silkscreen", monospace';
 const T = CONFIG.tile;
@@ -192,7 +194,7 @@ export class OverlayScene extends Phaser.Scene {
     close.on('pointerdown', () => this.toggleMap(false));
     const S = Math.min(ph - 70, wide ? pw * 0.5 : pw - 24);
     const mx = wide ? cx - pw / 2 + 18 : cx - S / 2, my = cy - ph / 2 + 38;
-    const s = S / 128;
+    const s = S / CONFIG.worldCols;
     const g = this.add.graphics();
     g.fillStyle(0x2e86c1, 1).fillRect(mx, my, S, S);
     g.fillStyle(0x7ec850, 1).fillRect(mx + 2 * s, my + 2 * s, S - 4 * s, S - 4 * s);
@@ -202,6 +204,20 @@ export class OverlayScene extends Phaser.Scene {
       if (z.id === 'meadow') continue;
       g.fillStyle(ZONE_COL[z.id] || 0x888888, 1).fillRect(mx + z.rect.x * s, my + z.rect.y * s, z.rect.w * s, z.rect.h * s);
       g.lineStyle(1, 0x000000, 0.35).strokeRect(mx + z.rect.x * s, my + z.rect.y * s, z.rect.w * s, z.rect.h * s);
+    }
+    const layout = network();
+    const drawPath = (points, color, width, alpha) => {
+      if (!points.length) return;
+      g.lineStyle(width, color, alpha).beginPath();
+      g.moveTo(mx + (points[0][0] / T) * s, my + (points[0][1] / T) * s);
+      for (let i = 1; i < points.length; i++) g.lineTo(mx + (points[i][0] / T) * s, my + (points[i][1] / T) * s);
+      g.strokePath();
+    };
+    for (const river of layout.rivers) drawPath(river.pts, 0x4ea7db, 2, 0.95);
+    for (const road of layout.roads) drawPath(road.pts, road.kind === 'cobble' ? 0xb9b0a1 : 0xc49a62, road.kind === 'track' ? 1 : 2, 0.92);
+    for (const landmark of LANDMARKS) {
+      g.fillStyle(landmark.type === 'light' ? 0xffe477 : landmark.type === 'camp' ? 0xff9d4a : 0xe9e1c7, 1)
+        .fillCircle(mx + landmark.tx * s, my + landmark.ty * s, 2.2);
     }
     g.lineStyle(2, 0x000000, 0.6).strokeRect(mx, my, S, S);
     const lab = (x, y, str, color = '#fff', size = '8px') => { const t = this.add.text(x, y, str, { fontFamily: FONT, fontSize: size, color, stroke: '#000', strokeThickness: 3, align: 'center' }).setOrigin(0.5); items.push(t); return t; };
@@ -246,14 +262,14 @@ export class OverlayScene extends Phaser.Scene {
     row(`You are in: ${where}`, '#ffeb80', true);
     row(`Your level: ${w.player.level}`, '#aed6f1');
     ly += 4;
-    const list = [...ZONES.filter((z) => z.id !== 'meadow' || true).map((z) => ({ n: z.name, lv: z.lv, safe: z.safe })), ...Object.values(AREAS).filter((a) => a.kind !== 'interior').map((a) => ({ n: a.name, lv: a.lv, safe: a.safe }))];
+    const list = [...ZONES.filter((z) => z.id !== 'meadow' || true).map((z) => ({ n: z.name, lv: z.lv, safe: z.safe })), ...Object.values(AREAS).filter((a) => a.kind !== 'interior' && !a.worldBossArena).map((a) => ({ n: a.name, lv: a.lv, safe: a.safe }))];
     if (wide || ph > 330) for (const z of list) {
       const lvl = w.player.level;
       const col = z.safe ? '#c8ffb8' : lvl < z.lv[0] - 1 ? '#ff9a7a' : lvl > z.lv[1] + 3 ? '#9aa0a8' : '#ffe8a0';
       row(`${z.n}  ${z.lv[0] === z.lv[1] ? 'safe' : `Lv ${z.lv[0]}-${z.lv[1]}`}${z.safe && z.lv[0] !== z.lv[1] ? ' (town)' : ''}`, col);
     }
     ly += 4;
-    if (wide) { row('Red = above your level', '#ff9a7a'); row('Gold = on level', '#ffe8a0'); row('Grey = outlevelled', '#9aa0a8'); row('Waystone (cyan): fast travel', '#5ad1ff'); }
+    if (wide) { row('Red = above your level', '#ff9a7a'); row('Gold = on level', '#ffe8a0'); row('Grey = outlevelled', '#9aa0a8'); row('Waystone (cyan): fast travel', '#5ad1ff'); row('Tan roads · Blue rivers · Dots landmarks', '#c4a06a'); }
     const hint = this.add.text(cx, cy + ph / 2 - 12, `${input.labelFor('worldMap')} / ${input.labelFor('close')} / ESC to close`, { fontFamily: FONT, fontSize: '8px', color: '#9b8a70' }).setOrigin(0.5);
     items.push(hint);
     this.mapC.add(items);

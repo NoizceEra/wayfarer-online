@@ -5,8 +5,10 @@ import { settings } from '../core/settings.js';
 // Title/Creator) + real CC0 ogg files via Phaser Sound once a scene with
 // loaded audio exists (World/UIScene). Logical names map to ogg keys.
 const OGG = {
-  swing: ['sfx_swing_1', 'sfx_swing_2'],
-  hit: ['sfx_hit_1'],
+  swing: ['sfx_swing_1', 'sfx_swing_2', 'sfx_swing_3'],
+  hit: ['sfx_hit_1', 'sfx_hit_2'],
+  monsterHurt: ['sfx_monster_hurt'],
+  heavy: ['sfx_impact_heavy'],
   hurt: ['sfx_player_hurt'],
   monsterDie: ['sfx_monster_die'],
   coin: ['sfx_coin'],
@@ -17,6 +19,7 @@ const OGG = {
   error: ['sfx_ui_error'],
   arrow: ['sfx_arrow_shot'],
   cast: ['sfx_cast_1', 'sfx_cast_2'],
+  castBig: ['sfx_cast_big'],
   fireball: ['sfx_fireball'],
   explosion: ['sfx_explosion'],
   dash: ['sfx_whoosh_dash'],
@@ -24,7 +27,7 @@ const OGG = {
   potion: ['sfx_potion_drink'],
   npc: ['sfx_npc_blip'],
   alert: ['sfx_alert'],
-  step: ['sfx_step_0', 'sfx_step_1'],
+  step: ['sfx_step_0', 'sfx_step_1', 'sfx_step_2', 'sfx_step_3'],
   door: ['sfx_door_open'],
   roar: ['sfx_boss_roar'],
   slam: ['sfx_impact_heavy'],
@@ -45,17 +48,31 @@ const MUSIC_FOR_ZONE = {
 };
 
 const AUDIO_DIR = { mus: 'music', amb: 'ambient', jng: 'jingles', sfx: 'sfx' };
+const VARIED = new Set(['swing', 'hit', 'monsterHurt', 'step', 'cast', 'arrow']);
+const ENCOUNTER_CUE_GAP = { captain: 1800, pincer: 850, rally: 900, cover: 750, start: 1800, victory: 1200 };
 
 class AudioBus {
   constructor() {
     this.ctx = null; this.enabled = true;
     this.scene = null; this.musicKey = null; this.musicObj = null;
+    this.combatMode = false; this.currentZone = 'town';
+    this.encounterIntensity = 0; this._duckGain = 1; this._duckTimer = null; this._duckTween = null;
+    this._cueAt = new Map();
     this.stepIdx = 0; this.lastStep = 0;
     // master/music/sfx volume sliders (pause menu > Settings)
-    settings.onChange((k) => { if ((k === 'master' || k === 'music') && this.musicObj) { try { this.musicObj.setVolume(0.35 * this.musicVol()); } catch { /* ignore */ } } });
+    settings.onChange((k) => { if (k === 'master' || k === 'music') this.applyMusicVolume(); });
   }
   sfxVol() { return settings.get('master') * settings.get('sfx'); }
   musicVol() { return settings.get('master') * settings.get('music'); }
+  musicTarget() {
+    // Combat intensity adds presence without exceeding the exploration mix's
+    // headroom. Ducking always wins so tactical cues remain readable.
+    return 0.35 * this.musicVol() * (1 + this.encounterIntensity * 0.08) * this._duckGain;
+  }
+  applyMusicVolume(obj = this.musicObj) {
+    if (!obj) return;
+    try { obj.setVolume(this.musicTarget()); } catch { /* audio is non-critical */ }
+  }
   attach(scene) { this.scene = scene; }
   canPlay(key) { return this.enabled && this.scene && this.scene.cache.audio.exists(key) && this.scene.sound; }
   // Lazy audio: music/jingles/ambient are NOT preloaded (10MB). Fetch on first use via the
@@ -85,9 +102,16 @@ class AudioBus {
   play(logical, vol = 1) {
     const keys = OGG[logical];
     if (!keys) return;
+    if (logical === 'level' || logical === 'quest') this.duckMusic(logical === 'level' ? 0.32 : 0.44, 220, 980);
     const key = keys[Math.floor(Math.random() * keys.length)];
     if (this.scene && !this.scene.cache.audio.exists(key)) this.fetch(key); // warm for next time; blip now
-    if (this.canPlay(key)) { try { this.scene.sound.play(key, { volume: 0.5 * vol * this.sfxVol() }); return; } catch { /* fall through */ } }
+    if (this.canPlay(key)) {
+      try {
+        const rate = VARIED.has(logical) ? 0.97 + Math.random() * 0.06 : 1;
+        this.scene.sound.play(key, { volume: 0.5 * vol * this.sfxVol(), rate });
+        return;
+      } catch { /* fall through */ }
+    }
     this.blipFor(logical);
   }
   // Start downloading a zone's track without switching to it (used under area-transition loading cards).
@@ -96,16 +120,103 @@ class AudioBus {
     if (key && this.enabled && this.scene && !this.scene.cache.audio.exists(key)) this.fetch(key);
   }
   musicFor(zoneId) {
+    if (!String(zoneId).startsWith('mus_')) this.currentZone = zoneId;
     const key = MUSIC_FOR_ZONE[zoneId] || (String(zoneId).startsWith('mus_') ? zoneId : 'mus_forest');
     if (key === this.musicKey || !this.enabled) return;
     this.wantMusic = key;
     if (!this.canPlay(key)) { this.fetch(key, () => { if (this.wantMusic === key && this.musicKey !== key) this.musicFor(key); }); return; }
     try {
-      this.musicObj?.stop();
-      this.musicObj = this.scene.sound.add(key, { volume: 0.35 * this.musicVol(), loop: true });
-      this.musicObj.play();
+      const prev = this.musicObj;
+      const targetVol = this.musicTarget();
+      const next = this.scene.sound.add(key, { volume: prev ? 0 : targetVol, loop: true });
+      this.musicObj = next;
+      next.play();
+      if (prev && this.scene?.tweens) {
+        const mix = { k: 0 };
+        this.scene.tweens.add({ targets: mix, k: 1, duration: 650, ease: 'sine.inout',
+          onUpdate: () => { try { next.setVolume(this.musicTarget() * mix.k); prev.setVolume(this.musicTarget() * (1 - mix.k)); } catch {} },
+          onComplete: () => { try { prev.stop(); prev.destroy(); } catch {} },
+        });
+      } else prev?.stop();
       this.musicKey = key;
     } catch { /* ignore */ }
+  }
+  setCombat(active, zoneId = this.currentZone) {
+    active = !!active;
+    const wanted = active ? 'mus_tension' : (MUSIC_FOR_ZONE[zoneId] || 'mus_forest');
+    if (active === this.combatMode && this.musicKey === wanted) return;
+    this.combatMode = active;
+    if (!active) this.setEncounterIntensity(0);
+    this.musicFor(active ? 'mus_tension' : (zoneId || this.currentZone));
+  }
+  setEncounterIntensity(value = 0) {
+    this.encounterIntensity = Math.max(0, Math.min(1, Number(value) || 0));
+    this.applyMusicVolume();
+    return this.encounterIntensity;
+  }
+  duckMusic(gain = 0.48, holdMs = 160, releaseMs = 760) {
+    if (!this.musicObj || !this.scene) return false;
+    this._duckTimer?.remove?.(false);
+    this._duckTween?.stop?.();
+    this._duckGain = Math.max(0.2, Math.min(1, gain));
+    this.applyMusicVolume();
+    const release = () => {
+      if (!this.scene?.tweens) { this._duckGain = 1; this.applyMusicVolume(); return; }
+      const mix = { gain: this._duckGain };
+      this._duckTween = this.scene.tweens.add({
+        targets: mix, gain: 1, duration: Math.max(120, releaseMs), ease: 'sine.out',
+        onUpdate: () => { this._duckGain = mix.gain; this.applyMusicVolume(); },
+        onComplete: () => { this._duckGain = 1; this._duckTween = null; this.applyMusicVolume(); },
+      });
+    };
+    if (this.scene.time?.delayedCall) this._duckTimer = this.scene.time.delayedCall(Math.max(0, holdMs), release);
+    else setTimeout(release, Math.max(0, holdMs));
+    return true;
+  }
+  cueReady(id, now = this.scene?.time?.now ?? performance.now()) {
+    const gap = ENCOUNTER_CUE_GAP[id] || 600;
+    const last = this._cueAt.get(id);
+    if (last != null && now < last + gap) return false;
+    this._cueAt.set(id, now);
+    return true;
+  }
+  // Small integration surface for EncounterDirector / Combat. All calls are
+  // idempotent or throttled, and unknown event types safely do nothing.
+  //   encounter('start', { zone, mythic })
+  //   encounter('intensity', { value: 0..1 })
+  //   encounter('warning', { role: 'captain'|'pincer'|'rally'|'cover' })
+  //   encounter('victory'|'end'|'defeat', { zone })
+  encounter(type, data = {}) {
+    const zone = data.zone || this.currentZone;
+    if (type === 'intensity') return this.setEncounterIntensity(data.value);
+    if (type === 'start') {
+      this.setCombat(true, zone);
+      this.setEncounterIntensity(data.mythic ? 1 : Math.max(0.35, Number(data.intensity) || 0));
+      if (this.cueReady('start')) { this.play(data.mythic ? 'roar' : 'alert', data.mythic ? 0.72 : 0.42); this.duckMusic(0.62, 120, 650); }
+      return true;
+    }
+    if (type === 'warning') {
+      const role = data.role;
+      if (!ENCOUNTER_CUE_GAP[role] || !this.cueReady(role)) return false;
+      const cue = role === 'captain' ? 'roar' : role === 'rally' ? 'castBig' : role === 'cover' ? 'heavy' : 'alert';
+      const volume = role === 'captain' ? 0.6 : role === 'pincer' ? 0.48 : 0.4;
+      this.play(cue, volume); this.duckMusic(role === 'pincer' ? 0.42 : 0.54, 90, 620);
+      return true;
+    }
+    if (type === 'victory') {
+      if (this.cueReady('victory')) { this.play('quest', 0.72); this.duckMusic(0.38, 260, 1000); }
+      this.setCombat(false, zone);
+      return true;
+    }
+    if (type === 'defeat') {
+      this.play('error', 0.65); this.duckMusic(0.38, 220, 900); this.setCombat(false, zone);
+      return true;
+    }
+    if (type === 'end') { this.setCombat(false, zone); return true; }
+    return false;
+  }
+  encounterState() {
+    return { active: this.combatMode, intensity: this.encounterIntensity, duck: this._duckGain, zone: this.currentZone, music: this.musicKey };
   }
   stopMusic() { this.wantMusic = null; try { this.musicObj?.stop(); } catch {} this.musicObj = null; this.musicKey = null; }
   toggle() {
@@ -117,8 +228,12 @@ class AudioBus {
   footstep(now) {
     if (now - this.lastStep < 320) return;
     this.lastStep = now;
-    this.stepIdx = 1 - this.stepIdx;
-    if (this.canPlay('sfx_step_0')) { try { this.scene.sound.play(this.stepIdx ? 'sfx_step_0' : 'sfx_step_1', { volume: 0.18 * this.sfxVol() }); return; } catch {} }
+    this.stepIdx = (this.stepIdx + 1) % OGG.step.length;
+    const key = OGG.step[this.stepIdx];
+    if (this.scene && !this.scene.cache.audio.exists(key)) this.fetch(key);
+    if (this.canPlay(key)) {
+      try { this.scene.sound.play(key, { volume: 0.18 * this.sfxVol(), rate: 0.97 + Math.random() * 0.06 }); } catch {}
+    }
   }
   ensure() {
     if (!this.ctx) { try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch { /* no audio */ } }

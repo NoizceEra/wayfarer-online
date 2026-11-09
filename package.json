@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite --port 5176 --strictPort",
     "build": "vite build",
+    "perf:mobile": "node tools/mobile-perf.mjs",
     "preview": "vite preview --port 5177 --strictPort",
     "start": "node server/index.js",
     "postinstall": "node scripts/install-server-deps.cjs",

@@ -62,8 +62,8 @@ export const EXTRA_AREAS = {
 };
 
 export const EXTRA_PORTALS = [
-  { id: 'p_desert', area: 'desert', tile: { x: 112, y: 80 }, label: 'Sunscorch Gate', color: 0xffc85a },
-  { id: 'p_marsh', area: 'marsh', tile: { x: 74, y: 110 }, label: 'Whisperfen Path', color: 0x7fe0a0 },
+  { id: 'p_desert', area: 'desert', tile: { x: 132, y: 84 }, label: 'Sunscorch Gate', color: 0xffc85a },
+  { id: 'p_marsh', area: 'marsh', tile: { x: 80, y: 130 }, label: 'Whisperfen Path', color: 0x7fe0a0 },
   { id: 'p_caverns', area: 'caverns', tile: { x: 11, y: 52 }, label: 'Emberdeep Descent', color: 0xff7a3a },
   { id: 'p_hollow', area: 'hollow', tile: { x: 64, y: 21 }, label: 'Hollow Depths', color: 0xb080ff },
 ];
@@ -75,8 +75,8 @@ export const EXTRA_WAYSTONES = [
 ];
 
 export const EXTRA_SIGNS = [
-  { tx: 100, ty: 82, planks: [{ dir: 'e', text: 'Sunscorch Gate - Desert', lv: 'Lv 13-17' }, { dir: 'w', text: 'Thistle Town', lv: 'safe' }] },
-  { tx: 76, ty: 106, planks: [{ dir: 's', text: 'Whisperfen Path - Marsh', lv: 'Lv 10-14' }, { dir: 'n', text: 'Thistle Town', lv: 'safe' }] },
+  { tx: 122, ty: 83, planks: [{ dir: 'e', text: 'Sunscorch Gate - Desert', lv: 'Lv 13-17' }, { dir: 'w', text: 'Thistle Town', lv: 'safe' }] },
+  { tx: 78, ty: 124, planks: [{ dir: 's', text: 'Whisperfen Path - Marsh', lv: 'Lv 10-14' }, { dir: 'n', text: 'Thistle Town', lv: 'safe' }] },
   { tx: 14, ty: 54, planks: [{ dir: 'w', text: 'Emberdeep Descent', lv: 'Lv 15-19' }, { dir: 'e', text: 'Thistle Town', lv: 'safe' }] },
   { tx: 66, ty: 25, planks: [{ dir: 'n', text: 'Hollow Depths', lv: 'Lv 12-20' }, { dir: 's', text: 'Thistle Town', lv: 'safe' }] },
   { tx: 30, ty: 40, planks: [{ dir: 'w', text: 'Emberdeep Descent', lv: 'Lv 15-19' }, { dir: 'e', text: 'Thistle Town', lv: 'safe' }] },

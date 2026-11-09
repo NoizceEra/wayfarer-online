@@ -7,7 +7,7 @@ import {
   SPEC_NODES_MAX, ensureSpecState, normalizeSpecNode, findSpecNode,
   specStatBonus, specSkillBoosts, specDerivedBonus, meetsClassGate,
 } from '../data/stats.js';
-import { sanitizeProgression } from '../core/save.js';
+import { BAG_SIZE, sanitizeProgression } from '../core/save.js';
 import { bus, Events } from '../core/events.js';
 import { HAIR_COLORS, TOPS, SKINS } from '../data/customization.js';
 import { gearById, getEquipBonuses, equipBlock, SLOTS } from '../data/gear.js';
@@ -113,6 +113,7 @@ export class ModularPlayer extends Phaser.GameObjects.Container {
     this.questKills = {};
     // Gear: 8 equip slots + bag (item ids) + per-item dye ids.
     this.inventory = [];
+    this.loadouts = [null, null, null];
     this.equipped = normalizeEquipped(this.remote ? hero.equipped : null);
     this.dyes = this.remote ? { ...(hero.dyes || {}) } : {};
 
@@ -493,6 +494,34 @@ export class ModularPlayer extends Phaser.GameObjects.Container {
     this.recalc();
     this.applyGearVisuals();
     this.onLookChange?.();
+    return true;
+  }
+  saveLoadout(index) {
+    if (index < 0 || index > 2) return false;
+    this.loadouts[index] = { name: `Loadout ${index + 1}`, equipped: { ...this.equipped } };
+    return true;
+  }
+  applyLoadout(index) {
+    const loadout = this.loadouts[index];
+    if (!loadout?.equipped) { this.lastBlock = 'empty loadout'; return false; }
+    const owned = [...this.inventory, ...Object.values(this.equipped).filter(Boolean)];
+    const next = Object.fromEntries(SLOTS.map((slot) => [slot, null]));
+    for (const slot of SLOTS) {
+      const id = loadout.equipped[slot];
+      if (!id) continue;
+      const g = gearById(id);
+      const at = owned.indexOf(id);
+      if (!g || g.slot !== slot || at < 0) { this.lastBlock = `${id} is no longer owned`; return false; }
+      const blocked = this.equipBlockReason(id);
+      if (blocked) { this.lastBlock = blocked; return false; }
+      next[slot] = id;
+      owned.splice(at, 1);
+    }
+    if (owned.length > BAG_SIZE) { this.lastBlock = 'bag is full'; return false; }
+    this.inventory = owned;
+    this.equipped = next;
+    this.recalc(); this.applyGearVisuals(); this.onLookChange?.();
+    this.lastBlock = null;
     return true;
   }
   setDye(itemId, dyeId) {

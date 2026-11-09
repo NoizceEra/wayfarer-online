@@ -3,6 +3,8 @@ import { CONFIG } from '../config.js';
 import { AREAS } from '../data/zones.js';
 import { hash2 } from '../world/ground.js';
 import { settings } from './fxSettings.js';
+import { settings as playerSettings } from '../core/settings.js';
+import { network, riverPoint, riverHalfWidth, onBridge, BAY_X0, shoreY } from '../world/waterways.js';
 
 // Animated water without per-frame canvas redraws:
 //  - two scrolling "glint" tileSprites (ADD) over every water surface (dock bay,
@@ -43,6 +45,26 @@ function genTextures(scene) {
     c.globalAlpha = 0.5; c.fillRect(0, 4, 32, 1);
     tex.refresh();
   }
+  if (!scene.textures.exists('fx.current')) {
+    const tex = scene.textures.createCanvas('fx.current', 64, 32), c = tex.getContext();
+    c.strokeStyle = '#ffffff'; c.lineCap = 'round';
+    // Sparse, broken crests make the flow direction readable without turning
+    // every water surface into a bright scrolling sheet.
+    for (let i = 0; i < 12; i++) {
+      const x = (i * 23) % 68 - 8, y = (i * 11) % 30 + 1;
+      c.globalAlpha = 0.18 + hash2(i, 17, 82) * 0.36;
+      c.lineWidth = i % 3 === 0 ? 1.5 : 1;
+      c.beginPath(); c.moveTo(x, y); c.quadraticCurveTo(x + 6, y - 2, x + 13, y); c.stroke();
+    }
+    c.globalAlpha = 1; tex.refresh();
+  }
+  if (!scene.textures.exists('fx.waterRipple')) {
+    const tex = scene.textures.createCanvas('fx.waterRipple', 32, 16), c = tex.getContext();
+    c.strokeStyle = '#ffffff'; c.lineWidth = 1; c.globalAlpha = 0.72;
+    c.beginPath(); c.ellipse(16, 8, 13.5, 4.5, 0, 0, Math.PI * 2); c.stroke();
+    c.globalAlpha = 0.3; c.beginPath(); c.ellipse(16, 8, 8.5, 2.7, 0, 0, Math.PI * 2); c.stroke();
+    c.globalAlpha = 1; tex.refresh();
+  }
   if (!scene.textures.exists('fx.reed')) {
     const tex = scene.textures.createCanvas('fx.reed', 14, 22), c = tex.getContext();
     const blades = [[4, 14, '#5f8a3c'], [6, 19, '#7fa04a'], [8, 16, '#5f8a3c'], [10, 12, '#7fa04a'], [7, 21, '#4f7a34']];
@@ -67,20 +89,63 @@ export class Water {
     genTextures(scene);
     this.shim = [];      // {ts, ts2, region}
     this.foam = [];
+    this.ripples = [];   // fixed pool: one marker per registered water surface
     this.plants = [];    // reeds + lilies
     this.refl = null;
     this._built = {};
     const W = CONFIG.worldCols * T, H = CONFIG.worldRows * T;
+    this._baseWater = { W, H };
+    // Low quality deliberately disables shimmer. Avoid allocating nearly 200
+    // permanently hidden tile sprites/ripples on mobile, and build them lazily
+    // if the player later raises visual quality.
+    if (settings.q.shimmer) this.buildBaseShimmer();
+    this._offQuality = settings.onChange(() => {
+      if (settings.q.shimmer) this.buildBaseShimmer();
+    });
+    scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this._offQuality?.());
+    // glints sparkling on ice etc. use the shared particle pool (ambient.js)
+  }
+
+  buildBaseShimmer() {
+    if (this._built.baseWater) return;
+    this._built.baseWater = true;
+    const { W, H } = this._baseWater;
     // overworld water rim (24 px wide, see overworld.js)
     const rim = [[0, 0, W, 24], [0, H - 24, W, 24], [0, 24, 24, H - 48], [W - 24, 24, 24, H - 48]];
     for (const [x, y, w, h] of rim) this.addShimmer(x, y, w, h, -7.9, 'over');
-    // glints sparkling on ice etc. use the shared particle pool (ambient.js)
+    this.addRiverShimmer(W);
+  }
+
+  addRiverShimmer(worldWidth) {
+    const net = network();
+    for (let i = 0; i < net.rivers.length; i++) {
+      const river = net.rivers[i];
+      const step = settings.quality === 'high' ? 96 : 144;
+      for (let distance = 32; distance < river.len; distance += step) {
+        const [x, y] = riverPoint(i, distance);
+        if (onBridge(x, y, 30)) continue;
+        const halfWidth = riverHalfWidth(i, distance) + 5;
+        this.addShimmer(x - halfWidth, y - halfWidth, halfWidth * 2, halfWidth * 2, -7.85, 'river');
+      }
+    }
+    const bayWidth = worldWidth - BAY_X0;
+    this.addShimmer(BAY_X0 - 20, 0, bayWidth + 20, Math.max(40, shoreY(worldWidth - 8) + 12), -7.85, 'bay');
   }
 
   addShimmer(x, y, w, h, depth, region) {
     const mk = (sc, alpha, dd) => this.scene.add.tileSprite(x, y, w, h, 'fx.shimmer').setOrigin(0).setDepth(depth + dd).setBlendMode(Phaser.BlendModes.ADD).setTileScale(sc, sc).setAlpha(alpha).setTint(0xd2ecff);
     const ts = mk(1, 0.3, 0), ts2 = mk(1.6, 0.2, 0.01);
-    this.shim.push({ ts, ts2, x, y, w, h, region });
+    const current = this.scene.add.tileSprite(x, y, w, h, 'fx.current').setOrigin(0).setDepth(depth + 0.02)
+      .setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.12).setTint(0xa8dcff);
+    const surface = { ts, ts2, current, x, y, w, h, region, vertical: h > w };
+    this.shim.push(surface);
+    // One reused ripple per surface is enough to keep even the long world rim
+    // alive. Its position is re-seeded inside the visible intersection only
+    // when a cycle rolls over, so update() allocates no display objects.
+    const seed = this.ripples.length + 1;
+    const im = this.scene.add.image(x, y, 'fx.waterRipple').setDepth(depth + 0.03)
+      .setBlendMode(Phaser.BlendModes.ADD).setTint(0xc9ecff).setVisible(false);
+    this.ripples.push({ im, surface, seed, phase: hash2(seed, 31, 70) * 2600, cycle: -1 });
   }
 
   buildDock(b) {
@@ -134,23 +199,53 @@ export class Water {
 
   update(time, dt) {
     const fx = this.fx, q = settings.q, v = fx.view, dn = fx.daynight;
+    const calm = playerSettings.get('reduceMotion');
     // lazily build the dock pieces once the dock area exists
     const a = this.scene.areas;
     if (a?.built?.dock && !this._built.dock) { this._built.dock = true; try { this.buildDock(a.built.dock); } catch (e) { console.error('water.buildDock', e); } }
     const night = dn.nightA;
     const show = q.shimmer;
     const tint = night > 0.4 ? 0x9cb8ff : 0xd2ecff;
+    const storm = fx.weather?.lvl?.rain || 0;
     for (const s of this.shim) {
       const inView = s.x < v.right && s.x + s.w > v.x && s.y < v.bottom && s.y + s.h > v.y;
       const vis = show && inView;
-      s.ts.setVisible(vis); s.ts2.setVisible(vis);
+      s.ts.setVisible(vis); s.ts2.setVisible(vis); s.current.setVisible(vis);
       if (!vis) continue;
       const k = time * 0.001;
-      s.ts.tilePositionX = k * 5; s.ts.tilePositionY = Math.sin(k * 0.7) * 3 + k * 1.5;
-      s.ts2.tilePositionX = -k * 3.2 + 20; s.ts2.tilePositionY = -k * 1.1 + Math.cos(k * 0.5) * 4;
-      const pulse = 0.85 + 0.15 * Math.sin(k * 1.3);
+      if (!calm) {
+        s.ts.tilePositionX = k * 5; s.ts.tilePositionY = Math.sin(k * 0.7) * 3 + k * 1.5;
+        s.ts2.tilePositionX = -k * 3.2 + 20; s.ts2.tilePositionY = -k * 1.1 + Math.cos(k * 0.5) * 4;
+        const flow = k * (7 + storm * 8) * (s.region === 'dock' ? 1.25 : 1);
+        s.current.tilePositionX = s.vertical ? Math.sin(k * 0.35) * 5 : flow;
+        s.current.tilePositionY = s.vertical ? flow : Math.sin(k * 0.45) * 3;
+      } else {
+        s.ts.tilePositionX = s.ts.tilePositionY = 0;
+        s.ts2.tilePositionX = 20; s.ts2.tilePositionY = 0;
+        s.current.tilePositionX = s.current.tilePositionY = 0;
+      }
+      const pulse = calm ? 0.9 : 0.85 + 0.15 * Math.sin(k * 1.3);
       const base = 0.3 + 0.12 * night;
       s.ts.setAlpha(base * pulse).setTint(tint); s.ts2.setAlpha(base * 0.7 / pulse).setTint(tint);
+      s.current.setAlpha((0.08 + storm * 0.08) * (night > 0.5 ? 1.25 : 1)).setTint(tint);
+    }
+    // Surface rings: fixed allocation, camera-intersection placement, and no
+    // motion at all in reduced-motion mode. Low quality already disables shimmer.
+    for (const r of this.ripples) {
+      const s = r.surface;
+      const inView = s.x < v.right && s.x + s.w > v.x && s.y < v.bottom && s.y + s.h > v.y;
+      if (!show || calm || !inView) { r.im.setVisible(false); continue; }
+      const cycle = Math.floor((time + r.phase) / 2600);
+      if (cycle !== r.cycle) {
+        r.cycle = cycle;
+        const left = Math.max(s.x + 8, v.x + 8), right = Math.min(s.x + s.w - 8, v.right - 8);
+        const top = Math.max(s.y + 5, v.y + 5), bottom = Math.min(s.y + s.h - 5, v.bottom - 5);
+        r.im.setPosition(left + Math.max(0, right - left) * hash2(cycle, r.seed, 91), top + Math.max(0, bottom - top) * hash2(r.seed, cycle, 37));
+      }
+      const age = ((time + r.phase) % 2600) / 2600;
+      const alive = age < 0.58;
+      r.im.setVisible(alive);
+      if (alive) r.im.setScale(0.55 + age * 1.5).setAlpha((1 - age / 0.58) * (0.18 + storm * 0.18));
     }
     // foam
     if (this.foam.length) {
@@ -161,10 +256,10 @@ export class Water {
         ts.setVisible(q.foam && inView);
         if (!q.foam || !inView) continue;
         const ph = f.k * 2.1;
-        const lap = 0.5 + 0.5 * Math.sin(k * 0.9 + ph);
+        const lap = calm ? 0.5 : 0.5 + 0.5 * Math.sin(k * 0.9 + ph);
         ts.y = f.y + lap * 3.5 - 1;
         ts.setAlpha(0.25 + 0.5 * (1 - lap) + 0.1 * f.k);
-        ts.tilePositionX = k * (f.k ? -2.2 : 1.6) + f.k * 11;
+        ts.tilePositionX = calm ? f.k * 11 : k * (f.k ? -2.2 : 1.6) + f.k * 11;
       }
     }
     // plants
@@ -173,10 +268,10 @@ export class Water {
       for (const p of this.plants) {
         const im = p.im;
         if (p.kind === 'reed') {
-          im.rotation = Math.sin(k * (1.4 + wd) + p.ph) * (0.05 + 0.1 * wd) + wd * 0.05;
+          im.rotation = calm ? 0 : Math.sin(k * (1.4 + wd) + p.ph) * (0.05 + 0.1 * wd) + wd * 0.05;
         } else {
-          im.y = p.y + Math.sin(k * 0.9 + p.ph) * 0.6; im.x = p.x + Math.cos(k * 0.6 + p.ph) * 0.5;
-          im.setAngle(p.a0 + Math.sin(k * 0.5 + p.ph) * 6);
+          im.y = p.y + (calm ? 0 : Math.sin(k * 0.9 + p.ph) * 0.6); im.x = p.x + (calm ? 0 : Math.cos(k * 0.6 + p.ph) * 0.5);
+          im.setAngle(p.a0 + (calm ? 0 : Math.sin(k * 0.5 + p.ph) * 6));
         }
       }
     }
@@ -184,9 +279,9 @@ export class Water {
     const R = this.refl;
     if (R && this.fx.region.id === 'dock') {
       const k = time * 0.001, lamp = dn.lamp;
-      for (const p of R.parts) { p.r.x = R.x + Math.sin(k * 1.7 + p.i * 0.9) * (1.2 + 0.4 * p.i); p.r.setScale(1 + Math.sin(k * 2.3 + p.i) * 0.05, 1); }
-      R.lamp.x = R.x + Math.sin(k * 1.7 + 5) * 3; R.lamp.setAlpha(0.3 + 0.55 * lamp);
-      R.streak.setAlpha(lamp * (0.4 + 0.1 * Math.sin(k * 2.1))).x = R.x + Math.sin(k * 1.4) * 2;
+      for (const p of R.parts) { p.r.x = R.x + (calm ? 0 : Math.sin(k * 1.7 + p.i * 0.9) * (1.2 + 0.4 * p.i)); p.r.setScale(calm ? 1 : 1 + Math.sin(k * 2.3 + p.i) * 0.05, 1); }
+      R.lamp.x = R.x + (calm ? 0 : Math.sin(k * 1.7 + 5) * 3); R.lamp.setAlpha(0.3 + 0.55 * lamp);
+      R.streak.setAlpha(lamp * (calm ? 0.4 : 0.4 + 0.1 * Math.sin(k * 2.1))).x = R.x + (calm ? 0 : Math.sin(k * 1.4) * 2);
       R.pool.setAlpha(lamp * 0.5);
     }
   }

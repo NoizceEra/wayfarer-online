@@ -3,6 +3,7 @@ import { bus, Events } from '../core/events.js';
 import { net } from '../net/NetworkManager.js';
 import { PALETTES } from '../core/palette.js';
 import { ZONES } from '../data/zones.js';
+import { waterAt, roadAt } from '../world/waterways.js';
 import { audio } from '../systems/audio.js';
 import { CONFIG } from '../config.js';
 import { makeHudIcons, HUD_ABILITY_ICON } from '../systems/hudIcons.js';
@@ -204,6 +205,11 @@ export class UIScene extends Phaser.Scene {
     // ── Quest tracker (top-right): framed panel, capped width, word wrap ─────
     this.questW = this.small ? 158 : 214;
     this.questPanel = this._ns(W - 8, 8, this.questW, 52, 'ui.panel', 4, 4, 4, 4, 1, 0, 100);
+    this.questPanel.setInteractive({ useHandCursor: true })
+      .on('pointerover', () => this.questPanel.setTint(0xffe6a6))
+      .on('pointerout', () => this.questPanel.clearTint())
+      .on('pointerdown', () => { audio.play('ui', 0.6); bus.emit(Events.JOURNAL, { open: true }); });
+    this.questAccent = this.add.rectangle(W - 8 - this.questW + 4, 12, 3, 44, 0xffd84a, 0.95).setOrigin(0, 0).setDepth(102);
     this.questHead = this.add.text(W - 8 - this.questW + 10, 14, 'QUEST', {
       fontFamily: '"Silkscreen", monospace', fontSize: '8px', color: '#ffd84a',
     }).setDepth(101);
@@ -212,6 +218,10 @@ export class UIScene extends Phaser.Scene {
       color: '#f4e0b0', lineSpacing: 2,
       wordWrap: { width: this.questW - 20, useAdvancedWrap: true },
     }).setOrigin(0, 0).setDepth(101);
+    this.objectiveRule = this.add.rectangle(W - 8 - this.questW + 8, 0, this.questW - 16, 1, 0x6b7a99, 0.55).setOrigin(0, 0.5).setDepth(102).setVisible(false);
+    this.objectiveArrow = this.add.triangle(0, 0, 0, -5, 5, 5, -5, 5, 0xffd84a).setDepth(103).setVisible(false);
+    this.objectiveT = this.add.text(0, 0, '', { fontFamily: '"Silkscreen", monospace', fontSize: '8px', color: '#e1e8f0', stroke: '#1a1024', strokeThickness: 2 })
+      .setOrigin(0, 0.5).setDepth(103).setVisible(false);
 
     // ── Hotbar (bottom-centre) ───────────────────────────────────────────────
     this.hotbar = [];
@@ -580,10 +590,38 @@ export class UIScene extends Phaser.Scene {
   setQuest(q) {
     // An empty tracker looked like a rendering failure. Give a short next
     // action while retaining the compact fixed HUD footprint.
-    this.questT.setText(q || `No active quest\nJournal [${input.labelFor('journal')}]`);
-    const h = Math.ceil(this.questT.height) + 26 + 8;
+    const w = this.world();
+    const tracked = w?.quests?.s?.tracked?.filter((id) => w.quests.s.active[id]) || [];
+    const ready = tracked.filter((id) => w.quests.isReady(id)).length;
+    this.questHead.setText(ready ? `TURN IN READY · ${ready}` : tracked.length ? `QUESTS · ${tracked.length}  [${input.labelFor('journal')}]` : `QUEST LOG  [${input.labelFor('journal')}]`)
+      .setColor(ready ? '#7dff9a' : tracked.length ? '#ffd84a' : '#a8a09a');
+    this.questT.setText(q || `No active quest\nClick to open Journal`);
+    this.objectiveTarget = w?.quests?.primaryObjective?.() || null;
+    const h = Math.ceil(this.questT.height) + 26 + 8 + (this.objectiveTarget ? 24 : 0);
+    this.questPanelH = h;
     this.questPanel.setSize(this.questW, h);
     this.questPanel.fallbackRect.setSize(this.questW, h);
+    this.questAccent?.setSize(3, Math.max(14, h - 8)).setFillStyle(ready ? 0x14f195 : tracked.length ? 0xffd84a : 0x6b7a99, 0.95);
+  }
+
+  updateObjectiveCompass(w) {
+    const t = this.objectiveTarget;
+    if (!t || !w?.player) {
+      this.objectiveRule?.setVisible(false); this.objectiveArrow?.setVisible(false); this.objectiveT?.setVisible(false); return;
+    }
+    const here = w.areas?.current?.id || null;
+    const same = (t.area || null) === here;
+    const d = same ? Phaser.Math.Distance.Between(w.player.x, w.player.y, t.x, t.y) : null;
+    const show = !same || d > 54;
+    this.objectiveRule.setVisible(show); this.objectiveArrow.setVisible(show); this.objectiveT.setVisible(show);
+    if (!show) return;
+    const left = this.view().w - 8 - this.questW;
+    const y = 8 + (this.questPanelH || 52) - 13;
+    this.objectiveRule.setPosition(left + 8, y - 10);
+    this.objectiveArrow.setPosition(left + 17, y).setRotation(same ? Math.atan2(t.y - w.player.y, t.x - w.player.x) + Math.PI / 2 : 0);
+    const prefix = same ? `${Math.round(d)}px` : `TRAVEL`;
+    this.objectiveT.setPosition(left + 30, y).setText(`${prefix} · ${String(t.label || 'Objective').slice(0, 20)}`)
+      .setColor(t.kind === 'turnin' ? '#7dff9a' : '#e1e8f0');
   }
   drawXp(p) {
     const frac = Math.max(0, Math.min(1, p.xp / Math.max(1, p.xpNext)));
@@ -807,7 +845,7 @@ export class UIScene extends Phaser.Scene {
     // Action buttons (bottom-right, stacked ABOVE the minimap so they never
     // cover it; skills 1-4/potion = tap the hotbar, 5/6 = tap the class bar,
     // CHAR/SKILL/MAP/II/? are HUD buttons).
-    const R = this.small ? 28 : 26;
+    const R = this.small ? 30 : 28;
     const mmTop = H - (this.small ? 84 : 112) - 20;
     const mkBtn = (x, y, label, cb, r = R) => {
       const c = this.add.circle(x, y, r, 0x000000, 0.5).setStrokeStyle(2, 0xffffff, 0.25).setInteractive({ useHandCursor: true });
@@ -816,6 +854,7 @@ export class UIScene extends Phaser.Scene {
       c.on('pointerup', () => c.setFillStyle(0x000000, 0.5));
       c.on('pointerout', () => c.setFillStyle(0x000000, 0.5));
       this.touchUI.add([c, t]);
+      c._label = t;
       return c;
     };
     this.touchBtns = {
@@ -824,6 +863,11 @@ export class UIScene extends Phaser.Scene {
       potion: mkBtn(W - 50 - 2 * R - 18, mmTop - R + 2, 'Q', () => this.world()?.drinkPotion()),
       bag: mkBtn(W - 50 - 2 * R - 18, mmTop - 3 * R - 12, 'BAG', () => bus.emit(Events.GEAR, { open: 'inventory' })),
     };
+    // High-value combat actions stay visible and thumb reachable without
+    // covering the resource bar or minimap. The HUD bars remain tappable too.
+    const combatY = Math.max(54, mmTop - 5 * R - 40);
+    this.touchBtns.parry = mkBtn(W - 50, combatY, 'PRY', () => this.world()?.combat?.parry?.(), R + 2);
+    this.touchBtns.ultimate = mkBtn(W - 50 - 2 * R - 18, combatY, 'ULT', () => this.world()?.combat?.castUltimate?.(), R + 2);
     // LOG / CRAFT: a second column left of BAG / Q (same rows) so nothing overlaps at 844x390, 390x844, 768x1024
     const qx = W - 50 - 2 * R - 18, colX = qx - 2 * R - 14;
     mkBtn(colX, mmTop - 3 * R - 12, 'LOG', () => bus.emit(Events.JOURNAL, { open: 'toggle' }));
@@ -932,6 +976,7 @@ export class UIScene extends Phaser.Scene {
       }
     }
     updateAdvBar(this, w, now);
+    this.updateTouchCombat(w, now);
     // Low-HP pulse (steady tint with Reduce motion)
     if (this.lastHp !== null && w?.player) {
       const frac = w.player.hp / w.player.maxHp;
@@ -939,6 +984,7 @@ export class UIScene extends Phaser.Scene {
       else if (this.vignette.alpha < 0.2) this.vignette.setAlpha(Math.max(0, this.vignette.alpha - 0.02));
     }
     this.updateMinimap(w);
+    this.updateObjectiveCompass(w);
     this.worldBossAlert?.update();
     if (this.fpsT?.visible && Math.floor(this.time.now / 500) !== this.fpsTick) {
       this.fpsTick = Math.floor(this.time.now / 500);
@@ -946,10 +992,38 @@ export class UIScene extends Phaser.Scene {
     }
   }
 
+  updateTouchCombat(w, now) {
+    if (!w?.combat) return;
+    const queued = w.actionBuffer;
+    for (const slot of this.hotbar || []) {
+      const on = queued?.kind === 'skill' && slot.s.ab?.id === queued.abilityId;
+      if (slot._queued === on) continue;
+      slot._queued = on;
+      if (on) slot.bg.setTint(0x7dffcf); else slot.bg.clearTint();
+    }
+    const btns = this.touchBtns;
+    if (!btns) return;
+    const set = (btn, key, label, color, alpha) => {
+      if (!btn || btn._touchState === key) return;
+      btn._touchState = key;
+      btn.setStrokeStyle(2, color, alpha);
+      btn._label?.setText(label).setColor(`#${color.toString(16).padStart(6, '0')}`);
+    };
+    const parryLeft = Math.max(0, w.combat.parryReadyAt - now);
+    const parryReady = parryLeft <= 0;
+    set(btns.parry, parryReady ? 'ready' : `cd${Math.ceil(parryLeft / 250)}`,
+      parryReady ? 'PRY' : `P ${Math.ceil(parryLeft / 1000)}`, parryReady ? 0x7dffcf : 0x7f8b9d, parryReady ? 0.95 : 0.55);
+    const r = w.combat.classResource;
+    const ultReady = r && r.value >= r.max;
+    const pct = r ? Math.floor((r.value / Math.max(1, r.max)) * 100) : 0;
+    set(btns.ultimate, ultReady ? 'ready' : `p${Math.floor(pct / 5)}`,
+      ultReady ? 'ULT' : `${pct}%`, ultReady ? 0x14f195 : 0x9a7de8, ultReady ? 1 : 0.65);
+  }
+
   // ── minimap ────────────────────────────────────────────────────────────────
   buildMinimap() {
-    const MAP_T = 128;                     // world is 128x128 tiles
-    const COL = { water: '#2f6fb0', meadow: '#6cb850', woods: '#2f6b3a', town: '#d8c184', ruins: '#5f6f80' };
+    const MAP_T = CONFIG.worldCols;
+    const COL = { water: '#2f6fb0', road: '#c4a06a', meadow: '#6cb850', woods: '#2f6b3a', town: '#d8c184', ruins: '#5f6f80' };
     const order = ['meadow', 'woods', 'ruins', 'town'];
     if (!this.textures.exists('hud.mapTerrain')) {
       const t = this.textures.createCanvas('hud.mapTerrain', MAP_T, MAP_T);
@@ -958,6 +1032,11 @@ export class UIScene extends Phaser.Scene {
       for (const id of order) {
         const z = ZONES.find((q) => q.id === id); if (!z) continue;
         c.fillStyle = COL[id]; c.fillRect(z.rect.x, z.rect.y, z.rect.w, z.rect.h);
+      }
+      for (let ty = 0; ty < MAP_T; ty++) for (let tx = 0; tx < MAP_T; tx++) {
+        const px = tx * CONFIG.tile + CONFIG.tile / 2, py = ty * CONFIG.tile + CONFIG.tile / 2;
+        if (waterAt(px, py)) { c.fillStyle = COL.water; c.fillRect(tx, ty, 1, 1); }
+        else if (roadAt(px, py).e < 5) { c.fillStyle = COL.road; c.fillRect(tx, ty, 1, 1); }
       }
       t.refresh(); t.setFilter(0);
     }
@@ -1006,7 +1085,7 @@ export class UIScene extends Phaser.Scene {
   updateMinimap(w) {
     const g = this.mapG; g.clear();
     if (!w?.player || !this.mapRect) return;
-    const { x, y, ms } = this.mapRect, k = ms / 128, T = CONFIG.tile;
+    const { x, y, ms } = this.mapRect, k = ms / CONFIG.worldCols, T = CONFIG.tile;
     const tx = w.player.x / T, ty = w.player.y / T;
     // fog-of-war: carve a soft circle whenever the player has moved 2+ tiles
     if (!this.fogLast || Math.hypot(tx - this.fogLast.x, ty - this.fogLast.y) >= 2) {

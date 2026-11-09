@@ -8,9 +8,10 @@ import { makeProps } from './propsExtra.js';
 import { BUILDERS } from './areaBuilders.js';
 import { EXTRA_BUILDERS } from './areaBuildersExtra.js';
 import { HOLLOW_BUILDER } from './dungeons.js';
+import { WORLD_BOSS_BUILDERS } from './worldBossArena.js';
 import { populateArea } from './townfolk.js';
 
-Object.assign(BUILDERS, EXTRA_BUILDERS, HOLLOW_BUILDER); // desert / marsh / caverns / Hollow Depths (world expansion)
+Object.assign(BUILDERS, EXTRA_BUILDERS, HOLLOW_BUILDER, WORLD_BOSS_BUILDERS); // expansion maps + dedicated world-boss arenas
 const T = CONFIG.tile;
 const FONT = '"Silkscreen", monospace';
 

@@ -105,6 +105,7 @@ export class WorldEvents {
     if (sch.boss && this.boss?.key !== sch.boss.key) { this.endBoss(false); this.startBoss(sch.boss, now); }
     else if (!sch.boss && this.boss && !this.boss.over) this.endBoss(false, true);
     if (this.cur && !this.cur.over) this.ensureEvent();
+    if (this.boss && !this.boss.over) this.ensureBoss();
     this.updateHud(sch, now);
   }
 
@@ -275,14 +276,20 @@ export class WorldEvents {
 
   // ——— world boss ———
   startBoss(ev, now) {
-    const s = this.s;
     this.boss = { key: ev.key, ev, arena: ev.arena, e: null, dealt: 0, over: false, music: false, joined: false };
-    this.announce('WORLD BOSS', `${WORLD_BOSS.text} Find it in ${ev.arena.name}. (${fmt(ev.end - now)} left)`, '#ff6a4a');
-    const p = this.posOf(ev.arena.at);
+    this.s._worldBossRiftHint?.setText(`OPEN · ${ev.arena.name}`).setColor('#ffd0a8');
+    this.announce('WORLD BOSS', `${WORLD_BOSS.text} The Rift Gate opens to ${ev.arena.name}. (${fmt(ev.end - now)} left)`, '#ff6a4a');
+  }
+
+  ensureBoss() {
+    const s = this.s, b = this.boss;
+    if (!b || b.over || b.e?.active || s.areas?.current?.id !== b.arena.area) return;
+    const def = s.areas.current;
+    const p = { x: def.origin.x + b.arena.at.tx * T, y: def.origin.y + b.arena.at.ty * T };
     const pos = this.freeSpot(p.x, p.y, 60);
     const near = this.remotesNear(pos.x, pos.y, 1400);
     const lv = Math.max(12, s.player.level);
-    const e = s.makeEnemy(pos.x, pos.y, WORLD_BOSS.type, null, { local: true, eo: { level: lv, rank: RANKS.normal, zoneLv: [1, 99] } });
+    const e = s.makeEnemy(pos.x, pos.y, WORLD_BOSS.type, b.arena.area, { local: true, eo: { level: lv, rank: RANKS.normal, zoneLv: [1, 99] } });
     const mul = 1 + WORLD_BOSS.hpPerPlayer * near;
     e.maxHp = Math.round(e.maxHp * mul); e.hp = e.maxHp;
     e.noRespawn = true; e.worldBoss = true; e.isWorldBoss = true;
@@ -313,6 +320,7 @@ export class WorldEvents {
     }
     if (b.e?.active) { b.e.hp = 0; b.e.die?.(); }
     b.marker?.destroy(); b.glow?.destroy();
+    this.s._worldBossRiftHint?.setText('Dormant').setColor('#a9a0a0');
     this.boss = null;
   }
   markJoinedBoss(b) { if (!b.joined) { b.joined = true; bus.emit(Events.ACH_EVENT, { k: 'event' }); } }
@@ -320,9 +328,9 @@ export class WorldEvents {
   // ——— kills ———
   onKill(k) {
     if (k?.boss) bus.emit(Events.ACH_EVENT, { k: 'bosskill', id: k.typeId });
-    if (!k || k.areaId) return;
+    if (!k) return;
     const b = this.boss;
-    if (b && !b.over && k.typeId === WORLD_BOSS.type) {
+    if (b && !b.over && k.typeId === WORLD_BOSS.type && k.areaId === b.arena.area) {
       b.over = true; b.dealt = 1;
       if (!this.claimed(b.key)) {
         this.claim(b.key);
@@ -334,9 +342,11 @@ export class WorldEvents {
         this.markJoinedBoss(b);
       }
       bus.emit(Events.SYSTEM, `[World Event] ${this.s.pname} has defeated the ${WORLD_BOSS.name}!`);
+      b.marker?.destroy(); b.glow?.destroy(); b.marker = null; b.glow = null;
       if (b.music) { b.music = false; audio.musicFor(this.s.zoneId); }
       return;
     }
+    if (k.areaId) return;
     const c = this.cur;
     if (!c || c.over) return;
     if (c.def.kind === 'boss' && k.typeId === c.def.boss) {
@@ -379,10 +389,10 @@ export class WorldEvents {
     else if (sch.next && !this.override) lines.push({ text: `Next event: ${sch.next.def.name} in ${fmt(sch.next.start - now)}`, color: '#9fb0c0' });
     const b = this.boss;
     let bossBar = null;
-    if (b && !b.over && b.e?.active) {
-      const e = b.e; const showBar = this.overworld();
-      lines.push({ text: `WORLD BOSS  ${WORLD_BOSS.name}  ${fmt(b.ev.end - now)}${where(b.arena.at)}`, color: '#ff8a6a' });
-      if (showBar) bossBar = { name: `${WORLD_BOSS.name}  Lv${e.level}`, hp: Math.max(0, e.hp), max: e.maxHp, engaged: !!e.engaged, phase: e.phase || 1 };
+    if (b && !b.over) {
+      const e = b.e; const inArena = s.areas?.current?.id === b.arena.area;
+      lines.push({ text: `WORLD BOSS  ${WORLD_BOSS.name}  ${fmt(b.ev.end - now)} - ${inArena ? b.arena.name : `Rift Gate to ${b.arena.name}`}`, color: '#ff8a6a' });
+      if (inArena && e?.active) bossBar = { name: `${WORLD_BOSS.name}  Lv${e.level}`, hp: Math.max(0, e.hp), max: e.maxHp, engaged: !!e.engaged, phase: e.phase || 1 };
     } else if (sch.nextBoss && !this.override) lines.push({ text: `Next world boss in ${fmt(sch.nextBoss.start - now)}`, color: '#8a94a0' });
     this.hud = { lines, boss: bossBar };
   }

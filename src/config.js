@@ -1,8 +1,8 @@
 export const CONFIG = {
   tile: 16,
   // One large open map (larger scale than Lanternfall's 4 small regions)
-  worldCols: 128,
-  worldRows: 128,
+  worldCols: 144,
+  worldRows: 144,
   playerSpeed: 95,
   enemySpeed: 45,
   maxParty: 8,

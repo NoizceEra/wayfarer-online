@@ -252,6 +252,7 @@ export class StatusSet {
   }
 
   has(id, now) { const s = this.map.get(id); return !!s && now < s.until; }
+  remove(id) { return this.map.delete(id); }
   get size() { return this.map.size; }
 
   // Expires finished effects and calls onDot(id, dmg) for every DoT tick due.

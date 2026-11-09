@@ -3,6 +3,7 @@ import { CONFIG } from '../config.js';
 import { JOBS, ENEMY_TABLE } from '../data/jobs.js';
 import { ZONES, QUESTS, AREAS } from '../data/zones.js';
 import { buildOverworld, zoneAt } from '../world/overworld.js';
+import { waterAt, nearestDry } from '../world/waterways.js';
 import { ModularPlayer } from '../entities/ModularPlayer.js';
 import { Enemy } from '../entities/Enemy.js';
 import { bus, Events } from '../core/events.js';
@@ -44,14 +45,19 @@ import { PetEncounterSystem } from '../systems/petEncounter.js';
 import { installReviveSystem } from '../systems/reviveSystem.js';
 import { Combat } from '../systems/combat.js';
 import { Spawner } from '../systems/spawner.js';
-import { RANKS, rollRank, rollMobLevel } from '../data/combatMath.js';
+import { EncounterDirector } from '../systems/encounterDirector.js';
+import { installEncounterRoleVfx } from '../systems/encounterRoleVfx.js';
+import { RANKS, rollAffix, rollRank, rollMobLevel } from '../data/combatMath.js';
 
-// Open world: town (safe) + meadow + woods + ruins in ONE 128×128 map.
+// Open world: town (safe) + meadow + woods + ruins in one continuous map.
 // Solo = full simulation. Host = authoritative + broadcasts. Guest = applies
 // host snapshots, keeps own XP/gold (RO/Heartwood-style drop-in co-op).
 export class WorldScene extends Phaser.Scene {
   constructor() { super('world'); }
-  init(data) { this.heroData = data.hero; this.mode = data.mode || 'solo'; this.pname = data.name || 'Pip'; }
+  init(data) {
+    this.heroData = data.hero; this.mode = data.mode || 'solo'; this.pname = data.name || 'Pip';
+    this.actionBuffer = null;
+  }
 
   create() {
     audio.attach(this);
@@ -73,9 +79,14 @@ export class WorldScene extends Phaser.Scene {
       this.player.applyProgression(saved.prog); // derived HP/MP/ATK come from stats now
       this.player.hp = this.player.effMaxHp(); this.player.mp = this.player.effMaxMp();
       this.player.setPosition(saved.x || spawn.x, saved.y || spawn.y);
+      if (waterAt(this.player.x, this.player.y, 6)) {
+        const dry = nearestDry(this.player.x, this.player.y, 8);
+        this.player.setPosition(dry.x, dry.y);
+      }
       this.questState = saved.quest || { idx: 0, kills: {} };
       // gear state is normalised by loadProgress (old saves: chest/trinket migrate, unknown ids dropped)
       this.player.inventory = saved.inventory;
+      this.player.loadouts = saved.loadouts || [null, null, null];
       this.player.setLook({ equipped: saved.equipped, dyes: saved.dyes });
       this.player.hp = Math.min(this.player.hp, this.player.effMaxHp());
     } else {
@@ -133,6 +144,7 @@ export class WorldScene extends Phaser.Scene {
     this.physics.add.collider(this.enemies, solids);
     // Interiors, expansion maps, portals, signs, waystones, ambient NPCs (world/areas.js)
     this.areas = new AreaManager(this, { solids, W, H, spawn });
+    this.spawnTrainingDummy(spawn);
     buildOverworldFeatures(this, this.areas, { spawn, houses, solids });
     placeGatherNodes(this, null);
     this.craft.buildStations(this, null, spawn);
@@ -197,6 +209,8 @@ export class WorldScene extends Phaser.Scene {
     this.physics.add.overlap(this.player, this.drops, (p, d) => { if (this.time.now >= (d.getData('ready') || 0)) this.collectDrop(d); });
     // Hero combat: damage numbers, target lock (Tab/click), dodge (Space/Shift), statuses, loot, death (systems/combat.js)
     this.combat = new Combat(this);
+    this.encounters = new EncounterDirector(this);
+    this.encounterRoleVfx = installEncounterRoleVfx(this);
 
     this.onboarding = new OnboardingSystem(this);
     this.petEncounter = new PetEncounterSystem(this);
@@ -221,7 +235,7 @@ export class WorldScene extends Phaser.Scene {
     bus.emit(Events.PLAYER_HP, this.hpPayload());
     bus.emit(Events.PLAYER_XP, this.xpPayload());
     this.events.once('shutdown', () => {
-      this.saveNow(); this.quests.destroy(); this.ach.destroy(); this.sync.destroy();
+      this.saveNow(); this.quests.destroy(); this.ach.destroy(); this.sync.destroy(); this.encounters?.destroy();
       if (this._worldBossToast) { this._worldBossToast.destroy(); this._worldBossToast = null; }
       if (this._offWorldBoss) { this._offWorldBoss(); this._offWorldBoss = null; }
       this.onboarding?.destroy();
@@ -267,11 +281,14 @@ export class WorldScene extends Phaser.Scene {
   // Factory shared by the overworld spawner, area spawns and respawns (bosses get their own class).
   // Level rolls inside the zone's range; non-boss enemies may roll an elite / champion rank.
   makeEnemy(x, y, typeId, areaId = null, opts = {}) {
+    if (!areaId && waterAt(x, y, 8)) ({ x, y } = nearestDry(x, y, 10));
     const def = ENEMY_TABLE[typeId] || ENEMY_TABLE.dewslime;
     const rnd = opts.rnd || Math.random;
     const zoneLv = areaId ? AREAS[areaId]?.lv : this.zoneHere(x, y).lv;
     // opts.eo overrides level / rank / zoneLv (dungeon floors, boss adds); opts.local keeps the enemy out of co-op enemy sync
-    const eo = { zoneLv, level: rollMobLevel(def, zoneLv, rnd), rank: def.boss ? RANKS.normal : rollRank(rnd), ...(opts.eo || {}) };
+    const rolledRank = def.boss ? RANKS.normal : rollRank(rnd);
+    const eo = { zoneLv, level: rollMobLevel(def, zoneLv, rnd), rank: rolledRank, ...(opts.eo || {}) };
+    if (!Object.prototype.hasOwnProperty.call(opts.eo || {}, 'affix')) eo.affix = rollAffix(eo.rank, rnd);
     const e = def.boss ? new (def.mech ? MechBoss : Boss)(this, x, y, typeId, eo) : new Enemy(this, x, y, typeId, eo);
     e.areaId = areaId;
     this.enemies.add(e);
@@ -295,6 +312,7 @@ export class WorldScene extends Phaser.Scene {
       maxHp: this.player.maxHp, maxMp: this.player.maxMp, atk: this.player.atk,
       x: Math.round(this.areas?.savePos()?.x ?? this.player.x), y: Math.round(this.areas?.savePos()?.y ?? this.player.y), quest: this.questState,
       inventory: [...this.player.inventory], equipped: { ...this.player.equipped }, dyes: { ...this.player.dyes },
+      loadouts: (this.player.loadouts || []).map((l) => l ? { name: l.name, equipped: { ...l.equipped } } : null),
       prog: this.player.prog, ext: this.meta,
     });
   }
@@ -413,6 +431,73 @@ export class WorldScene extends Phaser.Scene {
     return this.combat.damageEnemy(ed, dmg, fromRemote, opts);
   }
 
+  spawnTrainingDummy(spawn) {
+    const dummy = new Enemy(this, spawn.x + 102, spawn.y + 22, 'dewslime', { level: 1, rank: RANKS.normal });
+    dummy.isTrainingDummy = true;
+    dummy.displayName = 'Training Totem';
+    dummy.maxHp = 999999;
+    dummy.hp = dummy.maxHp;
+    dummy.guardMax = 0;
+    dummy.guard = 0;
+    dummy.xpValue = 0;
+    dummy.goldRange = [0, 0];
+    dummy.aggroR = 0;
+    dummy.leashR = 0;
+    dummy.mode = 'training';
+    dummy.baseTint = 0xc58b50;
+    dummy.restoreTint();
+    dummy.aiTick = () => {
+      dummy.body?.setVelocity(0, 0);
+      dummy.drawStatus?.(this.time.now);
+      dummy.applyFeel?.(this.time.now);
+    };
+    dummy.hurt = (amount, opts = {}) => {
+      this.recordTrainingHit(amount);
+      dummy.hp = dummy.maxHp;
+      dummy.showBars(true);
+      if (opts.flashMs !== 0) {
+        dummy.sprite.setTintFill(0xffffff);
+        this.time.delayedCall(opts.flashMs || 70, () => dummy.active && dummy.restoreTint());
+      }
+      return false;
+    };
+    this.enemies.add(dummy);
+    this.trainingDummy = dummy;
+    this.resetTrainingStats(true);
+    this.areas.addInteract({
+      area: null,
+      x: dummy.x,
+      y: dummy.y,
+      r: 34,
+      label: 'Reset Training Stats',
+      onUse: () => this.resetTrainingStats(),
+    });
+  }
+
+  resetTrainingStats(silent = false) {
+    this.trainingRun = { startedAt: 0, lastAt: 0, total: 0, hits: 0, best: 0 };
+    this.trainingDummy?.statuses?.clear();
+    this.trainingDummy?.restoreTint?.();
+    if (!silent) bus.emit(Events.SYSTEM, 'Training totals reset. Strike the totem to begin.');
+  }
+
+  recordTrainingHit(amount) {
+    const now = this.time.now;
+    if (!this.trainingRun || (this.trainingRun.lastAt && now - this.trainingRun.lastAt > 3000)) this.resetTrainingStats(true);
+    const run = this.trainingRun;
+    if (!run.startedAt) run.startedAt = now;
+    run.lastAt = now;
+    run.total += Math.max(0, Math.round(amount));
+    run.hits += 1;
+    run.best = Math.max(run.best, Math.round(amount));
+  }
+
+  trainingSnapshot() {
+    const run = this.trainingRun || { startedAt: 0, lastAt: 0, total: 0, hits: 0, best: 0 };
+    const elapsed = run.hits ? Math.max(0.25, (run.lastAt - run.startedAt) / 1000) : 0;
+    return { ...run, dps: elapsed ? Math.round(run.total / elapsed) : 0 };
+  }
+
   // Quest / side-quest kill credit (also used for party kill shares; ed may be null).
   creditKill(typeId, ed) {
     // quest / bestiary / material / achievement credit is handled by onKillContent (quests v2)
@@ -443,7 +528,10 @@ export class WorldScene extends Phaser.Scene {
     if (!this.combat.canAct()) return;
     const p = this.player, now = this.time.now;
     const cd = p.cooldowns.slash || 0;
-    if (now < cd) return;
+    if (now < cd) {
+      if (cd - now <= 180) this.bufferAction({ kind: 'attack', tx, ty }, cd);
+      return;
+    }
     const ch = this.combat.chain;
     const step = now < ch.until ? (ch.step % 3) + 1 : 1;
     ch.step = step;
@@ -453,9 +541,17 @@ export class WorldScene extends Phaser.Scene {
     const kind = p.weaponKind();
     const bow = kind === 'bow';
     const mage = kind === 'wand';
+    // Acquisition, facing and collision must agree on melee reach. Previously
+    // assist selected at 58 px and lock-on aimed at 48 px while normal swings
+    // only hit at 32 px, producing a large silent-whiff band.
+    const meleeReach = step === 3 ? 48 : 40;
+    const aimRange = bow || mage ? 230 : meleeReach;
+    if (tx === undefined && this.combat.targetAngle(aimRange) === null) {
+      this.combat.assistTarget(bow || mage ? 210 : meleeReach, bow || mage ? 1.75 : 1.35);
+    }
     const mul = [1, 1.1, 1.6][step - 1];
     const dmg = p.rollCrit((p.effAtk() + Math.floor(Math.random() * 4)) * mul);
-    let a = tx !== undefined ? Math.atan2(ty - p.y, tx - p.x) : this.combat.targetAngle(bow || mage ? 230 : 48);
+    let a = tx !== undefined ? Math.atan2(ty - p.y, tx - p.x) : this.combat.targetAngle(aimRange);
     if (a === null) a = this.facingAngle();
     else if (tx === undefined) { // turn to face the locked target
       const deg = Phaser.Math.RadToDeg(a);
@@ -472,7 +568,7 @@ export class WorldScene extends Phaser.Scene {
       this.pvpArc(a, 230, 0.22, dmg);
     } else {
       audio.play('swing');
-      const range = step === 3 ? 40 : 32;
+      const range = meleeReach;
       this.spawnFx(p.x + Math.cos(a) * 6, p.y - 8 + Math.sin(a) * 6, 'fx.slashArc', step === 3 ? 1.6 : 1.2, Phaser.Math.RadToDeg(a) + (step === 2 ? 180 : 0));
       if (step === 3) this.cameras.main.shake(70, 0.0018);
       const here = this.areas.current?.id || null;
@@ -480,7 +576,7 @@ export class WorldScene extends Phaser.Scene {
         if (!(e instanceof Enemy) || !e.alive || (e.areaId || null) !== here) return true;
         const d = Phaser.Math.Distance.Between(p.x, p.y, e.x, e.y);
         const off = Math.abs(Phaser.Math.Angle.Wrap(Math.atan2(e.y - p.y, e.x - p.x) - a));
-        if (d < range + 4 * (e.vscale - 1) && (d < 14 || off < 1.9)) {
+        if (d <= range + 4 * (e.vscale - 1) && (d < 14 || off < 1.9)) {
           this.damageEnemy(e, dmg, false, step === 3 ? { knock: 280, status: { id: 'bleed', chance: 0.3 } } : { knock: 140 });
         }
         return true;
@@ -519,7 +615,11 @@ export class WorldScene extends Phaser.Scene {
     if (lv < 1) { bus.emit(Events.SYSTEM, `Learn ${ab.name} in Skills (K) first.`); audio.play('error', 0.7); return; }
     const dm = skillDmgMul(lv);
     const cd = this.player.cooldowns[ab.id] || 0;
-    if (this.time.now < cd) { audio.play('error', 0.7); return; }
+    if (this.time.now < cd) {
+      if (cd - this.time.now <= 260) this.bufferAction({ kind: 'skill', slot: String(slot), abilityId: ab.id }, cd);
+      else audio.play('error', 0.7);
+      return;
+    }
     const setCd = () => { this.player.cooldowns[ab.id] = this.time.now + this.player.skillCd(ab) * 1000; bus.emit(Events.PLAYER_HP, this.hpPayload()); castVfx(this, ab, lv); };
     bus.emit(Events.SKILL_CAST, { id: ab.id });
     if (castFx(this, ab, lv, setCd)) return;
@@ -610,6 +710,22 @@ export class WorldScene extends Phaser.Scene {
     bus.emit(Events.PLAYER_HP, this.hpPayload());
   }
 
+  // A short late-cooldown buffer makes fast keyboard, controller and touch
+  // presses resolve on the first legal frame instead of being silently lost.
+  bufferAction(action, readyAt) {
+    this.actionBuffer = { ...action, readyAt, expiresAt: readyAt + 240 };
+  }
+
+  updateActionBuffer(now) {
+    const b = this.actionBuffer;
+    if (!b) return;
+    if (this.player.dead || this.uiLock || this.transitioning || now > b.expiresAt) { this.actionBuffer = null; return; }
+    if (now < b.readyAt || !this.combat.canAct()) return;
+    this.actionBuffer = null;
+    if (b.kind === 'attack') this.attack(b.tx, b.ty);
+    else if (b.kind === 'skill') this.cast(b.slot);
+  }
+
   interact() {
     if (this.petEncounter?.tryPrompt()) return;
     let best = null, bd = CONFIG.interactRadius;
@@ -675,6 +791,7 @@ export class WorldScene extends Phaser.Scene {
     const dt = delta / 1000;
     this.daynight.update(dt);
     this.combat.regen(dt, time, delta); // MP always, HP too once out of combat
+    this.updateActionBuffer(time);
     // movement (keyboard + touch stick)
     const mv = input.axis(); // keys (rebindable) + gamepad stick/d-pad
     let vx = mv.x, vy = mv.y;
@@ -700,6 +817,7 @@ export class WorldScene extends Phaser.Scene {
     this.quests.update(dt);
     this.ach.update(dt);
     this.combat.update(time, delta); // roll / stun / slow overrides, statuses, loot magnet
+    this.encounters?.update(time, delta);
     this.onboarding?.update();
     this.petEncounter?.update();
     this.spawner.update(time);
@@ -719,6 +837,8 @@ export class WorldScene extends Phaser.Scene {
         this.scene.get('overlay')?.warn?.(`DANGER: ${z.name} is Lv ${z.lv ? z.lv[0] : z.level}+  (you are Lv ${this.player.level})`);
       }
     }
+    const bossMusic = !!(this.worldEvents?.boss?.music || this.areas?.boss?.engaged);
+    if (!bossMusic) audio.setCombat(this.combat.inCombat && !z.safe, z.id);
 
     // enemy AI: aggro / leash / wander / per-type attacks (Enemy.aiTick, Boss.aiUpdate)
     this.combat.updateEnemies(time, delta);

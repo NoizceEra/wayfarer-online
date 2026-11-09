@@ -5,6 +5,7 @@
 //   · every BOSS_SLOT_MS (10 min) a world boss appears at one of the arenas for BOSS_WINDOW_MS.
 // Each client simulates its own copy of the encounter (same place, same time, same loot table);
 // boss HP is scaled by the number of other players nearby. Rewards are per participant.
+import { BOSS_ARENAS } from './worldBossArenas.js';
 export const EVENT_SLOT_MS = 6 * 60 * 1000;
 export const BOSS_SLOT_MS = 10 * 60 * 1000;
 export const BOSS_WINDOW_MS = 7 * 60 * 1000;
@@ -32,11 +33,7 @@ export const EVENT_TYPES = [
   },
 ];
 
-export const BOSS_ARENAS = [
-  { id: 'meadow', name: 'Meadowfield', at: { tx: 30, ty: 50 } },
-  { id: 'woods', name: 'Mosswood', at: { tx: 100, ty: 44 } },
-  { id: 'ruins', name: 'Tidehollow Ruins', at: { tx: 44, ty: 98 } },
-];
+export { BOSS_ARENAS };
 export const WORLD_BOSS = {
   type: 'worldtitan', name: 'Ancient Thornback',
   text: 'The ground shakes - the Ancient Thornback, a world boss, has awoken!',

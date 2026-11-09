@@ -41,7 +41,7 @@ export class EventHudScene extends Phaser.Scene {
     g.fillStyle(0xffffff, 0.18).fillRect(bx, by, bw * f, 3);
     for (const q of [0.25, 0.5, 0.75]) g.fillStyle(0x000000, 0.6).fillRect(bx + bw * q - 1, by, 2, bh);
     g.lineStyle(2, b.engaged ? 0xffd84a : 0x8d5a2b, 1).strokeRect(bx - 3, by - 3, bw + 6, bh + 6);
-    this.bossName.setVisible(true).setText(b.name).setPosition(W / 2, by - 6);
+    this.bossName.setVisible(true).setText(`${b.name}${b.phase ? ` · PHASE ${b.phase}` : ''}`).setPosition(W / 2, by - 6);
     this.bossHp.setVisible(true).setText(`${Math.ceil(b.hp)} / ${b.max}`).setPosition(W / 2, by + bh / 2);
   }
 }

@@ -20,6 +20,11 @@ export const MAX_ACTIVE = 8;
 export const MAX_TRACKED = 3;
 const INTERACT_NAMES = { garrick_net: "Garrick's net" };
 const BOARD = 'Notice Board';
+const CONTRACT_TIERS = Object.freeze([
+  { id: 'standard', name: 'STANDARD', count: 1, reward: 1, tp: 1, color: '#d8d0b0' },
+  { id: 'perilous', name: 'PERILOUS', count: 1.35, reward: 1.65, tp: 4, color: '#ffb04a' },
+  { id: 'heroic', name: 'HEROIC', count: 1.7, reward: 2.4, tp: 8, color: '#d08cff' },
+]);
 
 const dayKey = () => new Date().toISOString().slice(0, 10);
 const hash = (s) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; };
@@ -52,6 +57,7 @@ export function rewardLines(r = {}) {
   for (const [id, n] of Object.entries(r.mats || {})) L.push(`${matById(id)?.name || id}${n > 1 ? ` x${n}` : ''}`);
   for (const id of r.recipes || []) L.push(`Recipe: ${id.replace(/_/g, ' ')}`);
   if (r.statPoints) L.push(`+${r.statPoints} stat points`);
+  if (r.tokenPoints) L.push(`+${r.tokenPoints} TP`);
   if (r.lore && LORE[r.lore]) L.push(`Lore: ${LORE[r.lore].name}`);
   return L;
 }
@@ -192,6 +198,7 @@ export class QuestSystem {
     for (const [id, n] of Object.entries(r.mats || {})) addMat(sc, id, n, { quiet: true, noQuest: true });
     for (const id of r.recipes || []) sc.craft?.learn(id);
     if (r.statPoints) { p.prog.statPoints = (p.prog.statPoints || 0) + r.statPoints; bus.emit(Events.PROGRESS, {}); bus.emit(Events.SYSTEM, `+${r.statPoints} stat points! Press C to spend them.`); }
+    if (r.tokenPoints) p.tokenPoints = (p.tokenPoints || 0) + Math.max(0, Math.floor(r.tokenPoints));
     if (r.lore) this.unlockLore(r.lore);
     bus.emit(Events.PLAYER_HP, sc.hpPayload()); bus.emit(Events.PLAYER_XP, sc.xpPayload());
   }
@@ -218,7 +225,7 @@ export class QuestSystem {
     audio.play('quest');
     sc.spawnFx?.(this.p.x, this.p.y - 12, 'fx.circleOrange', 1.6);
     bus.emit(Events.SYSTEM, `Quest complete: ${q.name}! ${rewardLines({ ...q.reward, ...(choice?.reward || {}), mats: { ...(q.reward.mats || {}), ...(choice?.reward?.mats || {}) } }).join(', ')}`);
-    bus.emit(Events.TOAST, { title: isBounty ? 'Bounty complete' : 'Quest complete', text: q.name, color: '#ffd84a' });
+    bus.emit(Events.TOAST, { title: isBounty ? 'Contract complete' : 'Quest complete', text: q.name, color: '#ffd84a' });
     bus.emit(Events.ACH_EVENT, { k: 'quest', id, bounty: isBounty });
     if (q.chain) {
       const all = QUEST_LIST.filter((x) => x.chain === q.chain);
@@ -348,6 +355,37 @@ export class QuestSystem {
     const out = [];
     for (const [, n] of this.npcs) if (n.kind) out.push({ x: n.c.x, y: n.c.y, kind: n.kind, area: n.area });
     return out;
+  }
+
+  // Best navigable destination for the first tracked quest. The HUD uses this
+  // for a compact compass row; objectives without a meaningful world position
+  // simply keep their normal tracker text.
+  primaryObjective() {
+    for (const id of this.s.tracked) {
+      const q = this.def(id), st = this.s.active[id];
+      if (!q || !st) continue;
+      if (this.isReady(id)) {
+        const n = this.npcs.get(this.turnNpc(q));
+        if (n) return { x: n.c.x, y: n.c.y, area: n.area, label: `Turn in · ${this.turnNpc(q)}`, kind: 'turnin' };
+      }
+      for (let i = 0; i < q.obj.length; i++) {
+        const o = q.obj[i]; if (this.prog(id, i).done) continue;
+        if (o.t === 'talk' || o.t === 'deliver') {
+          const n = this.npcs.get(o.npc); if (n) return { x: n.c.x, y: n.c.y, area: n.area, label: o.npc, kind: o.t };
+        }
+        if (o.t === 'explore' && o.poi) {
+          const p = this.poiPos(o.poi); if (p) return { ...p, label: POIS[o.poi]?.name || q.name, kind: 'explore' };
+        }
+        if (o.t === 'escort') {
+          const p = this.poiPos(o.to || o.from); if (p) return { ...p, label: POIS[o.to || o.from]?.name || q.name, kind: 'escort' };
+        }
+        if (o.t === 'kill') {
+          const zid = ENEMY_TABLE[o.id]?.zones?.[0], z = ZONES.find((zz) => zz.id === zid);
+          if (z) return { x: (z.rect.x + z.rect.w / 2) * T, y: (z.rect.y + z.rect.h / 2) * T, area: null, label: z.name, kind: 'hunt' };
+        }
+      }
+    }
+    return null;
   }
 
   // ——— escort ———
@@ -565,16 +603,19 @@ export class QuestSystem {
     if (b.day !== day) { this.s.bounty = { day, taken: {}, done: {} }; }
     const pool = BOUNTY_TEMPLATES.filter((t) => lvl >= t.lv[0] && lvl <= t.lv[1]);
     const ranked = pool.map((t) => ({ t, h: hash(`${day}:${t.id}`) })).sort((a, z) => a.h - z.h).slice(0, 3).map((x) => x.t);
-    return ranked.map((t) => this.makeBounty(t));
+    return ranked.map((t, i) => this.makeBounty(t, i));
   }
-  makeBounty(t) {
+  makeBounty(t, tierIndex = 0) {
     const lvl = this.p.level;
-    const n = t.obj.n || 1;
-    const xp = Math.round(30 + lvl * 14 + n * 6), gold = Math.round(14 + lvl * 5 + n * 3);
+    const tier = CONTRACT_TIERS[Math.min(CONTRACT_TIERS.length - 1, Math.max(0, tierIndex))];
+    const baseN = t.obj.n || 1;
+    const n = Math.max(1, Math.ceil(baseN * tier.count));
+    const xp = Math.round((30 + lvl * 14 + n * 6) * tier.reward), gold = Math.round((14 + lvl * 5 + n * 3) * tier.reward);
     return {
-      id: `bounty_${t.id}`, name: t.name, giver: BOARD, turnIn: BOARD, lv: t.lv[0], zone: t.zone, repeat: true, chain: null,
-      story: 'Daily bounty from the Thistle Town notice board.', remind: t.text, offer: t.text, done: 'Well done. The board pays on the spot.',
-      obj: [{ ...t.obj }], reward: { xp, gold, mats: lvl >= 4 ? { empty_vial: 1 } : {} }, tpl: t.id,
+      id: `contract_${t.id}_${tier.id}`, name: `${tier.name} · ${t.name}`, giver: BOARD, turnIn: BOARD, lv: t.lv[0], zone: t.zone, repeat: true, chain: null,
+      story: `${tier.name} rotating contract from the Thistle Town notice board.`, remind: t.text, offer: `${t.text}\nThreat tier: ${tier.name}.`, done: 'Well done. The board pays on the spot.',
+      obj: [{ ...t.obj, n }], reward: { xp, gold, tokenPoints: tier.tp, mats: lvl >= 4 ? { empty_vial: Math.max(1, tierIndex) } : {} },
+      tpl: `${t.id}:${tier.id}`, tier,
     };
   }
   bountyStatus(b) {
@@ -588,8 +629,8 @@ export class QuestSystem {
     this.s.bounty.taken[b.tpl] = 1;
     if (this.s.tracked.length < MAX_TRACKED) this.s.tracked.push(b.id);
     audio.play('quest', 0.8);
-    bus.emit(Events.SYSTEM, `Bounty accepted: ${b.name}`);
-    bus.emit(Events.TOAST, { title: 'Bounty accepted', text: b.name, color: '#ffd84a' });
+    bus.emit(Events.SYSTEM, `Contract accepted: ${b.name}`);
+    bus.emit(Events.TOAST, { title: `${b.tier?.name || 'Contract'} accepted`, text: b.name, color: b.tier?.color || '#ffd84a' });
     this.onPack(true);
     this.changed();
     return true;
@@ -598,22 +639,22 @@ export class QuestSystem {
     const list = this.offeredBounties();
     const opts = [];
     const readyB = list.filter((b) => this.bountyStatus(b) === 'ready');
-    for (const b of readyB) opts.push({ label: `? Turn in: ${b.name}`, cb: () => { if (this.complete(b.id)) { this.s.bounty.done[b.tpl] = 1; this.changed(); bus.emit(Events.SYSTEM, 'Bounty paid. New bounties post at dawn (tomorrow).'); } } });
+    for (const b of readyB) opts.push({ label: `? Turn in: ${b.name}`, cb: () => { if (this.complete(b.id)) { this.s.bounty.done[b.tpl] = 1; this.changed(); bus.emit(Events.SYSTEM, 'Contract paid. New contracts post at dawn.'); } } });
     // a bounty finished earlier can vanish from the offered list when level changes; also allow turn-in of any ready active bounty
     for (const id of this.activeIds()) { const a = this.s.active[id]; if (a.def && this.isReady(id) && !readyB.some((b) => b.id === id)) opts.push({ label: `? Turn in: ${a.def.name}`, cb: () => { if (this.complete(id)) { this.s.bounty.done[a.def.tpl] = 1; this.changed(); } } }); }
     for (const b of list) {
       const st = this.bountyStatus(b);
-      if (st === 'offer') opts.push({ label: `! ${b.name}  (${b.reward.xp}xp ${b.reward.gold}g)`, cb: () => this.offerBountyDialog(b) });
+      if (st === 'offer') opts.push({ label: `! ${b.name}  (${b.reward.xp}xp ${b.reward.gold}g +${b.reward.tokenPoints}TP)`, cb: () => this.offerBountyDialog(b) });
       else if (st === 'active') opts.push({ label: `... ${b.name} (in progress)`, cb: () => this.say(BOARD, `${b.offer}\n${this.prog(b.id, 0).cur}/${this.prog(b.id, 0).need}`, [{ label: 'OK', cb: () => {} }]) });
       else if (st === 'done') opts.push({ label: `x ${b.name} (done today)`, cb: () => {} });
     }
     opts.push({ label: 'Close', cb: () => {} });
-    this.say('Notice Board', `Thistle Town bounties. They refresh daily.\n(${this.activeCount()}/${MAX_ACTIVE} quests active)`, opts);
+    this.say('Notice Board', `Rotating adventure contracts. Higher threat tiers demand more and pay more.\nRefreshes daily · ${this.activeCount()}/${MAX_ACTIVE} quests active.`, opts);
     return true;
   }
   offerBountyDialog(b) {
     this.say('Notice Board', `${b.offer}\n\nReward: ${rewardLines(b.reward).join(', ')}`, [
-      { label: 'Accept bounty', cb: () => { if (this.acceptBounty(b)) bus.emit(Events.SYSTEM, `${b.name}: ${b.offer}`); } },
+      { label: 'Accept contract', cb: () => { if (this.acceptBounty(b)) bus.emit(Events.SYSTEM, `${b.name}: ${b.offer}`); } },
       { label: 'Back', cb: () => this.openBoard() },
     ]);
   }

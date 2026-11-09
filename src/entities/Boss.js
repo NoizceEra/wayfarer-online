@@ -55,8 +55,9 @@ export class Boss extends Enemy {
 
   reset() {
     this.engaged = false; this.state = 'idle'; this.plan = null;
-    this.enraged = false; this.enrageAt = 0;
+    this.enraged = false; this.desperate = false; this.enrageAt = 0;
     this.hp = this.maxHp;
+    this.guard = this.guardMax; this.guardBrokenUntil = 0; this.guardRegenAt = 0;
     this.statuses.clear();
     this.showBars(false);
     this.restoreTint();
@@ -68,7 +69,7 @@ export class Boss extends Enemy {
 
   startAttack(scene, kind) {
     const p = scene.player;
-    const fast = (this.phase === 2 ? 0.78 : 1) * (this.hardEnraged ? 0.8 : 1);
+    const fast = (this.phase === 3 ? 0.62 : this.phase === 2 ? 0.78 : 1) * (this.hardEnraged ? 0.8 : 1);
     const kit = this.def.kit || {}; // optional per-boss tuning: slamR / len / wide / novaR
     if (kind === 'slam') {
       this.plan = { kind, x: p.x, y: p.y + 2, r: kit.slamR || 40, wind: 1150 * fast, t: 0 };
@@ -137,13 +138,23 @@ export class Boss extends Enemy {
       return;
     }
     if (p.dead || d > 380) { this.reset(); return; }
-    this.phase = this.hp < this.maxHp * 0.5 ? 2 : 1;
+    this.phase = this.hp < this.maxHp * 0.25 ? 3 : this.hp < this.maxHp * 0.5 ? 2 : 1;
     if (this.phase === 2 && !this.enraged) {
       this.enraged = true;
       this.baseTint = 0xff9a9a; this.restoreTint();
       audio.play('roar');
       scene.cameras.main.shake(260, 0.004);
       bus.emit(Events.SYSTEM, `${this.def.name} is enraged! Dirge Nova incoming - step out of the ring.`);
+    }
+    if (this.phase === 3 && !this.desperate) {
+      this.desperate = true;
+      this.baseTint = 0xd08cff; this.restoreTint();
+      audio.play('roar');
+      scene.cameras.main.flash(220, 180, 70, 255, false);
+      scene.cameras.main.shake(360, 0.006);
+      bus.emit(Events.TOAST, { title: 'Final phase', text: `${this.def.name} unleashes everything!`, color: '#d08cff' });
+      bus.emit(Events.SYSTEM, `${this.def.name} enters a final phase: faster patterns and chained attacks.`);
+      this.timer = Math.min(this.timer, 360);
     }
     if (!this.warned && now > this.enrageAt - 30000) {
       this.warned = true;
@@ -161,13 +172,13 @@ export class Boss extends Enemy {
     const dx = p.x - this.x, dy = p.y - this.y;
     switch (this.state) {
       case 'chase': {
-        const sp = (this.phase === 2 ? 50 : 36) * (this.hardEnraged ? 1.4 : 1) * slowMul;
+        const sp = (this.phase === 3 ? 62 : this.phase === 2 ? 50 : 36) * (this.hardEnraged ? 1.4 : 1) * slowMul;
         if (d > 46) this.body.setVelocity((dx / d) * sp, (dy / d) * sp); else this.body.setVelocity(0, 0);
         this.setFacingByVelocity(dx, dy);
         this.timer -= delta;
         if (this.timer <= 0) {
           const r = Math.random();
-          const kind = this.phase === 2 && r < 0.3 ? 'nova' : (d > 90 || r < 0.35) ? 'charge' : 'slam';
+          const kind = this.phase >= 2 && r < (this.phase === 3 ? 0.46 : 0.3) ? 'nova' : (d > 90 || r < 0.35) ? 'charge' : 'slam';
           this.startAttack(scene, kind);
         }
         break;
@@ -189,7 +200,7 @@ export class Boss extends Enemy {
             if (Phaser.Math.Distance.Between(p.x, p.y, pl.x, pl.y) < pl.r) {
               this.damageToPlayer(scene, this.atk + (pl.kind === 'nova' ? 4 : 8), pl.kind === 'nova' ? { id: 'burn' } : { id: 'stun', secs: 0.8 });
             }
-            this.state = 'recover'; this.timer = this.phase === 2 ? 650 : 950; this.plan = null;
+            this.state = 'recover'; this.timer = this.phase === 3 ? 420 : this.phase === 2 ? 650 : 950; this.plan = null;
           }
         }
         break;
@@ -207,14 +218,14 @@ export class Boss extends Enemy {
         if (pl.t >= pl.wind) {
           this.body.setVelocity(0, 0);
           scene.spawnFx(this.x, this.y - 4, 'fx.dust', 1.6);
-          this.state = 'recover'; this.timer = this.phase === 2 ? 700 : 1100; this.plan = null;
+          this.state = 'recover'; this.timer = this.phase === 3 ? 460 : this.phase === 2 ? 700 : 1100; this.plan = null;
         }
         break;
       }
       case 'recover': {
         this.body.setVelocity(0, 0);
         this.timer -= delta;
-        if (this.timer <= 0) { this.state = 'chase'; this.timer = (this.phase === 2 ? 900 : 1700) * (this.hardEnraged ? 0.7 : 1); }
+        if (this.timer <= 0) { this.state = 'chase'; this.timer = (this.phase === 3 ? 520 : this.phase === 2 ? 900 : 1700) * (this.hardEnraged ? 0.7 : 1); }
         break;
       }
       default: break;

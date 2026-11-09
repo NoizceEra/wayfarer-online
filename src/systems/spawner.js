@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { CONFIG } from '../config.js';
 import { ZONES } from '../data/zones.js';
 import { zoneAt } from '../world/overworld.js';
+import { waterAt, onBridge } from '../world/waterways.js';
 import { RANKS } from '../data/combatMath.js';
 import { ENEMY_TABLE } from '../data/jobs.js';
 import { EXTRA_OVERWORLD_SPAWNS } from '../data/worldEnemies.js';
@@ -57,6 +58,7 @@ export class Spawner {
       if (zoneAt(tx, ty, ZONES).id !== zoneId) continue; // keep out of town / nested zones
       const x = tx * T + 8, y = ty * T + 8;
       if (this.nearSafe(x, y)) continue;
+      if (waterAt(x, y, 10) || onBridge(x, y, 16)) continue;
       if (avoidPlayer && !this.s.areas?.current && p && Phaser.Math.Distance.Between(p.x, p.y, x, y) < MIN_PLAYER_DIST) continue;
       return { x, y };
     }

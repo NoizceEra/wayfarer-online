@@ -12,7 +12,7 @@ export const ZONES = [
   },
   {
     id: 'meadow', name: 'Meadowfield', safe: false, level: 1,
-    rect: { x: 8, y: 8, w: 112, h: 112 },
+    rect: { x: 8, y: 8, w: 128, h: 128 },
     lv: [1, 4], desc: 'Open fields. Dew Slimes and Moss Bats (Lv 1-4).',
     music: 'forest',
   },
@@ -24,7 +24,7 @@ export const ZONES = [
   },
   {
     id: 'ruins', name: 'Tidehollow Ruins', safe: false, level: 8,
-    rect: { x: 16, y: 80, w: 48, h: 40 },
+    rect: { x: 16, y: 80, w: 56, h: 48 },
     lv: [8, 12], desc: 'Sunken ruins gate (Lv 8+). Bog Spirits, Rust Skulls, Tide Eyes.',
     music: 'ruins',
   },

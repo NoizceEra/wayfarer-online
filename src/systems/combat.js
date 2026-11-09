@@ -12,11 +12,21 @@ import { WAYSTONES } from '../data/zones.js';
 import { iconKey } from './gearArt.js';
 import { CombatHudScene } from '../scenes/CombatHudScene.js';
 import { dodgeVfx, hitSpark, renderStatusVfx, clearStatusVfx, projectileImpactVfx } from './skillVfx.js';
+import { haptic } from '../core/mobile.js';
 
 const FONT = '"Silkscreen", monospace';
 const POOL = 48;           // pooled floating combat texts
 const STAM_MAX = 100, ROLL_COST = 32, ROLL_MS = 300, ROLL_SPEED = 250, IFRAME_MS = 270;
 const OOC_MS = 5000;       // out-of-combat after 5s without hitting / being hit
+const PERFECT_DODGE_MS = 190;
+const PARRY_MS = 230;
+const PARRY_CD_MS = 1150;
+const RESOURCE_NAMES = Object.freeze({ wayfarer: 'Resolve', ranger: 'Focus', arcanist: 'Flux', bandit: 'Edge' });
+const MOMENTUM_TIERS = Object.freeze([
+  { hits: 5, stamina: 10, mp: 0, label: 'FLOW' },
+  { hits: 10, stamina: 12, mp: 5, label: 'SURGE' },
+  { hits: 20, stamina: 16, mp: 8, label: 'LEGEND' },
+]);
 
 // Hero-side combat for WorldScene (`scene.combat`): floating numbers (pooled),
 // hit-stop, combo counter, target lock (Tab / click), dodge roll with i-frames +
@@ -36,13 +46,23 @@ export class Combat {
     this.statuses = new StatusSet();
     if (this.p) this.p.statuses = this.statuses;
     this.target = null;
-    this.combo = { n: 0, until: 0, best: 0, bumpAt: 0 };
+    this.combo = { n: 0, until: 0, best: 0, bumpAt: 0, tier: 0 };
     this.chain = { step: 0, until: 0 };
     this.stamina = STAM_MAX; this.stamUsedAt = 0;
     this.rollUntil = 0; this.rollV = { x: 0, y: 0 };
     this.pKnockUntil = 0; this.pKnock = { x: 0, y: 0 };
     this.lastCombat = -1e9;
     this.stunImmuneUntil = 0;
+    this.classResource = { value: 0, max: 100, name: RESOURCE_NAMES[this.p?.job?.id] || 'Power', pulseAt: 0 };
+    this.parryUntil = 0; this.parryReadyAt = 0;
+    this.lastHitCue = null;
+    this.squadSerial = 0;
+    this.squadAttackAt = new Map();
+    this.combatRun = null;
+    this.combatRecap = null;
+    this.combatHistory = [];
+    this.combatRecapIndex = 0;
+    this.wasInCombat = false;
     this.eshots = [];
     this.coins = [];
     this.goldAcc = 0; this.goldAccAt = 0;
@@ -73,12 +93,12 @@ export class Combat {
     const kb = scene.input.keyboard;
     const typing = () => { const el = typeof document !== 'undefined' ? document.activeElement : null; return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable); };
     kb.addCapture('TAB');
-    input.registerAction({ id: 'dodge', label: 'Dodge roll', group: 'Combat', keys: ['ShiftLeft', 'ShiftRight'], gameplay: true });
-    input.registerAction({ id: 'target', label: 'Cycle target', group: 'Combat', keys: ['Tab'], gameplay: true });
     // Space also rolls (dialogs use it to confirm first) — never while a menu/help modal owns the keyboard
     kb.on('keydown-SPACE', () => { if (!typing() && !input.modal) this.dodge(); });
     input.on('dodge', () => { this.dodge(); return true; }, { scene });
     input.on('target', () => { this.cycleTarget(); return true; }, { scene });
+    input.on('parry', () => { this.parry(); return true; }, { scene });
+    input.on('ultimate', () => { this.castUltimate(); return true; }, { scene });
     // Click-to-lock: convert the click to a WORLD point through this scene's own
     // camera. ptr.worldX/worldY is derived from the pointer's camera and is wrong
     // under this scene's zoom/scroll, so picks landed at the wrong place.
@@ -101,6 +121,196 @@ export class Combat {
   canAct() {
     const s = this.s, p = this.p;
     return !(p.dead || s.uiLock || s.transitioning || s.time.now < s.uiLockUntil || this.statuses.has('stun', s.time.now));
+  }
+
+  beginCombatRun(now = this.s.time.now) {
+    if (this.combatRun) return this.combatRun;
+    this.combatRecap = null;
+    this.combatRun = {
+      startedAt: now, lastAt: now, damage: 0, damageTaken: 0, kills: 0, crits: 0,
+      bestHit: 0, bestCombo: 0, parries: 0, perfectDodges: 0, reactions: 0, guardBreaks: 0, interrupts: 0,
+    };
+    return this.combatRun;
+  }
+
+  trackCombat(kind, amount = 1, now = this.s.time.now) {
+    const run = this.beginCombatRun(now);
+    run.lastAt = now;
+    if (kind === 'damage') { run.damage += amount; run.bestHit = Math.max(run.bestHit, amount); }
+    else run[kind] = (run[kind] || 0) + amount;
+    run.bestCombo = Math.max(run.bestCombo, this.combo.n);
+  }
+
+  masteryFor(run, result) {
+    const defs = {
+      wayfarer: { label: 'PARRY', value: run.parries, target: 1 },
+      ranger: { label: 'CRITICAL HITS', value: run.crits, target: 3 },
+      arcanist: { label: 'REACTIONS', value: run.reactions, target: 1 },
+      bandit: { label: 'COMBO', value: run.bestCombo, target: 8 },
+    };
+    const d = defs[this.p.job.id] || { label: 'BEST COMBO', value: run.bestCombo, target: 8 };
+    const eligible = result === 'CLEAR' && run.kills >= 2;
+    return { ...d, eligible, complete: eligible && d.value >= d.target };
+  }
+
+  finishCombatRun(now = this.s.time.now, result = 'CLEAR') {
+    const run = this.combatRun;
+    if (!run || (!run.damage && !run.damageTaken && !run.kills)) { this.combatRun = null; return; }
+    const duration = Math.max(1, (Math.max(run.lastAt, now - OOC_MS) - run.startedAt) / 1000);
+    const mastery = this.masteryFor(run, result);
+    const report = { ...run, result, duration, dps: Math.round(run.damage / duration), mastery };
+    if (mastery.complete) {
+      this.gainResource(12);
+      bus.emit(Events.TOAST, { title: 'Class mastery', text: `${mastery.label} complete · +12 ${this.classResource.name}`, color: '#7dffcf' });
+      audio.play('quest', 0.45); haptic([12, 18, 24]);
+    }
+    this.combatHistory.unshift(report);
+    this.combatHistory.length = Math.min(this.combatHistory.length, 5);
+    this.combatRecapIndex = 0;
+    this.combatRecap = { ...report, showUntil: now + 7000 };
+    this.combatRun = null;
+  }
+
+  showCombatReport(index = 0) {
+    if (!this.combatHistory.length || this.inCombat || this.death) return false;
+    const n = this.combatHistory.length;
+    this.combatRecapIndex = ((index % n) + n) % n;
+    this.combatRecap = { ...this.combatHistory[this.combatRecapIndex], showUntil: this.s.time.now + 7000 };
+    return true;
+  }
+
+  cycleCombatReport() { return this.showCombatReport(this.combatRecapIndex + 1); }
+
+  requestEnemyAttack(ed, now = this.s.time.now) {
+    if (!ed?.squadId) return true;
+    const readyAt = this.squadAttackAt.get(ed.squadId) || 0;
+    if (now < readyAt) return false;
+    const morale = now < (ed.moraleBrokenUntil || 0) ? 1.3 : 1;
+    const aura = this.squadAuraActive(ed) ? 0.92 : 1;
+    const gap = (ed.squadRole === 'support' ? 420 : ed.squadRole === 'flanker' ? 340 : 260) * (ed.squadGapMul || 1) * morale * aura;
+    this.squadAttackAt.set(ed.squadId, now + gap);
+    return true;
+  }
+
+  squadVector(ed, p, dx, dy, d) {
+    if (!ed?.squadId || ed.squadRole !== 'flanker' || d < 24) return null;
+    const nx = dx / d, ny = dy / d, side = ed.squadSide || 1;
+    const offset = ed.flankOffset || 34;
+    const tx = p.x - ny * offset * side, ty = p.y + nx * offset * side;
+    const fx = tx - ed.x, fy = ty - ed.y, fd = Math.hypot(fx, fy) || 1;
+    return { x: fx / fd, y: fy / fd };
+  }
+
+  squadAuraActive(ed) {
+    const active = this.s.encounters?.active, captain = active?.captain;
+    return !!(active?.captainAlive && captain?.alive && ed?.encounterId === active.id && ed !== captain
+      && (ed.x - captain.x) ** 2 + (ed.y - captain.y) ** 2 < 16900);
+  }
+
+  canPincerStrike(ed, p, now = this.s.time.now) {
+    const active = this.s.encounters?.active, captain = active?.captain;
+    if (!ed?.alive || ed.squadRole !== 'flanker' || now < (ed.pincerReadyAt || 0)
+      || !active?.captainAlive || active.id !== ed.encounterId || !captain?.alive) return false;
+    if ((p.x - captain.x) ** 2 + (p.y - captain.y) ** 2 > 22500) return false;
+    const flankAngle = Math.atan2(ed.y - p.y, ed.x - p.x);
+    const captainAngle = Math.atan2(captain.y - p.y, captain.x - p.x);
+    return Math.abs(Phaser.Math.Angle.Wrap(flankAngle - captainAngle)) > 1.15;
+  }
+
+  onPincerStarted(ed) {
+    this.s.encounterRoleVfx?.flashRole(ed, 700);
+    audio.encounter('warning', { role: 'pincer' });
+    this.floatText(ed.x, ed.y - 34, 'PINCER', '#d08cff', 'big');
+    audio.play('alert', 0.32);
+  }
+
+  shouldSupportChannel(ed, now = this.s.time.now) {
+    const active = this.s.encounters?.active;
+    if (!active || active.id !== ed?.encounterId || !active.captainAlive || now < (active.moraleBrokenUntil || 0)) return false;
+    return this.enemiesHere().some((ally) => ally !== ed && ally.alive && ally.encounterId === active.id
+      && (ally.hp < ally.maxHp || ally.guard < ally.guardMax));
+  }
+
+  onSupportStarted(ed) {
+    this.s.encounterRoleVfx?.flashRole(ed, 700);
+    audio.encounter('warning', { role: 'rally' });
+  }
+
+  completeSupportChannel(ed) {
+    const active = this.s.encounters?.active, now = this.s.time.now;
+    if (!ed?.alive || !active?.captainAlive || active.id !== ed.encounterId) return false;
+    let rallied = 0;
+    this.s.enemies.children.each((ally) => {
+      if (!ally.alive || ally.encounterId !== active.id || (ed.x - ally.x) ** 2 + (ed.y - ally.y) ** 2 > 21025) return true;
+      const ward = Math.max(8, Math.round(ally.maxHp * 0.15));
+      ally.guardMax = Math.max(ally.guardMax || 0, ward);
+      ally.guard = Math.min(ally.guardMax, (ally.guard || 0) + Math.max(5, Math.round(ally.guardMax * 0.5)));
+      ally.guardBrokenUntil = 0; ally.guardRegenAt = now + 2500;
+      ally.nextAtk = Math.min(ally.nextAtk || now + 550, now + 550);
+      ally.showBars?.(true);
+      this.floatText(ally.x, ally.y - 28, 'RALLY WARD', '#72cfff', 'small');
+      rallied += 1;
+      return true;
+    });
+    if (rallied) {
+      this.s.encounterRoleVfx?.flashRole(ed, 850);
+      this.s.spawnFx?.(ed.x, ed.y, 'fx.spark', 1.1);
+      audio.play('alert', 0.35); haptic([10, 14, 10]);
+      bus.emit(Events.SYSTEM, 'Enemy support completed Rally Ward. Break their guard again.');
+    }
+    ed.supportReadyAt = now + 8500;
+    return rallied > 0;
+  }
+
+  onSupportInterrupted(ed) {
+    if (!ed) return;
+    this.trackCombat('interrupts', 1);
+    this.gainResource(8);
+    this.floatText(ed.x, ed.y - 34, 'INTERRUPTED · +8', '#7dffcf', 'big');
+    this.s.spawnFx?.(ed.x, ed.y, 'fx.spark', 0.8);
+    audio.play('slam', 0.3); haptic([12, 18, 20]); this.hitStop(35);
+  }
+
+  vanguardProtector(target, now = this.s.time.now) {
+    const active = this.s.encounters?.active;
+    if (!target?.alive || !target.encounterId || target.squadRole === 'vanguard'
+      || !active?.captainAlive || active.id !== target.encounterId) return null;
+    let best = null, bestD2 = Infinity;
+    for (const e of this.enemiesHere()) {
+      if (e === target || e.encounterId !== target.encounterId || e.squadRole !== 'vanguard' || e.isSquadCaptain
+        || e.guardMax <= 0 || e.guard <= 0 || e.guardBroken || now < (e.interceptReadyAt || 0)) continue;
+      const dx = target.x - e.x, dy = target.y - e.y, d2 = dx * dx + dy * dy;
+      if (d2 <= 9025 && d2 < bestD2) { best = e; bestD2 = d2; }
+    }
+    return best;
+  }
+
+  applyVanguardIntercept(target, damage, now = this.s.time.now) {
+    const vanguard = this.vanguardProtector(target, now);
+    if (!vanguard) return damage;
+    const absorbed = Math.max(1, Math.round(damage * 0.35));
+    vanguard.interceptReadyAt = now + 3200;
+    vanguard.interceptFlashUntil = now + 600;
+    vanguard.interceptTarget = target;
+    this.s.encounterRoleVfx?.flashRole(vanguard, 700);
+    audio.encounter('warning', { role: 'cover' });
+    const broke = vanguard.damageGuard(Math.max(2, absorbed * 1.15), now);
+    this.floatText(vanguard.x, vanguard.y - 34, `COVER · ${absorbed}`, '#8de4ff', 'big');
+    this.s.spawnFx?.(vanguard.x, vanguard.y - 8, 'fx.shieldBlue', 1.25);
+    audio.play('slam', 0.25); haptic([8, 12, 8]);
+    if (broke) this.breakGuard(vanguard);
+    return Math.max(1, damage - absorbed);
+  }
+
+  squadMoveMultiplier(ed, now = this.s.time.now) {
+    if (now < (ed?.moraleBrokenUntil || 0)) return 0.84;
+    return this.squadAuraActive(ed) ? 1.08 : 1;
+  }
+
+  squadDamageMultiplier(ed, now = this.s.time.now) {
+    const pincer = ed?.attackKind === 'pincer' ? 1.22 : 1;
+    if (now < (ed?.moraleBrokenUntil || 0)) return 0.82 * pincer;
+    return (this.squadAuraActive(ed) ? 1.1 : 1) * pincer;
   }
 
   // ── floating combat text (pooled) ─────────────────────────────────────────
@@ -140,9 +350,128 @@ export class Combat {
 
   bumpCombo() {
     const now = this.s.time.now;
-    if (now > this.combo.until) this.combo.n = 0;
+    if (now > this.combo.until) { this.combo.n = 0; this.combo.tier = 0; }
     this.combo.n += 1; this.combo.until = now + 2200; this.combo.bumpAt = now;
     this.combo.best = Math.max(this.combo.best, this.combo.n);
+    if (this.combatRun) this.combatRun.bestCombo = Math.max(this.combatRun.bestCombo, this.combo.n);
+    const tier = MOMENTUM_TIERS.find((m) => m.hits === this.combo.n);
+    if (tier) {
+      const p = this.p;
+      this.combo.tier = MOMENTUM_TIERS.indexOf(tier) + 1;
+      this.stamina = Math.min(STAM_MAX, this.stamina + tier.stamina);
+      const maxMp = p.effMaxMp ? p.effMaxMp() : p.maxMp;
+      if (tier.mp) p.mp = Math.min(maxMp, p.mp + tier.mp);
+      const reward = [tier.stamina ? `+${tier.stamina} STAM` : '', tier.mp ? `+${tier.mp} MP` : ''].filter(Boolean).join(' · ');
+      this.floatText(p.x, p.y - 34, `${tier.label} ${reward}`, tier.hits >= 20 ? '#ff7a5a' : '#7dffcf', 'big');
+      audio.play(tier.hits >= 20 ? 'level' : 'quest', tier.hits >= 20 ? 0.55 : 0.35);
+      bus.emit(Events.PLAYER_HP, this.s.hpPayload());
+    }
+  }
+
+  momentumMultiplier() {
+    if (this.combo.n >= 20) return 1.10;
+    if (this.combo.n >= 10) return 1.05;
+    return 1;
+  }
+
+  gainResource(amount) {
+    if (!amount || this.p.dead || this.s.time.now < (this.ultimateUntil || 0)) return;
+    const r = this.classResource;
+    const before = r.value;
+    r.value = Math.min(r.max, r.value + amount);
+    if (before < r.max && r.value >= r.max) {
+      r.pulseAt = this.s.time.now;
+      this.floatText(this.p.x, this.p.y - 42, `${r.name.toUpperCase()} READY · [X]`, '#14f195', 'big');
+      audio.play('level', 0.45);
+    }
+  }
+
+  resourceGainForHit(ed, crit, opts = {}) {
+    const job = this.p.job.id;
+    let gain = crit ? 7 : 4;
+    const dist = ed ? Phaser.Math.Distance.Between(this.p.x, this.p.y, ed.x, ed.y) : 0;
+    if (job === 'ranger' && dist > 80) gain += 3;                 // reward spacing
+    if (job === 'arcanist' && (opts.element || opts.shot)) gain += 2; // reward spell hits
+    if (job === 'bandit' && this.combo.n >= 5) gain += 2;        // reward uninterrupted pressure
+    if (job === 'wayfarer' && ed?.windingUp) gain += 2;          // reward brave interrupts
+    return gain;
+  }
+
+  parry() {
+    const s = this.s, p = this.p, now = s.time.now;
+    if (!this.canAct() || now < this.parryReadyAt) return false;
+    this.parryUntil = now + PARRY_MS;
+    this.parryReadyAt = now + PARRY_CD_MS;
+    p.castPose?.(0x7dffcf);
+    const ring = s.add.circle(p.x, p.y - 7, 8, 0x14f195, 0.08).setStrokeStyle(2, 0x7dffcf, 0.9).setDepth(p.depth + 2);
+    s.tweens.add({ targets: ring, radius: 18, alpha: 0, duration: PARRY_MS, onComplete: () => ring.destroy() });
+    audio.play('swing', 0.35);
+    return true;
+  }
+
+  resolveParry(src) {
+    const s = this.s, p = this.p, now = s.time.now;
+    if (now > this.parryUntil || !src) return false;
+    this.parryUntil = 0;
+    this.trackCombat('parries', 1, now);
+    this.gainResource(28);
+    this.stamina = Math.min(STAM_MAX, this.stamina + 14);
+    this.combo.until = Math.max(this.combo.until, now + 2600);
+    this.floatText(p.x, p.y - 30, 'PARRY · +28', '#7dffcf', 'big');
+    p.attackPose?.();
+    s.spawnFx(p.x, p.y - 8, 'fx.spark', 1.5);
+    s.cameras.main.flash(70, 90, 255, 220, false);
+    s.cameras.main.shake(80, 0.002);
+    haptic([18, 24, 34]);
+    audio.play('slam', 0.35);
+    if (src instanceof Enemy) {
+      const broke = src.damageGuard?.(Math.max(10, src.guardMax * 0.48), now);
+      if (!src.isBoss) src.statuses.apply('stun', now, { secs: broke ? 1.5 : 0.8, dmg: 0 });
+      src.cancelAttack?.(now, broke ? 1600 : 1000);
+      if (broke) this.breakGuard(src);
+      this.setTarget(src);
+      const riposte = Math.max(2, Math.round(p.effAtk() * (src.isBoss ? 0.35 : 0.6)));
+      this.floatText(src.x, src.y - 36, 'RIPOSTE', '#e8fff7', 'big');
+      this.damageEnemy(src, riposte, false, { crit: false, knock: src.isBoss ? 0 : 120 });
+      this.hitStop(src.isBoss ? 35 : 50);
+    }
+    return true;
+  }
+
+  castUltimate() {
+    const s = this.s, p = this.p, r = this.classResource;
+    if (!this.canAct()) return false;
+    if (r.value < r.max) {
+      this.floatText(p.x, p.y - 28, `${r.name} ${Math.floor(r.value)}%`, '#9aa8bd', 'small');
+      audio.play('error', 0.35);
+      return false;
+    }
+    r.value = 0; r.pulseAt = s.time.now; this.ultimateUntil = s.time.now + 650;
+    const job = p.job.id;
+    const radius = job === 'ranger' ? 105 : job === 'arcanist' ? 92 : job === 'bandit' ? 72 : 82;
+    const mul = job === 'arcanist' ? 3.2 : job === 'bandit' ? 2.8 : job === 'ranger' ? 2.6 : 2.7;
+    const color = { wayfarer: 0xffd84a, ranger: 0x7dff9a, arcanist: 0x9945ff, bandit: 0xdc1fff }[job] || 0x14f195;
+    const name = { wayfarer: 'Waylight Reckoning', ranger: 'Thornstorm', arcanist: 'Astral Collapse', bandit: 'Nightfall Dance' }[job] || 'Wayfarer Ascendant';
+    p.castPose?.(color);
+    const ring = s.add.circle(p.x, p.y, 12, color, 0.18).setStrokeStyle(4, 0xffffff, 0.9).setDepth(2650).setBlendMode(Phaser.BlendModes.ADD);
+    s.tweens.add({ targets: ring, radius, alpha: 0, duration: 520, ease: 'expo.out', onComplete: () => ring.destroy() });
+    s.spawnFx(p.x, p.y - 8, 'fx.explosion', job === 'arcanist' ? 3 : 2.2);
+    let hits = 0;
+    this.enemiesHere().forEach((e) => {
+      if (Phaser.Math.Distance.Between(p.x, p.y, e.x, e.y) > radius) return;
+      const status = job === 'ranger' ? { id: 'slow', chance: 1, secs: 4 }
+        : job === 'arcanist' ? { id: 'burn', chance: 1, secs: 4 }
+          : job === 'bandit' ? { id: 'bleed', chance: 1, secs: 5 }
+            : { id: 'stun', chance: 0.7, secs: 1.2 };
+      this.damageEnemy(e, p.effAtk() * mul, false, { knock: job === 'bandit' ? 90 : 260, status });
+      hits += 1;
+    });
+    if (job === 'wayfarer') p.heal(Math.round(p.effMaxHp() * 0.18));
+    if (job === 'bandit') p.buff = { until: s.time.now + 6000, atkMul: 1.2, spdMul: 1.25 };
+    this.floatText(p.x, p.y - 42, `${name.toUpperCase()} · ${hits} HIT`, '#ffffff', 'big');
+    this.hitStop(90); s.cameras.main.shake(260, 0.006); audio.play('explosion', 0.8);
+    bus.emit(Events.PLAYER_HP, s.hpPayload());
+    return true;
   }
 
   // ── hero → enemy ──────────────────────────────────────────────────────────
@@ -150,20 +479,27 @@ export class Combat {
   damageEnemy(ed, dmg, fromRemote = false, opts = {}) {
     const s = this.s, p = this.p;
     if (!(ed instanceof Enemy) || !ed.alive) return false;
-    if (s.sync?.interceptHit?.(ed, dmg, fromRemote)) return true; // co-op: non-authority hits go to the area authority
+    if (!ed.isTrainingDummy && s.sync?.interceptHit?.(ed, dmg, fromRemote)) return true; // co-op: non-authority hits go to the area authority
     const now = s.time.now;
     if (ed.mode === 'return') { this.floatText(ed.x, ed.y - 20, 'Evade', '#c8c8c8', 'small'); return false; }
     if (ed.invuln) { this.floatText(ed.x, ed.y - 22, 'Shielded', '#d0a0ff', 'small'); return false; } // MechBoss shield phase
     const dot = opts.dot || null;
     const crit = opts.crit ?? this.isCrit(dmg);
-    if (!dot && !fromRemote && Math.random() < heroMissChance(p.level, ed.level)) {
+    if (!ed.isTrainingDummy && !dot && !fromRemote && Math.random() < heroMissChance(p.level, ed.level)) {
       this.floatText(ed.x, ed.y - 20, 'Miss', '#9bd0ff', 'small');
       this.s.combat.aggro(ed);
       return false;
     }
-    const n = Math.max(1, Math.round(dmg * (dot ? 1 : heroDmgMul(p.level, ed.level))));
-    this.lastCombat = now;
+    const momentum = !dot && !fromRemote ? this.momentumMultiplier() : 1;
+    const exposed = !dot && ed.guardBroken ? 1.25 : 1;
+    let n = Math.max(1, Math.round(dmg * (dot ? 1 : heroDmgMul(p.level, ed.level)) * momentum * exposed));
+    if (!dot && !fromRemote && !ed.isTrainingDummy) n = this.applyVanguardIntercept(ed, n, now);
+    if (!ed.isTrainingDummy) this.lastCombat = now;
     const died = ed.hurt(n, { knock: dot ? 0 : (opts.knock ?? (crit ? 230 : 150)), flashMs: dot ? 0 : 70 });
+    if (!ed.isTrainingDummy && !fromRemote) {
+      this.trackCombat('damage', n, now);
+      if (crit) this.trackCombat('crits', 1, now);
+    }
     if (dot) {
       this.floatText(ed.x, ed.y - 18, n, STATUS[dot]?.text || '#fff', 'small');
     } else {
@@ -195,12 +531,16 @@ export class Combat {
       
       if (crit) this.floatText(ed.x, ed.y - 22, `${n}!`, '#ffd84a', 'crit');
       else this.floatText(ed.x, ed.y - 20, n, dmgColor);
-      if (!fromRemote) this.bumpCombo();
+      if (!fromRemote) { this.bumpCombo(); this.gainResource(this.resourceGainForHit(ed, crit, opts)); }
+      if (!fromRemote && ed.guardMax > 0) {
+        const broke = ed.damageGuard(Math.max(2, n * (crit ? 1.45 : 0.9)), now);
+        if (broke) this.breakGuard(ed);
+      }
       if (crit) { this.hitStop(60); s.cameras.main.shake(70, 0.0022); }
     }
     if (!died && opts.status && Math.random() < (opts.status.chance ?? 1)) this.applyEnemyStatus(ed, opts.status.id, opts.status.secs);
-    if (!died) this.aggro(ed);
-    else this.killEnemy(ed, fromRemote);
+    if (died) this.killEnemy(ed, fromRemote);
+    else if (!ed.isTrainingDummy) this.aggro(ed);
     return died;
   }
 
@@ -213,6 +553,46 @@ export class Combat {
     const fresh = ed.statuses.apply(id, now, { secs: ed.isBoss && id === 'slow' ? (secs ?? def.secs) * 0.5 : secs, dmg: def.dot ? this.p.effAtk() * def.dot : 0 });
     if (fresh) this.floatText(ed.x, ed.y - 28, def.name, def.text, 'small');
     if (id === 'slow') ed.restoreTint();
+    if (fresh) this.tryReaction(ed, id, now);
+  }
+
+  tryReaction(ed, applied, now) {
+    if (now < (ed.reactionReadyAt || 0) || !ed.alive) return;
+    const has = (id) => ed.statuses.has(id, now);
+    let reaction = null;
+    if ((applied === 'burn' || applied === 'slow') && has('burn') && has('slow')) {
+      reaction = { name: 'THERMAL SHOCK', color: '#9fe8ff', consume: ['burn', 'slow'], mul: 0.72, stun: 0.7 };
+    } else if ((applied === 'burn' || applied === 'poison') && has('burn') && has('poison')) {
+      reaction = { name: 'COMBUST', color: '#b8ff70', consume: ['burn', 'poison'], mul: 0.9 };
+    } else if ((applied === 'bleed' || applied === 'stun') && has('bleed') && has('stun')) {
+      reaction = { name: 'RUPTURE', color: '#ff8090', consume: ['bleed'], mul: 0.82 };
+    }
+    if (!reaction) return;
+    ed.reactionReadyAt = now + 900;
+    reaction.consume.forEach((id) => ed.statuses.remove(id));
+    ed.restoreTint?.();
+    if (reaction.stun && !ed.isBoss) ed.statuses.apply('stun', now, { secs: reaction.stun, dmg: 0 });
+    const n = Math.max(2, Math.round(this.p.effAtk() * reaction.mul));
+    const died = ed.hurt(n, { knock: 80, flashMs: 90 });
+    if (!ed.isTrainingDummy) { this.trackCombat('damage', n, now); this.trackCombat('reactions', 1, now); }
+    this.floatText(ed.x, ed.y - 34, `${reaction.name} · ${n}`, reaction.color, 'big');
+    this.s.spawnFx(ed.x, ed.y - 8, 'fx.spark', 1.35);
+    audio.play('slam', 0.3);
+    if (died) this.killEnemy(ed, false);
+  }
+
+  breakGuard(ed) {
+    if (!ed?.alive) return;
+    const now = this.s.time.now;
+    if (!ed.isTrainingDummy) this.trackCombat('guardBreaks', 1, now);
+    this.floatText(ed.x, ed.y - 38, 'GUARD BROKEN · +25% DMG', '#ffe477', 'big');
+    ed.statuses.apply('stun', now, { secs: ed.isBoss ? 1.2 : 2.1, dmg: 0 });
+    ed.cancelAttack?.(now, ed.isBoss ? 1500 : 2200);
+    if (ed.isBoss) { ed.plan = null; ed.state = 'recover'; ed.timer = 1500; ed.tele?.clear(); ed.body?.setVelocity(0, 0); }
+    this.s.spawnFx(ed.x, ed.y - 8, 'fx.explosion', ed.isBoss ? 1.8 : 1.25);
+    this.s.cameras.main.shake(ed.isBoss ? 180 : 100, ed.isBoss ? 0.004 : 0.0025);
+    haptic(ed.isBoss ? [26, 25, 55] : [18, 20, 28]);
+    audio.play('slam', 0.55);
   }
 
   // Pull an enemy into combat (+ social kin nearby).
@@ -225,9 +605,14 @@ export class Combat {
     ed.mode = 'chase'; ed.nextAtk = Math.max(ed.nextAtk, now + 250);
     ed.showBars(true);
     if (social && ed.def.social) {
+      const squadId = ed.squadId || `field-${++this.squadSerial}`;
+      ed.squadId = squadId; ed.squadRole ||= 'vanguard'; ed.squadSide ||= -1;
+      let allyIndex = 0;
       this.s.enemies.children.each((o) => {
         if (o !== ed && o instanceof Enemy && o.alive && o.mode === 'idle' && !o.isBoss && o.areaId === ed.areaId
           && (o.typeId === ed.typeId || o.def.social) && Phaser.Math.Distance.Between(o.x, o.y, ed.x, ed.y) < 85) {
+          o.squadId = squadId; o.squadSide = allyIndex++ % 2 ? 1 : -1;
+          o.squadRole = o.ai === 'ranged' ? 'support' : 'flanker';
           o.mode = 'chase'; o.nextAtk = now + 400 + Math.random() * 400; o.showBars(true);
         }
         return true;
@@ -244,7 +629,7 @@ export class Combat {
     const payload = {
       typeId: ed.typeId, name: ed.displayName, level: ed.level, rank: ed.rank.id, boss: !!ed.isBoss,
       xp, x: Math.round(ed.x), y: Math.round(ed.y), areaId: ed.areaId || null, by: s.pname,
-      hpFrac,
+      hpFrac, encounterId: ed.encounterId || null, affix: ed.affix?.id || null,
     };
     // Party hook: a party system may take a share (return value = our XP).
     let myXp = xp;
@@ -253,6 +638,8 @@ export class Combat {
       try { const r = party.shareKill(payload); if (typeof r === 'number' && r >= 0) myXp = Math.round(r); } catch (e) { console.error(e); }
     }
     bus.emit(Events.KILL, payload);
+    if (!fromRemote) this.trackCombat('kills');
+    if (!fromRemote) this.gainResource(ed.isBoss ? 30 : ed.rank !== RANKS.normal ? 18 : 9);
     this.grantXp(myXp, ed.x, ed.y - 30);
     // Token points from kills
     const tp = Math.max(1, Math.round(ed.level * (ed.rank?.xp || 1)));
@@ -288,6 +675,7 @@ export class Combat {
   enemyHitPlayer(ed) {
     const s = this.s, p = this.p;
     if (p.dead || s.zoneHere(p.x, p.y).safe) return;
+    if (this.resolveParry(ed)) return;
     if (s.time.now < p.invulnUntil) {
       if (this.rolling && !this.rollEvadeShown) {
         this.rollEvadeShown = true;
@@ -297,11 +685,23 @@ export class Combat {
       return;
     }
     if (p.tryDodge()) return; // FLEE-based dodge (shows Miss)
-    const raw = ed.hitDmg * mobDmgMul(p.level, ed.level);
+    const frenzy = ed.affix?.id === 'berserker' && ed.hp < ed.maxHp * 0.5 ? 1.3 : 1;
+    const pincer = ed.attackKind === 'pincer';
+    const raw = ed.hitDmg * frenzy * this.squadDamageMultiplier(ed, s.time.now) * mobDmgMul(p.level, ed.level);
     const n = Math.max(1, Math.round(raw - p.effDef() * 0.5));
-    if (this.hitPlayer(n, ed)) {
+    if (this.hitPlayer(n, ed, pincer)) {
+      if (pincer) {
+        this.floatText(p.x, p.y - 34, 'PINCER STRIKE', '#d08cff', 'big');
+        s.spawnFx(p.x, p.y - 8, 'fx.cut', 1.35);
+        audio.play('slam', 0.35);
+      }
       const inf = ed.def.inflict;
       if (inf && Math.random() < inf.chance) this.applyPlayerStatus(inf.id, ed.atk);
+      if (ed.affix?.id === 'frostbound' && Math.random() < 0.4) this.applyPlayerStatus('slow', ed.atk, 2.5);
+      if (ed.affix?.id === 'vampiric' && ed.hp > 0) {
+        ed.hp = Math.min(ed.maxHp, ed.hp + Math.max(2, n * 1.5)); ed.refreshBar?.();
+        this.floatText(ed.x, ed.y - 24, 'Leech', '#dc8cff', 'small');
+      }
     }
   }
 
@@ -317,14 +717,20 @@ export class Combat {
 
   hitPlayer(n, src, heavy = false) {
     const s = this.s, p = this.p;
+    if (this.resolveParry(src)) return false;
     if (!p.hurt(n)) return false;
+    this.trackCombat('damageTaken', n, s.time.now);
+    if (src && Number.isFinite(src.x) && Number.isFinite(src.y)) {
+      this.lastHitCue = { at: s.time.now, angle: Math.atan2(src.y - p.y, src.x - p.x), heavy: !!heavy };
+    }
     this.lastCombat = s.time.now;
     bus.emit(Events.PLAYER_HP, s.hpPayload());
     audio.play('hurt');
     const f = Math.min(1, (n / p.effMaxHp()) * 4);
     s.cameras.main.shake(heavy ? 180 : 70 + 90 * f, (heavy ? 0.006 : 0.0015 + 0.003 * f));
     this.floatText(p.x, p.y - 22, `-${n}`, '#ff6b6b', heavy ? 'big' : 'normal');
-    this.combo.n = 0; // getting hit breaks the combo
+    this.combo.n = 0; this.combo.tier = 0; // getting hit breaks momentum
+    if (p.job.id === 'wayfarer') this.gainResource(8); // Resolve also grows by standing ground
     if (src && src.x !== undefined) { // small knockback
       const a = Math.atan2(p.y - src.y, p.x - src.x);
       this.pKnock = { x: Math.cos(a) * (heavy ? 200 : 120), y: Math.sin(a) * (heavy ? 200 : 120) };
@@ -368,6 +774,34 @@ export class Combat {
     this.rollUntil = now + ROLL_MS;
     this.rollEvadeShown = false;
     p.invulnUntil = Math.max(p.invulnUntil, now + IFRAME_MS);
+
+    // A late dodge against a nearby telegraphed attack is a perfect dodge.
+    // It returns part of the stamina cost, restores a little MP and extends the
+    // invulnerability window. This rewards reading enemy tells without making
+    // normal dodge timing less reliable.
+    const threat = this.enemiesHere().find((e) => {
+      if (!e.windingUp) return false;
+      const left = e.stateUntil - now;
+      if (left <= 0 || left > PERFECT_DODGE_MS) return false;
+      const range = Math.max(78, (e.pat?.range || 32) + 44);
+      return Phaser.Math.Distance.Between(p.x, p.y, e.x, e.y) <= range;
+    });
+    if (threat) {
+      const refund = 18;
+      const maxMp = p.effMaxMp ? p.effMaxMp() : p.maxMp;
+      const mp = Math.max(3, Math.round(maxMp * 0.06));
+      this.stamina = Math.min(STAM_MAX, this.stamina + refund);
+      p.mp = Math.min(maxMp, p.mp + mp);
+      p.invulnUntil = Math.max(p.invulnUntil, now + IFRAME_MS + 170);
+      this.perfectEvadeUntil = now + 900;
+      this.trackCombat('perfectDodges', 1, now);
+      this.combo.until = Math.max(this.combo.until, now + 2600);
+      this.gainResource(22);
+      this.floatText(p.x, p.y - 32, `PERFECT DODGE · +${mp} MP`, '#7dffcf', 'big');
+      bus.emit(Events.PLAYER_HP, s.hpPayload());
+      s.cameras.main.flash(90, 80, 255, 210, false);
+      audio.play('quest', 0.45);
+    }
     audio.play('dash', 0.7);
     dodgeVfx(s, p);
     s.spawnFx(p.x, p.y - 2, 'fx.dust', 1.1);
@@ -391,12 +825,43 @@ export class Combat {
     const here = this.s.areas?.current?.id || null;
     return this.s.enemies.getChildren().filter((e) => e instanceof Enemy && e.alive && (e.areaId || null) === here);
   }
+
+  priorityThreat(includeCaptain = true) {
+    const p = this.p, active = this.s.encounters?.active;
+    let channel = null, channelD2 = Infinity, pincer = null, pincerD2 = Infinity, captain = null;
+    for (const e of this.enemiesHere()) {
+      const dx = p.x - e.x, dy = p.y - e.y, d2 = dx * dx + dy * dy;
+      if (d2 >= 78400) continue;
+      if (e.channelingSupport && d2 < channelD2) { channel = e; channelD2 = d2; }
+      if (e.windingUp && e.attackKind === 'pincer' && d2 < pincerD2) { pincer = e; pincerD2 = d2; }
+      if (e === active?.captain) captain = e;
+    }
+    if (channel) return channel;
+    if (pincer) return pincer;
+    if (!includeCaptain || !active?.captainAlive) return null;
+    const protector = this.vanguardProtector(this.target, this.s.time.now);
+    if (protector) return protector;
+    return captain;
+  }
+
+  focusPriorityTarget() {
+    const threat = this.priorityThreat(true);
+    if (!threat) return false;
+    this.setTarget(threat);
+    return true;
+  }
+
   cycleTarget() {
     const s = this.s, p = this.p;
     if (s.chatOpen || p.dead) return;
     const list = this.enemiesHere()
       .map((e) => ({ e, d: Phaser.Math.Distance.Between(p.x, p.y, e.x, e.y) }))
-      .filter((o) => o.d < 220).sort((a, b) => a.d - b.d);
+      .filter((o) => o.d < 220)
+      .sort((a, b) => {
+        const priority = (o) => o.e.channelingSupport ? 0 : o.e.attackKind === 'pincer' && o.e.windingUp ? 1
+          : o.e.squadRole === 'vanguard' && !o.e.isSquadCaptain ? 2 : o.e.isSquadCaptain ? 3 : o.e.windingUp ? 4 : 5;
+        return priority(a) - priority(b) || a.d - b.d;
+      });
     if (!list.length) { this.setTarget(null); return; }
     const i = list.findIndex((o) => o.e === this.target);
     this.setTarget(list[(i + 1) % list.length].e);
@@ -417,6 +882,29 @@ export class Combat {
     return Math.atan2(t.y - p.y, t.x - p.x);
   }
 
+  // Select a nearby enemy close to the hero's facing direction. This is used
+  // only when an attack has no pointer aim or valid lock, preserving mouse aim.
+  assistTarget(range, cone = 1.5) {
+    const p = this.p;
+    const face = this.s.facingAngle();
+    let best = null, score = Infinity;
+    for (const e of this.enemiesHere()) {
+      if (!e.alive || e.mode === 'return') continue;
+      const d = Phaser.Math.Distance.Between(p.x, p.y, e.x, e.y);
+      if (d > range) continue;
+      const a = Math.atan2(e.y - p.y, e.x - p.x);
+      const off = Math.abs(Phaser.Math.Angle.Wrap(a - face));
+      const threatCone = e.channelingSupport ? Math.max(cone, 2.35) : cone;
+      if (off > threatCone && d > 15) continue;
+      const roleBias = e.channelingSupport ? -range * 1.6 : e.attackKind === 'pincer' && e.windingUp ? -range * 0.8
+        : e.squadRole === 'vanguard' && !e.isSquadCaptain ? -range * 0.35 : e.isSquadCaptain ? -range * 0.25 : e.windingUp ? -range * 0.15 : 0;
+      const candidate = d + off * (range * 0.35) + roleBias;
+      if (candidate < score) { score = candidate; best = e; }
+    }
+    if (best) this.setTarget(best);
+    return best;
+  }
+
   // ── enemy projectiles (ranged types) ──────────────────────────────────────
   enemyShot(ed, angle) {
     const s = this.s;
@@ -425,7 +913,7 @@ export class Combat {
     const glow = s.add.circle(x, y, 6, col, 0.3).setDepth(2590).setBlendMode(Phaser.BlendModes.ADD);
     const core = s.add.circle(x, y, 3, col, 1).setDepth(2591).setStrokeStyle(1, 0xffffff, 0.9);
     const sp = 125;
-    this.eshots.push({ glow, core, vx: Math.cos(angle) * sp, vy: Math.sin(angle) * sp, until: s.time.now + 1800, ed: { x, y, atk: ed.atk, level: ed.level, hitDmg: ed.hitDmg, def: ed.def } });
+    this.eshots.push({ glow, core, vx: Math.cos(angle) * sp, vy: Math.sin(angle) * sp, until: s.time.now + 1800, ed: { x, y, atk: ed.atk, level: ed.level, hitDmg: ed.hitDmg, def: ed.def, affix: ed.affix, hp: ed.hp, maxHp: ed.maxHp } });
     audio.play('cast', 0.35);
   }
   updateShots(dt, now) {
@@ -593,6 +1081,8 @@ export class Combat {
   onPlayerDeath() {
     const s = this.s, p = this.p;
     if (this.death) return;
+    if (s.encounters?.active) audio.encounter('defeat', { zone: s.encounters.active.zone });
+    this.finishCombatRun(s.time.now, 'DEFEAT');
     const xpLoss = Math.min(p.xp, Math.round(p.xpNext * 0.05));
     const goldLoss = Math.floor(p.gold * 0.05);
     p.xp -= xpLoss; p.gold -= goldLoss;
@@ -659,11 +1149,15 @@ export class Combat {
   update(time, delta) {
     const s = this.s, p = this.p;
     const dt = delta / 1000;
+    const activeNow = this.inCombat;
+    if (this.wasInCombat && !activeNow && !p.dead) this.finishCombatRun(time);
+    this.wasInCombat = activeNow;
     // hero statuses (DoTs bypass i-frames, never re-trigger the hurt flash)
     if (!p.dead && this.statuses.size) {
       this.statuses.tick(time, (id, dmg) => {
         const n = Math.max(1, Math.round(dmg));
         p.hp -= n; this.lastCombat = time;
+        this.trackCombat('damageTaken', n, time);
         this.floatText(p.x, p.y - 20, `-${n}`, STATUS[id].text, 'small');
         if (p.hp <= 0) { p.hp = 0; p.dead = true; s.onDeath(); }
         bus.emit(Events.PLAYER_HP, s.hpPayload());
@@ -683,7 +1177,7 @@ export class Combat {
     }
     if (this.death && !this.death.going && time >= this.death.respawnAt) { this.death.going = true; this.respawn(this.death.destObj); }
     if (time - this.stamUsedAt > 700 && this.stamina < STAM_MAX) this.stamina = Math.min(STAM_MAX, this.stamina + dt * 42);
-    if (time > this.combo.until) this.combo.n = 0;
+    if (time > this.combo.until) { this.combo.n = 0; this.combo.tier = 0; }
     this.updateShots(dt, time);
     this.updateCoins(dt, time);
     this.updateItemDrops(dt, time);
@@ -708,14 +1202,25 @@ export class Combat {
     if (!t) return;
     const here = this.s.areas?.current?.id || null;
     if (!t.alive || (t.areaId || null) !== here || Phaser.Math.Distance.Between(p.x, p.y, t.x, t.y) > 320) { this.setTarget(null); return; }
-    const c = t.con(p.level);
+    const c = t.con(p.level), priorityColor = t.channelingSupport ? 0x72cfff : t.attackKind === 'pincer' ? 0xd08cff : c.tint;
     const rx = 11 * t.vscale, ry = 5 * t.vscale;
     g.setDepth(t.depth - 0.5);
-    g.lineStyle(1.5, c.tint, 0.95).strokeEllipse(t.x, t.y + 3, rx * 2, ry * 2);
+    const protector = this.vanguardProtector(t, time);
+    if (protector) {
+      g.lineStyle(2, 0x72cfff, 0.42).lineBetween(t.x, t.y + 2, protector.x, protector.y + 2);
+      g.fillStyle(0x72cfff, 0.12).fillCircle(protector.x, protector.y + 2, 13);
+    }
+    const pulse = 0.72 + Math.sin(time / 120) * 0.14;
+    const urgent = t.channelingSupport || t.attackKind === 'pincer';
+    g.fillStyle(priorityColor, urgent ? 0.16 : 0.08).fillEllipse(t.x, t.y + 3, rx * 2.35, ry * 2.35);
+    g.lineStyle(urgent ? 2.5 : 1.5, priorityColor, 0.95).strokeEllipse(t.x, t.y + 3, rx * 2, ry * 2);
     for (let i = 0; i < 4; i++) { // rotating corner ticks
       const a = time / 400 + i * Math.PI / 2;
       g.fillStyle(0xffffff, 0.9).fillCircle(t.x + Math.cos(a) * (rx + 2), t.y + 3 + Math.sin(a) * (ry + 1.5), 1.2);
     }
+    // Forward chevron makes the current lock readable inside a crowded pack.
+    g.lineStyle(2, 0xffffff, pulse).beginPath()
+      .moveTo(t.x - 4, t.y - 13 - 2 * pulse).lineTo(t.x, t.y - 9 - 2 * pulse).lineTo(t.x + 4, t.y - 13 - 2 * pulse).strokePath();
   }
 
   // Per-frame enemy AI driver (replaces the old inline loop in WorldScene).
@@ -725,6 +1230,20 @@ export class Combat {
     const playerSafe = s.zoneHere(p.x, p.y).safe;
     const tg = this.teleG;
     tg.clear();
+    const activeEncounter = s.encounters?.active;
+    const captain = activeEncounter?.captain;
+    if (activeEncounter?.captainAlive && captain?.alive) {
+      const pulse = 0.55 + Math.sin(time / 180) * 0.2;
+      tg.lineStyle(2, activeEncounter.modifier?.tint || 0xffb04a, pulse).strokeCircle(captain.x, captain.y + 2, 16 + pulse * 3);
+      tg.fillStyle(activeEncounter.modifier?.tint || 0xffb04a, 0.035).fillCircle(captain.x, captain.y + 2, 25);
+    }
+    s.enemies.children.each((e) => {
+      if (!e?.alive || time >= (e.interceptFlashUntil || 0) || !e.interceptTarget?.alive) return true;
+      const alpha = Phaser.Math.Clamp((e.interceptFlashUntil - time) / 600, 0, 1);
+      tg.lineStyle(3, 0x72cfff, alpha).lineBetween(e.x, e.y + 2, e.interceptTarget.x, e.interceptTarget.y + 2);
+      tg.lineStyle(2, 0xffffff, alpha).strokeCircle(e.x, e.y + 2, 12 + 5 * (1 - alpha));
+      return true;
+    });
     // one reused env object (was a fresh object + 2 closures per frame)
     const env = this._env || (this._env = {
       p: null, nightBoost: 1, playerOk: false,
@@ -736,14 +1255,32 @@ export class Combat {
       },
       drawWindup: (e, a, t, pat) => {
         const shoot = !!pat.shoot;
-        const color = shoot ? 0xffd35a : 0xff5d52;
+        const pincer = e.attackKind === 'pincer';
+        const color = pincer ? 0xd08cff : shoot ? 0xffd35a : 0xff5d52;
         const r = (10 + 4 * e.vscale) * (0.8 + 0.2 * t);
-        tg.lineStyle(1.5, color, 0.55 + 0.35 * t).beginPath()
+        tg.fillStyle(color, 0.035 + 0.075 * t).fillCircle(e.x, e.y + 2, r);
+        tg.lineStyle(1.5 + t, color, 0.55 + 0.35 * t).beginPath()
           .arc(e.x, e.y + 2, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * t, false, 0.08).strokePath();
         const len = shoot ? 20 + 10 * t : 14 + 8 * t;
         const ex = e.x + Math.cos(a) * len, ey = e.y + Math.sin(a) * len;
         tg.lineStyle(1, color, 0.5 + 0.4 * t).lineBetween(e.x, e.y, ex, ey);
         tg.fillStyle(color, 0.45 + 0.4 * t).fillCircle(ex, ey, 1.5 + t);
+        if (pincer) {
+          const spread = 0.34 * (1 - t);
+          tg.lineStyle(1.5, color, 0.45 + 0.35 * t)
+            .lineBetween(e.x, e.y, e.x + Math.cos(a - spread) * len, e.y + Math.sin(a - spread) * len)
+            .lineBetween(e.x, e.y, e.x + Math.cos(a + spread) * len, e.y + Math.sin(a + spread) * len);
+        }
+        if (t > 0.72) {
+          const blink = Math.floor(time / 55) % 2 ? 0.95 : 0.45;
+          tg.lineStyle(2, 0xffffff, blink).strokeCircle(e.x, e.y + 2, r + 3);
+        }
+      },
+      drawSupport: (e, t) => {
+        const color = 0x72cfff, r = 12 + 12 * t;
+        tg.fillStyle(color, 0.04 + 0.08 * t).fillCircle(e.x, e.y + 2, r);
+        tg.lineStyle(2, color, 0.6 + 0.3 * t).strokeCircle(e.x, e.y + 2, r);
+        tg.lineStyle(1, 0xffffff, 0.35 + 0.4 * t).strokeCircle(e.x, e.y + 2, 7 + 5 * t);
       },
     });
     env.p = p; env.nightBoost = s.daynight?.isNight ? 1.25 : 1;
@@ -754,6 +1291,7 @@ export class Combat {
       if (!(e instanceof Enemy) || e.dying) return true;
       if ((e.areaId || null) !== here) { e.body.setVelocity(0, 0); return true; }
       if (s.sync?.driveEnemy?.(e, time, delta)) return true; // co-op: replicas interpolate
+      e.updateGuard?.(time, delta);
       if (e.statuses.size) e.statuses.tick(time, (id, dmg) => this.damageEnemy(e, dmg, false, { dot: id }));
       if (!e.alive) return true;
       if (e.statuses.size) {
